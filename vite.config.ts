@@ -48,6 +48,11 @@ export default ({ mode }: ConfigEnv): UserConfig => {
       allowedHosts: true,
       proxy: {
         [VITE_API_URL_PREFIX]: 'http://127.0.0.1:3000/',
+        '/qt': {
+          target: 'https://qt.gtimg.cn',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/qt/, ''),
+        },
       },
     },
 
