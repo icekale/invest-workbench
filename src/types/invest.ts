@@ -53,6 +53,35 @@ export interface MacroBrief {
   };
 }
 
+export interface MacroEvent {
+  id: string;
+  date: string;
+  title: string;
+  category: '宏观政策' | '货币金融' | '产业峰会' | '海外央行' | string;
+  level: '重大' | '关键' | '关注';
+  impact: string;
+  beneficiaries: string[];
+  suggestedAction?: string;
+  account?: AccountId | 'all';
+}
+
+export interface IndustryFocus {
+  id: string;
+  name: string;
+  cycleStage: string;
+  heat: number;
+  trend: 'up' | 'stable' | 'down';
+  catalyst: string;
+  keyTargets: Array<{
+    code: string;
+    name: string;
+    type: 'ETF' | '个股';
+  }>;
+  tactic: string;
+  account?: AccountId | 'all';
+  updatedAt: string;
+}
+
 export interface SmartPortfolioFund {
   code: string;
   weight: number;
@@ -162,6 +191,36 @@ export interface TradeAlert {
   suggestedQty?: number;
   triggerTime: string;
   isRead?: boolean;
+}
+
+export interface TradeModalOptions {
+  account?: AccountId;
+  side?: TradeSide;
+  code?: string;
+  name?: string;
+  price?: number;
+  quantity?: number;
+  todoId?: string;
+  note?: string;
+}
+
+export interface ExecuteTradeParams {
+  account: AccountId;
+  side: TradeSide;
+  code: string;
+  name: string;
+  price: number;
+  quantity: number;
+  date?: string;
+  note?: string;
+  todoId?: string;
+}
+
+export interface ExecuteTradeResult {
+  success: boolean;
+  message: string;
+  amount: number;
+  transactionId: string;
 }
 
 export interface Prefs {

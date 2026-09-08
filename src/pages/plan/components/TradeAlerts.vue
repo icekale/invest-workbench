@@ -90,13 +90,30 @@
               </t-tag>
             </div>
             <div class="alert-actions">
+              <t-button
+                size="small"
+                variant="outline"
+                :theme="item.suggestedAction === 'add' ? 'danger' : 'success'"
+                @click="
+                  invest.openTradeModal({
+                    account: item.account,
+                    side: item.suggestedAction === 'add' ? 'buy' : 'sell',
+                    code: item.code,
+                    name: item.name,
+                    quantity: item.suggestedQty || 100,
+                    note: item.detail,
+                  })
+                "
+              >
+                直接下单
+              </t-button>
               <t-button v-if="isTodoAdded(item)" size="small" variant="text" theme="success" disabled>
                 <template #icon><t-icon name="check" /></template>
                 已在待办中
               </t-button>
               <t-button v-else size="small" theme="primary" @click="convertToTodo(item)">
                 <template #icon><t-icon name="arrow-right" /></template>
-                一键转为交易待办
+                转为待办
               </t-button>
             </div>
           </div>

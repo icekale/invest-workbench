@@ -4,8 +4,10 @@ import {
   cashSeed,
   holdings as seedHoldings,
   indexes,
+  industryFocusSeed,
   journal as seedJournal,
   macroBriefs as seedMacroBriefs,
+  macroEventsSeed,
   macroIndicatorsSeed,
   macroWeatherSeed,
   opportunities as seedOpps,
@@ -18,9 +20,13 @@ import {
 import type {
   AccountId,
   CustomPortfolio,
+  ExecuteTradeParams,
+  ExecuteTradeResult,
   Holding,
+  IndustryFocus,
   JournalEntry,
   MacroBrief,
+  MacroEvent,
   MacroIndicator,
   MacroWeather,
   Opportunity,
@@ -29,13 +35,15 @@ import type {
   ThesisStatus,
   TodoStatus,
   TradeAlert,
+  TradeModalOptions,
+  TradeSide,
   TradeTodo,
   Transaction,
 } from '@/types/invest';
 import { fetchSinaQuotes } from '@/utils/backup';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
-import { calcHolding, fetchQuotes } from '@/utils/quote';
+import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
 
 const LS_HOLD = 'invest-v2-holdings';
 const LS_TODO = 'invest-v2-todos';
@@ -50,6 +58,8 @@ const LS_TX = 'invest-v2-transactions';
 const LS_MACRO_WEATHER = 'invest-v2-macro-weather';
 const LS_MACRO_INDICATORS = 'invest-v2-macro-indicators';
 const LS_MACRO_BRIEFS = 'invest-v2-macro-briefs';
+const LS_MACRO_EVENTS = 'invest-v2-macro-events';
+const LS_INDUSTRY_FOCUS = 'invest-v2-industry-focus';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -102,6 +112,21 @@ export const useInvestStore = defineStore('invest', {
     macroWeather: readLS<MacroWeather>(LS_MACRO_WEATHER, macroWeatherSeed),
     macroIndicators: readLS<MacroIndicator[]>(LS_MACRO_INDICATORS, macroIndicatorsSeed),
     macroBriefs: readLS<MacroBrief[]>(LS_MACRO_BRIEFS, seedMacroBriefs),
+    macroEvents: readLS<MacroEvent[]>(LS_MACRO_EVENTS, macroEventsSeed),
+    industryFocus: readLS<IndustryFocus[]>(LS_INDUSTRY_FOCUS, industryFocusSeed),
+    tradeModal: {
+      visible: false,
+      options: {
+        account: 'stock' as AccountId,
+        side: 'buy' as TradeSide,
+        code: '',
+        name: '',
+        price: 0,
+        quantity: 100,
+        todoId: '',
+        note: '',
+      } as TradeModalOptions,
+    },
   }),
   getters: {
     enriched: (state) => enrich(state.holdings, state.quotes),
@@ -129,6 +154,22 @@ export const useInvestStore = defineStore('invest', {
   actions: {
     persistHoldings() {
       localStorage.setItem(LS_HOLD, JSON.stringify(this.holdings));
+    },
+    openTradeModal(opts?: Partial<TradeModalOptions>) {
+      this.tradeModal.options = {
+        account: opts?.account || 'stock',
+        side: opts?.side || 'buy',
+        code: opts?.code || '',
+        name: opts?.name || '',
+        price: opts?.price || 0,
+        quantity: opts?.quantity || 100,
+        todoId: opts?.todoId || '',
+        note: opts?.note || '',
+      };
+      this.tradeModal.visible = true;
+    },
+    closeTradeModal() {
+      this.tradeModal.visible = false;
     },
     setCash(account: AccountId, value: number) {
       this.cash = { ...this.cash, [account]: Math.max(0, value) };
@@ -195,6 +236,126 @@ export const useInvestStore = defineStore('invest', {
       };
       this.transactions = [tx, ...this.transactions];
       this.persistTransactions();
+    },
+    executeTrade(params: ExecuteTradeParams): ExecuteTradeResult {
+      const { account, side, name, price, quantity, todoId } = params;
+      const code = normalizeCode(params.code);
+      const date = params.date || new Date().toISOString().slice(0, 10);
+      const note = params.note?.trim() || '';
+
+      if (!price || price <= 0 || !quantity || quantity <= 0) {
+        throw new Error('成交单价与成交数量必须大于 0');
+      }
+
+      const amount = Number((price * quantity).toFixed(2));
+      const currentCash = this.cash[account] || 0;
+
+      if (side === 'buy') {
+        if (amount > currentCash) {
+          throw new Error(
+            `可用现金不足：需 ¥${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}，当前可用仅剩 ¥${currentCash.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`,
+          );
+        }
+
+        // 1. 扣减现金
+        const nextCash = Number((currentCash - amount).toFixed(2));
+        this.setCash(account, nextCash);
+
+        // 2. 更新或新建持仓 (加权移动平均成本)
+        const idx = this.holdings.findIndex(
+          (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
+        );
+        const holdingsCopy = this.holdings.slice();
+
+        if (idx >= 0) {
+          const old = holdingsCopy[idx];
+          const newQty = old.quantity + quantity;
+          const newCost = Number(((old.cost * old.quantity + amount) / newQty).toFixed(4));
+          holdingsCopy[idx] = {
+            ...old,
+            name: name || old.name,
+            quantity: newQty,
+            cost: newCost,
+          };
+        } else {
+          const matchedThesis = this.theses.find((t) => t.code === code || t.title.includes(name));
+          holdingsCopy.push({
+            account,
+            code,
+            name: name || code,
+            quantity,
+            cost: Number(price.toFixed(4)),
+            health: 'healthy',
+            action: 'hold',
+            thesisId: matchedThesis?.id || '',
+          });
+        }
+        this.holdings = holdingsCopy;
+        this.persistHoldings();
+      } else {
+        // sell
+        const idx = this.holdings.findIndex(
+          (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
+        );
+        if (idx < 0) {
+          throw new Error(`无法卖出：当前${account === 'stock' ? '股票' : 'ETF'}账户未持有【${name || code}】`);
+        }
+        const holding = this.holdings[idx];
+        if (quantity > holding.quantity) {
+          throw new Error(`卖出数量超出持仓：尝试卖出 ${quantity} 股/份，当前仅持有 ${holding.quantity} 股/份`);
+        }
+
+        // 1. 增加现金
+        const nextCash = Number((currentCash + amount).toFixed(2));
+        this.setCash(account, nextCash);
+
+        // 2. 扣减持仓 (数量减少，成本价在加权会计中保持不变)
+        const holdingsCopy = this.holdings.slice();
+        const remainQty = holding.quantity - quantity;
+        if (remainQty === 0) {
+          holdingsCopy.splice(idx, 1);
+        } else {
+          holdingsCopy[idx] = {
+            ...holding,
+            quantity: remainQty,
+          };
+        }
+        this.holdings = holdingsCopy;
+        this.persistHoldings();
+      }
+
+      // 3. 记录成交流水
+      const txId = `tx_${Date.now()}`;
+      const tx: Transaction = {
+        id: txId,
+        date,
+        account,
+        code,
+        name: name || code,
+        side,
+        price,
+        quantity,
+        amount,
+        fee: 0,
+        note: note || (todoId ? '决策待办一键执行' : ''),
+      };
+      this.transactions = [tx, ...this.transactions];
+      this.persistTransactions();
+
+      // 4. 联动完成待办 (如果有关联 todoId)
+      if (todoId) {
+        this.removeTodo(todoId);
+      }
+
+      // 5. 刷新行情保证市值与各看板数据最新
+      this.refreshQuotes();
+
+      return {
+        success: true,
+        message: `${side === 'buy' ? '买入' : '卖出'} ${name || code} ${quantity} 股/份 成功成交！`,
+        amount,
+        transactionId: txId,
+      };
     },
     importTransactions(rows: Transaction[], syncHoldings = false) {
       this.transactions = [...rows, ...this.transactions];
@@ -295,6 +456,58 @@ export const useInvestStore = defineStore('invest', {
       this.macroBriefs = this.macroBriefs.filter((m) => m.id !== id);
       localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
     },
+    addMacroEvent(event: Omit<MacroEvent, 'id'>) {
+      const row: MacroEvent = {
+        ...event,
+        id: `ev_${Date.now()}`,
+      };
+      this.macroEvents = [row, ...this.macroEvents];
+      localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+      return row;
+    },
+    removeMacroEvent(id: string) {
+      this.macroEvents = this.macroEvents.filter((e) => e.id !== id);
+      localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+    },
+    addIndustryFocus(ind: Omit<IndustryFocus, 'id' | 'updatedAt'>) {
+      const row: IndustryFocus = {
+        ...ind,
+        id: `ind_${Date.now()}`,
+        updatedAt: '刚刚新增',
+      };
+      this.industryFocus = [row, ...this.industryFocus];
+      localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+      return row;
+    },
+    removeIndustryFocus(id: string) {
+      this.industryFocus = this.industryFocus.filter((i) => i.id !== id);
+      localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+    },
+    convertEventToTodo(event: MacroEvent): boolean {
+      const primaryTarget = event.beneficiaries?.[0] || event.title;
+      this.addTodo({
+        account: event.account === 'stock' ? 'stock' : 'etf',
+        code: '',
+        name: primaryTarget.slice(0, 14),
+        side: 'buy',
+        quantity: 0,
+        reason: `重点会议催化【${event.title}】：${event.suggestedAction || event.impact}`,
+      });
+      return true;
+    },
+    convertIndustryToOpportunity(ind: IndustryFocus, targetCode?: string): boolean {
+      const target = ind.keyTargets.find((t) => t.code === targetCode) || ind.keyTargets[0];
+      const name = target ? target.name : ind.name;
+      const account: AccountId = ind.account === 'stock' ? 'stock' : 'etf';
+      this.addOpportunity({
+        account,
+        name,
+        thesis: `产业景气驱动【${ind.name} · ${ind.cycleStage}】：${ind.catalyst}；投资策略：${ind.tactic}`,
+        score: Math.min(100, Math.max(50, ind.heat)),
+        note: `重点催化：${ind.catalyst.slice(0, 30)}...`,
+      });
+      return true;
+    },
     convertMacroToTodo(brief: MacroBrief): boolean {
       if (brief.suggestedTodo) {
         this.addTodo({
@@ -350,6 +563,8 @@ export const useInvestStore = defineStore('invest', {
         macroWeather: this.macroWeather,
         macroIndicators: this.macroIndicators,
         macroBriefs: this.macroBriefs,
+        macroEvents: this.macroEvents,
+        industryFocus: this.industryFocus,
       };
     },
     restoreSnapshot(data: any): { success: boolean; message: string; counts?: Record<string, number> } {
@@ -430,6 +645,14 @@ export const useInvestStore = defineStore('invest', {
       if (Array.isArray(data.macroBriefs)) {
         this.macroBriefs = data.macroBriefs;
         localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
+      }
+      if (Array.isArray(data.macroEvents)) {
+        this.macroEvents = data.macroEvents;
+        localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+      }
+      if (Array.isArray(data.industryFocus)) {
+        this.industryFocus = data.industryFocus;
+        localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
       }
 
       // 触发最新行情更新

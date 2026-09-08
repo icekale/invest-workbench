@@ -29,11 +29,13 @@
     <!-- 宏观信号 + 决策待办 -->
     <t-row :gutter="[16, 16]">
       <t-col :xs="12" :xl="7">
-        <t-card title="每日宏观信号">
+        <t-card title="宏观研判与重点催化">
           <template #actions>
             <t-space :size="8" align="center">
               <span class="sub-action-text">{{ invest.macroWeather?.updatedAt || '每日 08:30 晨会定调' }}</span>
-              <t-button size="small" variant="text" theme="primary" @click="openMacroModal"> + 记研判 </t-button>
+              <t-button size="small" variant="text" theme="primary" @click="openMacroModal">
+                + 记研判/会议/产业
+              </t-button>
             </t-space>
           </template>
 
@@ -80,68 +82,253 @@
             </div>
           </div>
 
-          <!-- 筛选过滤与条数 -->
-          <div class="macro-filter-row">
-            <t-radio-group v-model="macroFilter" variant="default-filled">
-              <t-radio-button value="all">全部</t-radio-button>
-              <t-radio-button value="增长">增长</t-radio-button>
-              <t-radio-button value="流动性">流动性</t-radio-button>
-              <t-radio-button value="政策">政策</t-radio-button>
-              <t-radio-button value="海外">海外</t-radio-button>
-            </t-radio-group>
-            <span class="macro-count-hint">共 {{ macros.length }} 条晨会研判</span>
+          <!-- 模块导航三级切换 -->
+          <div class="macro-subtabs-nav">
+            <t-tabs v-model="macroSectionTab" theme="normal">
+              <t-tab-panel value="signals" :label="`晨会研判 (${macros.length})`" />
+              <t-tab-panel value="events" :label="`近期重点会议 (${invest.macroEvents.length})`" />
+              <t-tab-panel value="industries" :label="`产业重点与催化 (${invest.industryFocus.length})`" />
+            </t-tabs>
           </div>
 
-          <!-- 时间轴研判列表 -->
-          <t-timeline v-if="macros.length" mode="same">
-            <t-timeline-item v-for="m in macros" :key="m.id" :dot-color="toneTimelineDot[m.tone]">
-              <div class="macro">
-                <div class="macro-hd">
-                  <strong class="macro-title">{{ m.title }}</strong>
-                  <t-space :size="6" align="center">
-                    <t-tag size="small" :theme="toneTagTheme(m.tone)" variant="light">{{ m.tone }}</t-tag>
-                    <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
-                    <t-tag size="small" variant="outline">{{
-                      m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
-                    }}</t-tag>
-                    <span class="macro-time-badge">{{ m.time }}</span>
-                  </t-space>
+          <!-- 视图 1: 晨会信号列表 -->
+          <div v-if="macroSectionTab === 'signals'">
+            <div class="macro-filter-row">
+              <t-radio-group v-model="macroFilter" variant="default-filled">
+                <t-radio-button value="all">全部</t-radio-button>
+                <t-radio-button value="增长">增长</t-radio-button>
+                <t-radio-button value="流动性">流动性</t-radio-button>
+                <t-radio-button value="政策">政策</t-radio-button>
+                <t-radio-button value="海外">海外</t-radio-button>
+              </t-radio-group>
+              <span class="macro-count-hint">共 {{ macros.length }} 条晨会研判</span>
+            </div>
+
+            <!-- 时间轴研判列表 -->
+            <t-timeline v-if="macros.length" mode="same">
+              <t-timeline-item v-for="m in macros" :key="m.id" :dot-color="toneTimelineDot[m.tone]">
+                <div class="macro">
+                  <div class="macro-hd">
+                    <strong class="macro-title">{{ m.title }}</strong>
+                    <t-space :size="6" align="center">
+                      <t-tag size="small" :theme="toneTagTheme(m.tone)" variant="light">{{ m.tone }}</t-tag>
+                      <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
+                      <t-tag size="small" variant="outline">{{
+                        m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
+                      }}</t-tag>
+                      <span class="macro-time-badge">{{ m.time }}</span>
+                    </t-space>
+                  </div>
+                  <p class="macro-bd">{{ m.body }}</p>
+
+                  <!-- 应对策略建议 -->
+                  <div v-if="m.actionAdvice" class="macro-action-box">
+                    <span class="action-box-title">【应对策略】</span>
+                    <span class="action-box-text">{{ m.actionAdvice }}</span>
+                  </div>
+
+                  <!-- 底部交互：转为待办 / 删除 -->
+                  <div class="macro-ft">
+                    <t-button
+                      v-if="m.suggestedTodo"
+                      size="small"
+                      theme="primary"
+                      variant="outline"
+                      @click="onConvertMacro(m)"
+                    >
+                      + 转为决策待办 ({{ m.suggestedTodo.side === 'buy' ? '买入' : '卖出' }} {{ m.suggestedTodo.name }})
+                    </t-button>
+                    <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
+                      + 转为研判待办
+                    </t-button>
+
+                    <t-popconfirm
+                      v-if="m.id.startsWith('m_')"
+                      content="确认删除此条自定义研判？"
+                      @confirm="invest.removeMacroBrief(m.id)"
+                    >
+                      <t-button size="small" theme="danger" variant="text">删除</t-button>
+                    </t-popconfirm>
+                  </div>
                 </div>
-                <p class="macro-bd">{{ m.body }}</p>
+              </t-timeline-item>
+            </t-timeline>
+            <t-empty v-else description="暂无符合筛选条件的宏观信号" style="padding: 24px 0" />
+          </div>
+
+          <!-- 视图 2: 近期重点会议 -->
+          <div v-else-if="macroSectionTab === 'events'" class="macro-events-panel">
+            <div class="macro-filter-row">
+              <span class="macro-section-sub">重点跟踪未来 60 天对流动性、监管定调与产业带来拐点的重大事件</span>
+              <span class="macro-count-hint">共 {{ invest.macroEvents.length }} 场日程</span>
+            </div>
+            <div v-if="sortedEvents.length" class="events-list">
+              <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
+                <div class="event-card-top">
+                  <div class="event-date-col">
+                    <span class="event-date-main">{{ ev.date }}</span>
+                    <span class="event-countdown-badge" :class="getEventCountdownClass(ev.date)">
+                      {{ getEventCountdown(ev.date) }}
+                    </span>
+                  </div>
+                  <div class="event-main-col">
+                    <div class="event-headline">
+                      <strong class="event-title">{{ ev.title }}</strong>
+                      <t-space :size="6" align="center" wrap>
+                        <t-tag
+                          size="small"
+                          :theme="ev.level === '重大' ? 'danger' : ev.level === '关键' ? 'warning' : 'default'"
+                          variant="light"
+                        >
+                          {{ ev.level }}
+                        </t-tag>
+                        <t-tag size="small" variant="outline">{{ ev.category }}</t-tag>
+                        <t-tag size="small" variant="light">{{
+                          ev.account === 'stock' ? '股票' : ev.account === 'etf' ? 'ETF' : '全市场'
+                        }}</t-tag>
+                      </t-space>
+                    </div>
+                    <div class="event-impact-text">{{ ev.impact }}</div>
+                  </div>
+                </div>
+
+                <!-- 催化受益标的与板块 -->
+                <div v-if="ev.beneficiaries?.length" class="event-beneficiaries-bar">
+                  <span class="bar-label">潜在催化标的/板块：</span>
+                  <div class="beneficiary-chips">
+                    <div
+                      v-for="b in ev.beneficiaries"
+                      :key="b"
+                      class="beneficiary-chip"
+                      @click="handleEventTargetClick(b, ev)"
+                    >
+                      <span>{{ b }}</span>
+                      <t-icon name="swap" size="11px" />
+                    </div>
+                  </div>
+                </div>
 
                 <!-- 应对策略建议 -->
-                <div v-if="m.actionAdvice" class="macro-action-box">
+                <div v-if="ev.suggestedAction" class="macro-action-box event-action-box">
                   <span class="action-box-title">【应对策略】</span>
-                  <span class="action-box-text">{{ m.actionAdvice }}</span>
+                  <span class="action-box-text">{{ ev.suggestedAction }}</span>
                 </div>
 
-                <!-- 底部交互：转为待办 / 删除 -->
-                <div class="macro-ft">
-                  <t-button
-                    v-if="m.suggestedTodo"
-                    size="small"
-                    theme="primary"
-                    variant="outline"
-                    @click="onConvertMacro(m)"
-                  >
-                    + 转为决策待办 ({{ m.suggestedTodo.side === 'buy' ? '买入' : '卖出' }} {{ m.suggestedTodo.name }})
-                  </t-button>
-                  <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
-                    + 转为研判待办
-                  </t-button>
+                <!-- 底部操作 -->
+                <div class="event-footer-bar">
+                  <t-space :size="8" wrap>
+                    <t-button size="small" theme="primary" variant="outline" @click="onConvertEventToTodo(ev)">
+                      + 生成重点跟踪待办
+                    </t-button>
+                    <t-button
+                      v-if="ev.beneficiaries?.[0]"
+                      size="small"
+                      theme="default"
+                      variant="text"
+                      @click="handleEventTargetClick(ev.beneficiaries[0], ev)"
+                    >
+                      模拟交易标的
+                    </t-button>
+                  </t-space>
 
                   <t-popconfirm
-                    v-if="m.id.startsWith('m_')"
-                    content="确认删除此条自定义研判？"
-                    @confirm="invest.removeMacroBrief(m.id)"
+                    v-if="ev.id.startsWith('ev_')"
+                    content="确认删除此条重点会议？"
+                    @confirm="invest.removeMacroEvent(ev.id)"
                   >
                     <t-button size="small" theme="danger" variant="text">删除</t-button>
                   </t-popconfirm>
                 </div>
               </div>
-            </t-timeline-item>
-          </t-timeline>
-          <t-empty v-else description="暂无符合筛选条件的宏观信号" style="padding: 24px 0" />
+            </div>
+            <t-empty v-else description="暂无录入的重点会议日程" style="padding: 24px 0" />
+          </div>
+
+          <!-- 视图 3: 产业重点与催化 -->
+          <div v-else-if="macroSectionTab === 'industries'" class="industry-focus-panel">
+            <div class="macro-filter-row">
+              <span class="macro-section-sub">聚焦高景气爆发、产业周期反转与强政策催化的核心主线赛道</span>
+              <span class="macro-count-hint">共 {{ invest.industryFocus.length }} 条主线</span>
+            </div>
+            <div v-if="invest.industryFocus.length" class="industry-cards-grid">
+              <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card">
+                <div class="ind-card-header">
+                  <div class="ind-title-wrap">
+                    <strong class="ind-name">{{ ind.name }}</strong>
+                    <t-tag size="small" :theme="getCycleTheme(ind.cycleStage)" variant="light">
+                      {{ ind.cycleStage }}
+                    </t-tag>
+                    <t-tag size="small" variant="outline">{{
+                      ind.account === 'stock' ? '股票' : ind.account === 'etf' ? 'ETF' : '全市场'
+                    }}</t-tag>
+                  </div>
+                  <div class="ind-heat-badge">
+                    <span class="heat-lbl">景气</span>
+                    <strong class="heat-num tabular-nums" :style="{ color: getHeatColor(ind.heat) }">
+                      {{ ind.heat }}
+                    </strong>
+                    <span class="heat-trend" :class="`trend-${ind.trend}`">
+                      {{ ind.trend === 'up' ? '↑ 上行' : ind.trend === 'down' ? '↓ 回调' : '→ 稳健' }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 核心催化 -->
+                <div class="ind-catalyst-block">
+                  <span class="ind-block-lbl">【核心催化】</span>
+                  <span class="ind-block-text">{{ ind.catalyst }}</span>
+                </div>
+
+                <!-- 配置策略 -->
+                <div class="ind-tactic-block">
+                  <span class="ind-block-lbl">【策略配置】</span>
+                  <span class="ind-block-text">{{ ind.tactic }}</span>
+                </div>
+
+                <!-- 跟踪标的快捷条 -->
+                <div class="ind-targets-bar">
+                  <span class="targets-caption">重点跟踪标的：</span>
+                  <div class="targets-chips">
+                    <div
+                      v-for="tgt in ind.keyTargets"
+                      :key="tgt.code"
+                      class="target-pill"
+                      @click="
+                        invest.openTradeModal({
+                          code: tgt.code,
+                          name: tgt.name,
+                          account: ind.account === 'all' ? (tgt.type === 'ETF' ? 'etf' : 'stock') : ind.account,
+                          note: `产业配置【${ind.name}】：${ind.tactic}`,
+                        })
+                      "
+                    >
+                      <span class="tgt-name">{{ tgt.name }}</span>
+                      <span class="tgt-type-badge">{{ tgt.type }}</span>
+                      <t-icon name="swap" size="11px" class="tgt-trade-icon" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 底部操作 -->
+                <div class="ind-card-footer">
+                  <span class="ind-update-time">{{ ind.updatedAt }}</span>
+                  <t-space :size="8">
+                    <t-button size="small" theme="primary" variant="outline" @click="onConvertIndustry(ind)">
+                      + 加入机会池
+                    </t-button>
+                    <t-popconfirm
+                      v-if="ind.id.startsWith('ind_')"
+                      content="确认删除此产业跟踪？"
+                      @confirm="invest.removeIndustryFocus(ind.id)"
+                    >
+                      <t-button size="small" theme="danger" variant="text">删除</t-button>
+                    </t-popconfirm>
+                  </t-space>
+                </div>
+              </div>
+            </div>
+            <t-empty v-else description="暂无重点产业跟踪" style="padding: 24px 0" />
+          </div>
         </t-card>
       </t-col>
 
@@ -162,7 +349,27 @@
                 </div>
                 <div class="todo-reason">{{ t.reason }}</div>
               </div>
-              <t-button size="small" theme="primary" variant="outline" @click="markTodoDone(t.id)">完成</t-button>
+              <div class="todo-actions">
+                <t-button
+                  size="small"
+                  theme="primary"
+                  variant="outline"
+                  @click="
+                    invest.openTradeModal({
+                      account: t.account,
+                      side: t.side,
+                      code: t.code,
+                      name: t.name,
+                      quantity: t.quantity || 100,
+                      todoId: t.id,
+                      note: t.reason,
+                    })
+                  "
+                >
+                  去执行
+                </t-button>
+                <t-button size="small" theme="default" variant="text" @click="markTodoDone(t.id)">完成</t-button>
+              </div>
             </div>
           </div>
           <t-empty v-else description="当前无待执行买卖项，可在机会池中生成" style="padding: 24px 0">
@@ -213,8 +420,22 @@
           <div class="opp-card__footer">
             <span class="opp-card__note">{{ o.note || '暂无跟踪备注' }}</span>
             <t-space :size="8">
+              <t-link
+                theme="primary"
+                hover="color"
+                @click="
+                  invest.openTradeModal({
+                    account: o.account,
+                    side: 'buy',
+                    name: o.name,
+                    note: o.thesis,
+                  })
+                "
+              >
+                模拟建仓
+              </t-link>
               <t-popconfirm content="确定将该机会生成一条买入待办？" @confirm="convertOppToTodo(o)">
-                <t-link theme="primary" hover="color">转为待办</t-link>
+                <t-link theme="default" hover="color">转为待办</t-link>
               </t-popconfirm>
               <t-popconfirm content="确定从机会池移除？" @confirm="deleteOpp(o.id)">
                 <t-link theme="danger" hover="color">删除</t-link>
@@ -425,16 +646,18 @@
       </t-form>
     </t-dialog>
 
-    <!-- 宏观研判与定调弹窗 -->
+    <!-- 宏观研判、会议与产业管理弹窗 -->
     <t-dialog
       v-model:visible="macroModalVisible"
-      header="宏观研判与定调管理"
+      header="宏观研判、会议与产业管理"
       :on-confirm="saveMacroModal"
-      width="560px"
+      width="580px"
     >
       <t-tabs v-model="macroActiveTab" theme="card" style="margin-bottom: 16px">
-        <t-tab-panel value="brief" label="记一笔晨会研判" />
-        <t-tab-panel value="weather" label="调整宏观天气与基准仓位" />
+        <t-tab-panel value="brief" label="记晨会研判" />
+        <t-tab-panel value="event" label="记重点会议" />
+        <t-tab-panel value="industry" label="记产业重点" />
+        <t-tab-panel value="weather" label="调宏观天气与仓位" />
       </t-tabs>
 
       <div v-if="macroActiveTab === 'brief'">
@@ -524,6 +747,118 @@
         </t-form>
       </div>
 
+      <div v-else-if="macroActiveTab === 'event'">
+        <t-form label-align="top">
+          <t-form-item label="会议/事件标题">
+            <t-input v-model="newEvent.title" placeholder="例如：中央政治局 4 月经济形势分析会 / 5 月 LPR 报价" />
+          </t-form-item>
+          <t-row :gutter="12">
+            <t-col :span="4">
+              <t-form-item label="召开日期 (MM-DD)">
+                <t-input v-model="newEvent.date" placeholder="如 04-28" />
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="影响权重">
+                <t-select v-model="newEvent.level">
+                  <t-option value="重大" label="重大" />
+                  <t-option value="关键" label="关键" />
+                  <t-option value="关注" label="关注" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="事件类别">
+                <t-select v-model="newEvent.category">
+                  <t-option value="宏观政策" label="宏观政策" />
+                  <t-option value="货币金融" label="货币金融" />
+                  <t-option value="宏观数据" label="宏观数据" />
+                  <t-option value="海外央行" label="海外央行" />
+                  <t-option value="产业峰会" label="产业峰会" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+          </t-row>
+          <t-form-item label="核心影响与前瞻看点">
+            <t-textarea
+              v-model="newEvent.impact"
+              placeholder="记录该会议核心议题、关键变量与潜在政策定调"
+              :autosize="{ minRows: 2, maxRows: 3 }"
+            />
+          </t-form-item>
+          <t-form-item label="催化敏感标的/板块 (逗号隔开)">
+            <t-input v-model="newEvent.beneficiariesStr" placeholder="例如：中证A500ETF, 券商ETF, 顺周期龙头" />
+          </t-form-item>
+          <t-form-item label="应对建议">
+            <t-input v-model="newEvent.suggestedAction" placeholder="例如：会前组合保持均衡，重点关注顺周期估值修复" />
+          </t-form-item>
+          <t-form-item label="所属账户">
+            <t-radio-group v-model="newEvent.account">
+              <t-radio-button value="all">全市场</t-radio-button>
+              <t-radio-button value="stock">股票账户</t-radio-button>
+              <t-radio-button value="etf">ETF账户</t-radio-button>
+            </t-radio-group>
+          </t-form-item>
+        </t-form>
+      </div>
+
+      <div v-else-if="macroActiveTab === 'industry'">
+        <t-form label-align="top">
+          <t-form-item label="产业赛道名称">
+            <t-input v-model="newIndustry.name" placeholder="例如：AI 算力与核心硬件 / 创新药与出海管线" />
+          </t-form-item>
+          <t-row :gutter="12">
+            <t-col :span="4">
+              <t-form-item label="景气周期">
+                <t-select v-model="newIndustry.cycleStage">
+                  <t-option value="爆发期" label="爆发期" />
+                  <t-option value="底部反转" label="底部反转" />
+                  <t-option value="稳健底仓" label="稳健底仓" />
+                  <t-option value="政策催化" label="政策催化" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="景气指数 (50-100)">
+                <t-input-number v-model="newIndustry.heat" :min="50" :max="100" style="width: 100%" />
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="趋势方向">
+                <t-select v-model="newIndustry.trend">
+                  <t-option value="up" label="↑ 景气上行" />
+                  <t-option value="stable" label="→ 稳健震荡" />
+                  <t-option value="down" label="↓ 承压回调" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+          </t-row>
+          <t-form-item label="核心催化剂">
+            <t-textarea
+              v-model="newIndustry.catalyst"
+              placeholder="订单放量、资本开支上调、重大政策或海外授权等关键驱动"
+              :autosize="{ minRows: 2, maxRows: 3 }"
+            />
+          </t-form-item>
+          <t-form-item label="重点跟踪标的 (格式：代码 名称 类型，多只用逗号或换行)">
+            <t-input
+              v-model="newIndustry.targetsStr"
+              placeholder="例如：sz300308 中际旭创 个股, sh515050 5G通信ETF ETF"
+            />
+          </t-form-item>
+          <t-form-item label="策略配置指引">
+            <t-input v-model="newIndustry.tactic" placeholder="例如：保持趋势持仓，逢回踩均线分批吸纳" />
+          </t-form-item>
+          <t-form-item label="所属账户">
+            <t-radio-group v-model="newIndustry.account">
+              <t-radio-button value="all">全市场</t-radio-button>
+              <t-radio-button value="stock">股票账户</t-radio-button>
+              <t-radio-button value="etf">ETF账户</t-radio-button>
+            </t-radio-group>
+          </t-form-item>
+        </t-form>
+      </div>
+
       <div v-else>
         <t-form label-align="top">
           <t-form-item label="宏观周期定调">
@@ -561,7 +896,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
-import type { AccountId, MacroBrief, Opportunity, TradeSide } from '@/types/invest';
+import type { AccountId, IndustryFocus, MacroBrief, MacroEvent, Opportunity, TradeSide } from '@/types/invest';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
 
@@ -582,12 +917,13 @@ const q = ref(String(route.query.q ?? ''));
 const typeFilter = ref('全部');
 const typeFilters = ['全部', '股票', '混合', '债券', '指数', 'QDII'];
 const macroFilter = ref('all');
+const macroSectionTab = ref<'signals' | 'events' | 'industries'>('signals');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
 // 宏观研判与定调弹窗控制
 const macroModalVisible = ref(false);
-const macroActiveTab = ref<'brief' | 'weather'>('brief');
+const macroActiveTab = ref<'brief' | 'event' | 'industry' | 'weather'>('brief');
 
 const newBrief = reactive({
   title: '',
@@ -603,12 +939,104 @@ const newBrief = reactive({
   todoReason: '',
 });
 
+const newEvent = reactive({
+  title: '',
+  date: '',
+  category: '宏观政策',
+  level: '关键' as '重大' | '关键' | '关注',
+  impact: '',
+  beneficiariesStr: '',
+  suggestedAction: '',
+  account: 'all' as AccountId | 'all',
+});
+
+const newIndustry = reactive({
+  name: '',
+  cycleStage: '爆发期',
+  heat: 85,
+  trend: 'up' as 'up' | 'stable' | 'down',
+  catalyst: '',
+  targetsStr: '',
+  tactic: '',
+  account: 'all' as AccountId | 'all',
+});
+
 const weatherForm = reactive({
   cycle: '',
   sentiment: '偏多',
   suggestedStockPos: '',
   suggestedEtfPos: '',
 });
+
+function getEventCountdown(dateStr: string) {
+  try {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const targetDate = new Date(`${currentYear}-${dateStr}T00:00:00`);
+    const diffTime = targetDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return '今日';
+    if (diffDays === 1) return '明日';
+    if (diffDays > 1) return `${diffDays}天后`;
+    if (diffDays === -1) return '昨日';
+    return `${Math.abs(diffDays)}天前`;
+  } catch {
+    return dateStr;
+  }
+}
+
+function getEventCountdownClass(dateStr: string) {
+  try {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const targetDate = new Date(`${currentYear}-${dateStr}T00:00:00`);
+    const diffDays = Math.round(
+      (targetDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) /
+        (1000 * 60 * 60 * 24),
+    );
+    if (diffDays <= 2 && diffDays >= 0) return 'countdown-urgent';
+    if (diffDays > 2) return 'countdown-future';
+    return 'countdown-past';
+  } catch {
+    return '';
+  }
+}
+
+const sortedEvents = computed(() => {
+  return [...invest.macroEvents].sort((a, b) => a.date.localeCompare(b.date));
+});
+
+function handleEventTargetClick(targetName: string, ev: MacroEvent) {
+  invest.openTradeModal({
+    account: ev.account === 'all' ? 'stock' : ev.account,
+    name: targetName,
+    note: `重点会议催化【${ev.title}】：${ev.impact}`,
+  });
+}
+
+function onConvertEventToTodo(ev: MacroEvent) {
+  invest.convertEventToTodo(ev);
+  MessagePlugin.success(`已生成【${ev.title}】的交易待办，请在右侧清单查看`);
+}
+
+function onConvertIndustry(ind: IndustryFocus) {
+  invest.convertIndustryToOpportunity(ind);
+  MessagePlugin.success(`已将【${ind.name}】加入下方机会标的研选池`);
+}
+
+function getCycleTheme(stage: string): 'danger' | 'warning' | 'primary' | 'success' | 'default' {
+  if (stage.includes('爆发')) return 'danger';
+  if (stage.includes('复苏') || stage.includes('反转')) return 'primary';
+  if (stage.includes('稳健') || stage.includes('底仓')) return 'success';
+  if (stage.includes('催化') || stage.includes('突破')) return 'warning';
+  return 'default';
+}
+
+function getHeatColor(heat: number) {
+  if (heat >= 90) return 'var(--guanlan-gain, #b8433e)';
+  if (heat >= 80) return 'var(--guanlan-warning, #b8782d)';
+  return 'var(--td-text-color-primary)';
+}
 
 function openMacroModal() {
   weatherForm.cycle = invest.macroWeather?.cycle || '';
@@ -634,6 +1062,80 @@ function saveMacroModal() {
     });
     MessagePlugin.success('宏观天气与基准仓位已更新');
     macroModalVisible.value = false;
+    return;
+  }
+
+  if (macroActiveTab.value === 'event') {
+    if (!newEvent.title.trim() || !newEvent.date.trim()) {
+      MessagePlugin.warning('请填写会议标题与召开日期');
+      return;
+    }
+    const beneficiaries = newEvent.beneficiariesStr
+      .split(/[,，\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    invest.addMacroEvent({
+      title: newEvent.title.trim(),
+      date: newEvent.date.trim(),
+      category: newEvent.category,
+      level: newEvent.level,
+      impact: newEvent.impact.trim() || '重点关注会议决策与政策定调',
+      beneficiaries,
+      suggestedAction: newEvent.suggestedAction.trim() || undefined,
+      account: newEvent.account,
+    });
+    MessagePlugin.success(`已成功录入重点会议【${newEvent.title}】`);
+    newEvent.title = '';
+    newEvent.date = '';
+    newEvent.impact = '';
+    newEvent.beneficiariesStr = '';
+    newEvent.suggestedAction = '';
+    macroModalVisible.value = false;
+    macroSectionTab.value = 'events';
+    return;
+  }
+
+  if (macroActiveTab.value === 'industry') {
+    if (!newIndustry.name.trim() || !newIndustry.catalyst.trim()) {
+      MessagePlugin.warning('请填写产业赛道名称与核心催化');
+      return;
+    }
+    const keyTargets: Array<{ code: string; name: string; type: 'ETF' | '个股' }> = [];
+    if (newIndustry.targetsStr.trim()) {
+      const parts = newIndustry.targetsStr
+        .split(/[,，\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        const tokens = p.split(/\s+/);
+        if (tokens.length >= 2) {
+          const isCode = /^[a-z0-9]+$/i.test(tokens[0]);
+          const code = isCode ? tokens[0] : tokens[1] || '';
+          const name = isCode ? tokens[1] : tokens[0];
+          const type = p.includes('ETF') || p.includes('etf') ? 'ETF' : '个股';
+          keyTargets.push({ code, name, type });
+        } else if (tokens.length === 1) {
+          keyTargets.push({ code: '', name: tokens[0], type: tokens[0].includes('ETF') ? 'ETF' : '个股' });
+        }
+      }
+    }
+    invest.addIndustryFocus({
+      name: newIndustry.name.trim(),
+      cycleStage: newIndustry.cycleStage,
+      heat: Number(newIndustry.heat) || 80,
+      trend: newIndustry.trend,
+      catalyst: newIndustry.catalyst.trim(),
+      keyTargets,
+      tactic: newIndustry.tactic.trim() || '保持跟踪，逢回调择机配置',
+      account: newIndustry.account,
+    });
+    MessagePlugin.success(`已成功录入产业跟踪【${newIndustry.name}】`);
+    newIndustry.name = '';
+    newIndustry.catalyst = '';
+    newIndustry.targetsStr = '';
+    newIndustry.tactic = '';
+    macroModalVisible.value = false;
+    macroSectionTab.value = 'industries';
     return;
   }
 
@@ -1120,6 +1622,370 @@ function convertOppToTodo(o: Opportunity) {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.macro-subtabs-nav {
+  margin: 12px 0 14px;
+  border-bottom: 1px solid var(--td-component-stroke, #e2e8f0);
+
+  :deep(.t-tabs__nav-item) {
+    font-size: 13px;
+    font-weight: 500;
+  }
+}
+
+.macro-section-sub {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+/* 重点会议日程 */
+.macro-events-panel {
+  min-width: 0;
+
+  .events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .event-card {
+    padding: 12px 14px;
+    background: var(--td-bg-color-container);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--td-brand-color, #0d706d);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+    }
+  }
+
+  .event-card-top {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+
+    @media (width <= 640px) {
+      flex-direction: column;
+      gap: 8px;
+    }
+  }
+
+  .event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    padding: 6px 8px;
+    background: var(--td-bg-color-secondarycontainer, #f8fafc);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+
+    @media (width <= 640px) {
+      flex-direction: row;
+      gap: 8px;
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .event-date-main {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--td-text-color-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-countdown-badge {
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 2px;
+      padding: 1px 6px;
+      border-radius: 3px;
+
+      &.countdown-urgent {
+        background: rgb(184 67 62 / 10%);
+        color: var(--guanlan-gain, #b8433e);
+      }
+
+      &.countdown-future {
+        background: var(--td-brand-color-light, rgb(13 112 109 / 8%));
+        color: var(--td-brand-color, #0d706d);
+      }
+
+      &.countdown-past {
+        background: var(--td-bg-color-component, #edf2f7);
+        color: var(--td-text-color-placeholder);
+      }
+    }
+  }
+
+  .event-main-col {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-headline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .event-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--td-text-color-primary);
+  }
+
+  .event-impact-text {
+    font-size: 13px;
+    color: var(--td-text-color-secondary);
+    line-height: 1.55;
+  }
+
+  .event-beneficiaries-bar {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .bar-label {
+      font-size: 11px;
+      color: var(--td-text-color-placeholder);
+      white-space: nowrap;
+    }
+
+    .beneficiary-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .beneficiary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--td-brand-color-light, rgb(13 112 109 / 8%));
+      color: var(--td-brand-color, #0d706d);
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: var(--td-brand-color, #0d706d);
+        color: #fff;
+      }
+    }
+  }
+
+  .event-action-box {
+    margin-top: 8px;
+  }
+
+  .event-footer-bar {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+/* 重点产业与催化 */
+.industry-focus-panel {
+  min-width: 0;
+
+  .industry-cards-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .ind-card {
+    padding: 14px;
+    background: var(--td-bg-color-container);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--td-brand-color, #0d706d);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+    }
+  }
+
+  .ind-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ind-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .ind-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--td-text-color-primary);
+    }
+  }
+
+  .ind-heat-badge {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 12px;
+
+    .heat-lbl {
+      color: var(--td-text-color-secondary);
+      font-size: 11px;
+    }
+
+    .heat-num {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .heat-trend {
+      font-size: 11px;
+      font-weight: 600;
+
+      &.trend-up {
+        color: var(--guanlan-gain, #b8433e);
+      }
+
+      &.trend-stable {
+        color: var(--td-text-color-secondary);
+      }
+
+      &.trend-down {
+        color: var(--guanlan-loss, #16815f);
+      }
+    }
+  }
+
+  .ind-catalyst-block,
+  .ind-tactic-block {
+    margin-top: 6px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--td-text-color-primary);
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+
+    .ind-block-lbl {
+      font-weight: 600;
+      white-space: nowrap;
+      color: var(--td-text-color-secondary);
+    }
+
+    .ind-block-text {
+      color: var(--td-text-color-primary);
+    }
+  }
+
+  .ind-catalyst-block {
+    .ind-block-lbl {
+      color: var(--guanlan-warning, #b8782d);
+    }
+  }
+
+  .ind-tactic-block {
+    .ind-block-lbl {
+      color: var(--td-brand-color, #0d706d);
+    }
+  }
+
+  .ind-targets-bar {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--td-component-stroke, #e2e8f0);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .targets-caption {
+      font-size: 11px;
+      color: var(--td-text-color-secondary);
+      white-space: nowrap;
+    }
+
+    .targets-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .target-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      background: var(--td-bg-color-secondarycontainer, #f8fafc);
+      border: 1px solid var(--td-component-stroke, #e2e8f0);
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      .tgt-name {
+        font-weight: 500;
+        color: var(--td-text-color-primary);
+      }
+
+      .tgt-type-badge {
+        font-size: 10px;
+        padding: 0 4px;
+        background: var(--td-bg-color-component, #e2e8f0);
+        color: var(--td-text-color-secondary);
+        border-radius: 2px;
+      }
+
+      .tgt-trade-icon {
+        color: var(--td-brand-color, #0d706d);
+        opacity: 0.7;
+      }
+
+      &:hover {
+        border-color: var(--td-brand-color, #0d706d);
+        background: var(--td-brand-color-light, rgb(13 112 109 / 8%));
+
+        .tgt-trade-icon {
+          opacity: 1;
+        }
+      }
+    }
+  }
+
+  .ind-card-footer {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .ind-update-time {
+      font-size: 11px;
+      color: var(--td-text-color-placeholder);
+    }
+  }
 }
 
 .macro {

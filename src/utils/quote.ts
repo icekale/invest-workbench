@@ -3,6 +3,8 @@ export interface Quote {
   name: string;
   price: number;
   changePct: number;
+  change?: number;
+  lastClose?: number;
 }
 
 export interface HoldingInput {
@@ -14,6 +16,8 @@ export interface HoldingNumbers {
   marketValue: number | null;
   pnl: number | null;
   pnlPct: number | null;
+  dayPnl: number | null;
+  dayPnlPct: number | null;
 }
 
 export function parseTencentBody(text: string): Map<string, Quote> {
@@ -23,6 +27,8 @@ export function parseTencentBody(text: string): Map<string, Quote> {
     if (!m) continue;
     const fields = m[2].split('~');
     const price = Number(fields[3]);
+    const lastClose = Number(fields[4]);
+    const change = Number(fields[31]);
     const changePct = Number(fields[32]);
     if (!Number.isFinite(price)) continue;
     out.set(m[1].toLowerCase(), {
@@ -30,6 +36,8 @@ export function parseTencentBody(text: string): Map<string, Quote> {
       name: fields[1] || m[1],
       price,
       changePct: Number.isFinite(changePct) ? changePct : 0,
+      change: Number.isFinite(change) ? change : Number.isFinite(lastClose) && lastClose > 0 ? price - lastClose : 0,
+      lastClose: Number.isFinite(lastClose) ? lastClose : undefined,
     });
   }
   return out;
@@ -37,14 +45,17 @@ export function parseTencentBody(text: string): Map<string, Quote> {
 
 export function calcHolding(h: HoldingInput, q: Quote | undefined): HoldingNumbers {
   if (!q || !Number.isFinite(q.price)) {
-    return { marketValue: null, pnl: null, pnlPct: null };
+    return { marketValue: null, pnl: null, pnlPct: null, dayPnl: null, dayPnlPct: null };
   }
   const yuan = (n: number) => Math.round(n * 100) / 100;
   const marketValue = yuan(q.price * h.quantity);
   const costValue = yuan(h.cost * h.quantity);
   const pnl = yuan(marketValue - costValue);
   const pnlPct = costValue === 0 ? null : pnl / costValue;
-  return { marketValue, pnl, pnlPct };
+  const chg = typeof q.change === 'number' ? q.change : q.lastClose ? q.price - q.lastClose : 0;
+  const dayPnl = yuan(chg * h.quantity);
+  const dayPnlPct = q.changePct;
+  return { marketValue, pnl, pnlPct, dayPnl, dayPnlPct };
 }
 
 export function normalizeCode(raw: string): string {

@@ -18,9 +18,13 @@
           <template #icon><t-icon name="chart" /></template>
           记录复盘
         </t-button>
-        <t-button theme="primary" size="small" @click="editOpen = true">
+        <t-button theme="primary" size="small" @click="invest.openTradeModal({ account: tab as AccountId })">
+          <template #icon><t-icon name="swap" /></template>
+          模拟下单
+        </t-button>
+        <t-button variant="outline" size="small" @click="editOpen = true">
           <template #icon><t-icon name="edit" /></template>
-          编辑持仓
+          手工校准
         </t-button>
       </div>
     </div>
@@ -49,6 +53,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
+import type { AccountId } from '@/types/invest';
 import { fetchTradeMonth } from '@/utils/backup';
 
 import AccountPanel from './AccountPanel.vue';

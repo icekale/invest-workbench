@@ -1,11 +1,13 @@
 <template>
   <t-config-provider :global-config="getComponentsLocale">
     <router-view :key="locale" :class="[mode]" />
+    <trade-dialog />
   </t-config-provider>
 </template>
 <script setup lang="ts">
 import { computed } from 'vue';
 
+import TradeDialog from '@/components/TradeDialog.vue';
 import { useLocale } from '@/locales/useLocale';
 import { useSettingStore } from '@/store';
 

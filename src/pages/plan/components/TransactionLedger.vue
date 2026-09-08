@@ -41,9 +41,17 @@
     <t-card title="成交明细与台账管理">
       <template #actions>
         <t-space :size="8">
-          <t-button size="small" theme="primary" @click="openAddDialog">
+          <t-button
+            size="small"
+            theme="primary"
+            @click="invest.openTradeModal({ account: accountFilter === 'all' ? 'stock' : accountFilter })"
+          >
+            <template #icon><t-icon name="swap" /></template>
+            模拟下单交易
+          </t-button>
+          <t-button size="small" theme="default" variant="outline" @click="openAddDialog">
             <template #icon><t-icon name="add" /></template>
-            记一笔流水
+            补录历史流水
           </t-button>
           <t-button size="small" theme="default" variant="outline" @click="importOpen = true">
             <template #icon><t-icon name="upload" /></template>
