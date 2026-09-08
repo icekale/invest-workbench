@@ -478,7 +478,7 @@ function toggleTodo(id: string, status: TodoStatus) {
   }
 
   .strip-desc {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--td-text-color-secondary, #4f5d67);
     margin: 0;
     line-height: 20px;
@@ -495,7 +495,7 @@ function toggleTodo(id: string, status: TodoStatus) {
       align-items: flex-end;
 
       .kpi-mini-label {
-        font-size: 11px;
+        font-size: 12px;
         color: var(--td-text-color-placeholder, #5e6c76);
         line-height: 16px;
       }
@@ -582,7 +582,7 @@ function toggleTodo(id: string, status: TodoStatus) {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 13px;
+      font-size: 14px;
 
       .m-label {
         color: var(--td-text-color-secondary, #4f5d67);
@@ -599,7 +599,7 @@ function toggleTodo(id: string, status: TodoStatus) {
         border-top: 1px dashed var(--guanlan-line, #e6eaed);
 
         .m-val-hero {
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 700;
           color: var(--td-brand-color, #0d706d);
         }
@@ -650,7 +650,7 @@ function toggleTodo(id: string, status: TodoStatus) {
   }
 
   :deep(.t-table__td) {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .table-asset-name {
@@ -735,7 +735,7 @@ function toggleTodo(id: string, status: TodoStatus) {
     margin-bottom: 6px;
 
     .tile-gate-title {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--td-text-color-primary, #14212b);
     }

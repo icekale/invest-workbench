@@ -222,7 +222,7 @@ export const theses: Thesis[] = [
     id: 't-600519',
     code: 'sh600519',
     title: '高端白酒龙头',
-    body: '消费复苏叙事仍在，论文更新中，不追高。',
+    body: '消费复苏叙事仍在，逻辑复核中，不追高。',
     status: 'watch',
   },
   {
@@ -283,7 +283,7 @@ export const opportunities: Opportunity[] = [
   { id: 'o1', name: '中证红利低波', account: 'etf', thesis: 'ETF · 防守底仓', score: 86, note: '距入场价 2.4%' },
   { id: 'o2', name: '家电龙头组合', account: 'stock', thesis: '股票 · 盈利稳定', score: 78, note: '等待回撤' },
   { id: 'o3', name: '科创成长宽基', account: 'etf', thesis: 'ETF · 估值修复', score: 72, note: '分批建仓' },
-  { id: 'o4', name: '高端白酒龙头', account: 'stock', thesis: '股票 · 消费复苏', score: 64, note: '论文更新中' },
+  { id: 'o4', name: '高端白酒龙头', account: 'stock', thesis: '股票 · 消费复苏', score: 64, note: '逻辑跟踪中' },
 ];
 
 export const prefsSeed: Prefs = {

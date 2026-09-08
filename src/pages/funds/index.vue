@@ -233,7 +233,7 @@
       </div>
     </t-card>
 
-    <!-- 智能组合与配置策略 -->
+    <!-- 策略组合与大类配置 -->
     <t-row :gutter="[16, 16]">
       <t-col v-if="picks.length" :xs="12" :span="6">
         <t-card title="研选组合" subtitle="精选前 4 只等权配置 (各 25%)">
@@ -248,7 +248,7 @@
           </t-list>
           <template #actions>
             <t-button size="small" variant="text" theme="primary" @click="router.push('/funds/portfolios')">
-              智能微调 →
+              策略调优 →
             </t-button>
           </template>
         </t-card>
@@ -563,7 +563,7 @@ function convertOppToTodo(o: Opportunity) {
 }
 
 .sub-action-text {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--td-text-color-secondary);
 }
 
@@ -575,7 +575,7 @@ function convertOppToTodo(o: Opportunity) {
 
 .code-font {
   font-family: var(--td-font-family-mono, monospace);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .tabular-font {
@@ -631,7 +631,7 @@ function convertOppToTodo(o: Opportunity) {
 .macro-bd {
   margin: 6px 0 0;
   color: var(--td-text-color-secondary);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -681,7 +681,7 @@ function convertOppToTodo(o: Opportunity) {
 
 .todo-reason {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
   line-height: 1.4;
 }
@@ -729,7 +729,7 @@ function convertOppToTodo(o: Opportunity) {
 }
 
 .opp-card__thesis {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-primary);
   line-height: 1.5;
   background: var(--td-bg-color-container);
@@ -763,7 +763,7 @@ function convertOppToTodo(o: Opportunity) {
 /* 组合 */
 .portfolio-blurb {
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-secondary);
   line-height: 1.5;
 }
@@ -776,13 +776,13 @@ function convertOppToTodo(o: Opportunity) {
 }
 
 .hold-name {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--td-text-color-primary);
 }
 
 .hold-w {
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--td-text-color-secondary);
 }

@@ -37,7 +37,7 @@
     </t-row>
 
     <!-- 提醒看板卡片 -->
-    <t-card title="买卖点规则提醒">
+    <t-card title="持仓风控与触发提醒">
       <template #actions>
         <t-button size="small" variant="outline" theme="default" @click="configOpen = true">
           <template #icon><t-icon name="setting" /></template>
@@ -51,7 +51,7 @@
           <t-radio-button value="all">全部提醒 ({{ alerts.length }})</t-radio-button>
           <t-radio-button value="stop_loss">止损红线</t-radio-button>
           <t-radio-button value="take_profit">止盈离场</t-radio-button>
-          <t-radio-button value="thesis_risk">论文风险</t-radio-button>
+          <t-radio-button value="thesis_risk">逻辑预警</t-radio-button>
           <t-radio-button value="rebalance">再平衡</t-radio-button>
         </t-radio-group>
       </div>
@@ -175,7 +175,7 @@ const typeLabel = (t: AlertType) => {
     case 'take_profit':
       return '阶段止盈';
     case 'thesis_risk':
-      return '论文风险';
+      return '逻辑预警';
     case 'rebalance':
       return '仓位再平衡';
     default:
@@ -247,13 +247,13 @@ function saveConfig() {
 }
 
 .kpi-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--guanlan-muted);
   margin-bottom: 4px;
 }
 
 .kpi-value {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.25;
 }
@@ -340,7 +340,7 @@ function saveConfig() {
 }
 
 .alert-detail {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--guanlan-muted);
   line-height: 1.5;
   margin-bottom: 12px;

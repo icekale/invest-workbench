@@ -53,14 +53,13 @@
             <div v-else class="table-wrap">
               <t-table :data="sorted" :columns="columns" row-key="code" size="small">
                 <template #name="{ row }">
-                  <t-space align="center">
-                    <t-avatar size="small" shape="round">{{ row.name.slice(0, 1) }}</t-avatar>
-                    <div>
-                      <div>{{ row.name }}</div>
+                  <div class="symbol-cell">
+                    <div class="symbol-name">{{ row.name }}</div>
+                    <t-space :size="4" class="symbol-tags">
                       <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
                       <t-tag v-if="row.tag" size="small" variant="light">{{ row.tag }}</t-tag>
-                    </div>
-                  </t-space>
+                    </t-space>
+                  </div>
                 </template>
                 <template #mv="{ row }">{{ money(row.marketValue) }}</template>
                 <template #cost="{ row }">{{ px(row.cost) }}</template>
@@ -118,7 +117,7 @@
               </div>
             </div>
           </t-card>
-          <t-card title="持仓健康度" subtitle="分散度 / 论文 / 纪律">
+          <t-card title="持仓健康度" subtitle="分散度 / 论点 / 纪律">
             <t-space direction="vertical" style="width: 100%">
               <div v-for="row in healthRows" :key="row.label">
                 <t-progress :percentage="row.value">
@@ -248,7 +247,7 @@ const riskItems = computed(() =>
 );
 const healthRows = computed(() => [
   { label: '分散度', value: health.value.diversify },
-  { label: '论文完整度', value: health.value.thesis },
+  { label: '论点完备度', value: health.value.thesis },
   { label: '交易纪律', value: health.value.discipline },
 ]);
 const weekDelta = ref(0);
@@ -470,6 +469,24 @@ onUnmounted(() => {
 .risks {
   display: flex;
   flex-direction: column;
+}
+
+.symbol-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.symbol-name {
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 20px;
+}
+
+.symbol-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .risk-row {

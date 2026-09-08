@@ -52,11 +52,11 @@ const rows = computed(() => funds.value.filter(isRecommend).filter((f) => f.type
 const cols = [
   { colKey: 'name', title: '名称' },
   { colKey: 'code', title: '代码', width: 88 },
-  { colKey: 'yield', title: 'Yield', width: 96 },
-  { colKey: 'vix', title: 'Vix', width: 80 },
-  { colKey: 'loss', title: 'Loss', width: 96 },
-  { colKey: 'rating', title: '评级', width: 72 },
-  { colKey: 'scale', title: '规模亿', width: 88 },
+  { colKey: 'yield', title: '近1年收益', width: 100 },
+  { colKey: 'vix', title: '波动率', width: 90 },
+  { colKey: 'loss', title: '最大回撤', width: 100 },
+  { colKey: 'rating', title: '研选评级', width: 88 },
+  { colKey: 'scale', title: '规模(亿元)', width: 96 },
 ];
 
 onMounted(async () => {

@@ -350,7 +350,7 @@ export const useInvestStore = defineStore('invest', {
         localStorage.setItem(LS_WATCH, JSON.stringify(this.watchlist));
       }
 
-      // 10. 自定义智能组合
+      // 10. 自定义策略组合
       if (Array.isArray(data.customPortfolios)) {
         this.customPortfolios = data.customPortfolios;
         localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));

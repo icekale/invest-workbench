@@ -265,7 +265,7 @@ export function scanTradeAlerts(
     return sum + price * h.quantity;
   }, 0);
 
-  // 1. 扫描各持仓的盈亏比例与论文状态
+  // 1. 扫描各持仓的盈亏比例与投资论点状态
   for (const h of holdings) {
     const q = quotes[h.code];
     const currentPrice = q?.price ?? h.cost;
@@ -306,7 +306,7 @@ export function scanTradeAlerts(
       });
     }
 
-    // 论文风险预警
+    // 论点逻辑风险预警
     if (!thesis) {
       alerts.push({
         id: `alert_nth_${h.account}_${h.code}`,
@@ -315,8 +315,8 @@ export function scanTradeAlerts(
         account: h.account,
         type: 'thesis_risk',
         level: 'info',
-        title: `${h.name} 缺失投资论文`,
-        detail: '持仓标的尚未关联投资论点，缺乏明确的买入逻辑与退出边界，建议尽快补全论文。',
+        title: `${h.name} 缺失投资论点`,
+        detail: '持仓标的尚未关联投资论点，缺乏明确的买入逻辑与退出边界，建议尽快补全核心论点。',
         suggestedAction: 'hold',
         triggerTime: nowStr,
       });
@@ -329,7 +329,7 @@ export function scanTradeAlerts(
         type: 'thesis_risk',
         level: 'danger',
         title: `${h.name} 核心投资逻辑已作废`,
-        detail: `关联论文「${thesis.title}」状态已变为【已作废】。依据投资纪律，核心前提破损应果断清仓离场。`,
+        detail: `关联论点「${thesis.title}」状态已变为【已作废】。依据投资纪律，核心前提破损应果断清仓离场。`,
         suggestedAction: 'exit',
         suggestedQty: h.quantity,
         triggerTime: nowStr,
@@ -342,8 +342,8 @@ export function scanTradeAlerts(
         account: h.account,
         type: 'thesis_risk',
         level: 'warning',
-        title: `${h.name} 投资逻辑待更新`,
-        detail: `关联论文「${thesis.title}」标记为【待更新】，可能面临基本面或行业变动，暂勿盲目加仓。`,
+        title: `${h.name} 投资逻辑待复核`,
+        detail: `关联论点「${thesis.title}」标记为【待复核】，可能面临基本面或行业变动，暂勿盲目加仓。`,
         suggestedAction: 'hold',
         triggerTime: nowStr,
       });

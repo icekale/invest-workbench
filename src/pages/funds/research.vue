@@ -359,15 +359,15 @@ defineOptions({ name: 'FundsResearch' });
 }
 
 .sgl-method h2 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 26px;
   margin: 32px 0 12px;
   color: var(--ink);
 }
 
 .sgl-method h3 {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--ink);
   margin: 22px 0 8px;

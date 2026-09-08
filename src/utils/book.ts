@@ -135,7 +135,7 @@ export function risks(
     const th = theses.find((t) => t.id === r.thesisId);
     if (th?.status === 'invalid' || th?.status === 'watch') {
       items.push({
-        title: `${r.name}论文待复核`,
+        title: `${r.name}论点待复核`,
         desc: th.title,
         hint: th.status === 'invalid' ? '复核' : '耐心',
         extra: th.status === 'invalid' ? '证伪' : '等待',
@@ -165,7 +165,7 @@ export function risks(
   if (!items.length) {
     items.push({
       title: '整体回撤仍在控制内',
-      desc: '没有超配或失效论文',
+      desc: '没有超配或失效论点',
       hint: '正常',
       extra: '',
       tone: 'ok',

@@ -548,7 +548,7 @@ onUnmounted(() => {
 
 .muted {
   color: var(--guanlan-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -564,7 +564,7 @@ onUnmounted(() => {
   grid-template-columns: 36px 1fr 56px;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 

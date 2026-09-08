@@ -15,14 +15,14 @@
       </t-descriptions>
       <t-row :gutter="16" style="margin-top: 16px">
         <t-col :span="3">
-          <t-statistic title="Yield 近1年" :value="fund.year ?? 0" unit="%" :loading="fund.year == null" />
+          <t-statistic title="近1年收益率" :value="fund.year ?? 0" unit="%" :loading="fund.year == null" />
         </t-col>
         <t-col :span="3">
-          <t-statistic title="Vix 波动" :value="fund.stddev ?? 0" :loading="fund.stddev == null" />
+          <t-statistic title="年化波动率" :value="fund.stddev ?? 0" :loading="fund.stddev == null" />
         </t-col>
         <t-col :span="3">
           <t-statistic
-            title="Loss 回撤"
+            title="最大回撤"
             :value="fund.drawdown == null ? 0 : -fund.drawdown"
             unit="%"
             :loading="fund.drawdown == null"
@@ -34,9 +34,9 @@
       </t-row>
       <t-alert v-if="note" theme="info" :message="note" style="margin-top: 12px" />
       <t-descriptions v-if="sample" :column="4" style="margin-top: 16px" title="拾光全样本">
-        <t-descriptions-item label="Yield">{{ sample.yield.toFixed(2) }}%</t-descriptions-item>
-        <t-descriptions-item label="Vix">{{ sample.vix.toFixed(2) }}</t-descriptions-item>
-        <t-descriptions-item label="Loss">{{ sample.loss.toFixed(2) }}%</t-descriptions-item>
+        <t-descriptions-item label="近1年收益">{{ sample.yield.toFixed(2) }}%</t-descriptions-item>
+        <t-descriptions-item label="波动率">{{ sample.vix.toFixed(2) }}</t-descriptions-item>
+        <t-descriptions-item label="最大回撤">{{ sample.loss.toFixed(2) }}%</t-descriptions-item>
         <t-descriptions-item label="OLS残差">{{ residual == null ? '—' : residual.toFixed(2) }}</t-descriptions-item>
       </t-descriptions>
       <t-alert v-if="sampleNote" theme="info" :message="sampleNote" style="margin-top: 12px" />
@@ -132,7 +132,7 @@ const todoForm = reactive({
 
 function openTodoDialog() {
   if (!fund.value) return;
-  todoForm.reason = `拾光研选${score.value ?? '—'}分，近1年Yield ${fund.value.year ?? '—'}%`;
+  todoForm.reason = `拾光研选${score.value ?? '—'}分，近1年收益率 ${fund.value.year ?? '—'}%`;
   todoDialogVisible.value = true;
 }
 

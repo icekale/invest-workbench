@@ -77,7 +77,7 @@ export default [
         path: 'portfolios',
         name: 'FundsPortfolios',
         component: () => import('@/pages/funds/portfolios.vue'),
-        meta: { title: { zh_CN: '智能组合', en_US: 'Portfolios' }, hidden: true },
+        meta: { title: { zh_CN: '策略组合', en_US: 'Portfolios' }, hidden: true },
       },
     ],
   },

@@ -363,13 +363,13 @@ function handleApplyHoldings() {
 }
 
 .kpi-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--guanlan-muted);
   margin-bottom: 4px;
 }
 
 .kpi-value {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.25;
 }

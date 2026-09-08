@@ -1,6 +1,8 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
-    <span style="color: var(--td-text-color-secondary)">组合、论文和日志放在一起，方便回头看决策有没有被执行。</span>
+    <span style="color: var(--td-text-color-secondary)">
+      持仓结构、投资论点与复盘日志一体归因，检视决策与执行闭环。
+    </span>
 
     <!-- 顶栏 KPI 卡片带 -->
     <t-row :gutter="[16, 16]">
@@ -78,24 +80,24 @@
       </div>
     </t-card>
 
-    <!-- 下半部分：投资论文与复盘日志 -->
+    <!-- 下半部分：投资论点与复盘日志 -->
     <t-row :gutter="[16, 16]">
-      <!-- 投资论文 -->
+      <!-- 投资论点 -->
       <t-col :xs="12" :xl="6">
-        <t-card title="投资论文">
+        <t-card title="投资论点">
           <template #actions>
-            <t-button size="small" theme="primary" @click="thOpen = true">写论文</t-button>
+            <t-button size="small" theme="primary" @click="thOpen = true">记论点</t-button>
           </template>
           <div class="thesis-header-actions">
             <t-radio-group v-model="filter" variant="default-filled">
               <t-radio-button value="all">全部 ({{ invest.theses.length }})</t-radio-button>
               <t-radio-button value="valid">运行中</t-radio-button>
-              <t-radio-button value="watch">待更新</t-radio-button>
+              <t-radio-button value="watch">待复核</t-radio-button>
               <t-radio-button value="invalid">已作废</t-radio-button>
             </t-radio-group>
           </div>
 
-          <t-empty v-if="!theses.length" description="暂无该分类下的论文" style="padding: 24px 0" />
+          <t-empty v-if="!theses.length" description="暂无该分类下的投资论点" style="padding: 24px 0" />
           <t-list v-else split>
             <t-list-item v-for="t in theses" :key="t.id">
               <div class="thesis-item">
@@ -114,7 +116,7 @@
                     style="width: 96px"
                     @change="(v) => invest.setThesisStatus(t.id, String(v) as ThesisStatus)"
                   />
-                  <t-popconfirm content="确定删除此篇论文？" @confirm="invest.removeThesis(t.id)">
+                  <t-popconfirm content="确定删除此条投资论点？" @confirm="invest.removeThesis(t.id)">
                     <t-button size="small" variant="text" theme="danger">删除</t-button>
                   </t-popconfirm>
                 </div>
@@ -169,16 +171,16 @@
       </t-col>
     </t-row>
 
-    <!-- 写论文弹窗 -->
+    <!-- 记录论点弹窗 -->
     <t-dialog
       v-model:visible="thOpen"
-      header="撰写投资论文"
+      header="记录投资论点"
       width="min(560px, 94vw)"
-      :confirm-btn="{ content: '保存论文', theme: 'primary' }"
+      :confirm-btn="{ content: '保存论点', theme: 'primary' }"
       :on-confirm="saveThesis"
     >
       <t-form style="margin-top: 12px">
-        <t-form-item label="论文标题">
+        <t-form-item label="论点核心">
           <t-input v-model="th.title" placeholder="例：长江电力：确定性充沛的长期自由现金流" @enter="saveThesis" />
         </t-form-item>
         <t-form-item label="关联标的">
@@ -295,7 +297,7 @@ function saveThesis() {
   th.title = '';
   th.code = '';
   th.body = '';
-  MessagePlugin.success('已保存论文');
+  MessagePlugin.success('已保存投资论点');
   return true;
 }
 </script>
@@ -324,7 +326,7 @@ function saveThesis() {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--guanlan-muted);
 }
 
@@ -406,7 +408,7 @@ function saveThesis() {
 .thesis-desc {
   margin: 6px 0 0;
   color: var(--guanlan-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -445,7 +447,7 @@ function saveThesis() {
 }
 
 .journal-form-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--guanlan-ink);
   margin-bottom: 10px;

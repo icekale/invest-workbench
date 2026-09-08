@@ -43,14 +43,13 @@
 
       <!-- Quick Demo Account Fill -->
       <div class="demo-quick-bar">
-        <span class="demo-tip">演示环境已就绪</span>
-        <button type="button" class="demo-fill-btn" @click="fillDemoAccount">一键填入 (xiong / demo)</button>
+        <span class="demo-tip">演示环境就绪</span>
+        <button type="button" class="demo-fill-btn" @click="fillDemoAccount">快速填入 (xiong / demo)</button>
       </div>
 
       <div class="btn-container">
         <t-button block size="large" theme="primary" type="submit" :loading="loading" class="login-submit-btn">
           <span>开启投资驾驶舱</span>
-          <span class="btn-arrow">➔</span>
         </t-button>
       </div>
     </t-form>
@@ -118,7 +117,7 @@ const onSubmit = async (ctx: SubmitContext) => {
 
   :deep(.t-form__label) {
     padding-bottom: 6px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--td-text-color-primary, #14212b);
     line-height: 1.4;
@@ -191,7 +190,7 @@ const onSubmit = async (ctx: SubmitContext) => {
     border-radius: 8px;
     background-color: var(--td-brand-color, #0d706d);
     border: none;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     letter-spacing: 0.5px;
     display: flex;
@@ -209,15 +208,6 @@ const onSubmit = async (ctx: SubmitContext) => {
 
     &:active {
       transform: translateY(0);
-    }
-
-    .btn-arrow {
-      font-size: 13px;
-      transition: transform 0.2s ease;
-    }
-
-    &:hover .btn-arrow {
-      transform: translateX(3px);
     }
   }
 }

@@ -123,7 +123,7 @@ const uid = Math.random().toString(36).substring(2, 8);
       align-items: center;
       gap: 6px;
       line-height: 24px;
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 600;
       white-space: nowrap;
       font-family: var(--td-font-family);
