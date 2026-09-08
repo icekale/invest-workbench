@@ -184,7 +184,7 @@
           v-model="importText"
           :autosize="{ minRows: 8, maxRows: 14 }"
           placeholder="在此粘贴成交记录文本或 CSV 内容..."
-          style="margin-top: 8px; font-family: monospace; font-size: 12px"
+          style="margin-top: 8px; font-family: var(--td-font-family-mono); font-size: 12px"
         />
         <div v-if="parseResult.errors.length" class="import-errors">
           <div class="error-title">解析提示：</div>

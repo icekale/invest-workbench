@@ -16,6 +16,10 @@
   --guanlan-green: #16815f;
   --guanlan-red: #b8433e;
   --guanlan-amber: #b8782d;
+  --guanlan-gain: #b8433e;
+  --guanlan-loss: #16815f;
+  --guanlan-warning: #b8782d;
+  --guanlan-info: #3569bb;
   --guanlan-shadow: 0 8px 30px rgb(24 40 51 / 5%);
   --guanlan-radius: 10px;
   --guanlan-sidebar: #162a34;
@@ -31,7 +35,10 @@
   --guanlan-avatar-bg: #d5ebe7;
   --guanlan-avatar-fg: #1a5656;
   --guanlan-sidebar-width: 220px;
-  --td-font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
+  --td-font-family: -apple-system, blinkmacsystemfont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'Noto Sans SC', sans-serif;
+  --td-font-family-mono: ui-monospace, sfmono-regular, menlo, monaco, consolas, 'Liberation Mono', 'Courier New', monospace;
+  --guanlan-font-sans: var(--td-font-family);
+  --guanlan-font-mono: var(--td-font-family-mono);
   --td-font-size-body-medium: 14px;
   --td-line-height-body-medium: 1.55;
   --td-brand-color: #0d706d;
@@ -126,6 +133,11 @@
   --guanlan-line: #2c4850;
   --guanlan-sidebar: #0f1a20;
   --guanlan-sidebar-text: #d9e5e7;
+  --guanlan-gold: #dfb56d;
+  --guanlan-gain: #c8534e;
+  --guanlan-loss: #249973;
+  --guanlan-warning: #c8883b;
+  --guanlan-info: #467cd6;
   --guanlan-nav: #b9cacc;
   --guanlan-nav-label: #8aa0a6;
   --guanlan-nav-active: #24434b;
@@ -160,12 +172,42 @@ body {
   background: var(--td-bg-color-page);
 }
 
-.up {
-  color: var(--guanlan-red);
+.up,
+.is-gain {
+  color: var(--guanlan-gain, #b8433e);
 }
 
-.down {
-  color: var(--guanlan-green);
+.down,
+.is-loss {
+  color: var(--guanlan-loss, #16815f);
+}
+
+/* 全站等宽代码与标的 Badge Token */
+.code-mono,
+.stock-code,
+.fund-code {
+  font-family: var(--td-font-family-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: 0.25px;
+  color: var(--td-text-color-primary);
+  background-color: var(--td-bg-color-component);
+  padding: 2px 6px;
+  border-radius: var(--td-radius-small, 4px);
+  border: 1px solid var(--td-border-level-1-color);
+  display: inline-block;
+}
+
+/* 全站金融数值与表格等宽对齐 */
+.num-hero,
+.tabular-nums,
+.t-table,
+.t-table__th,
+.t-table__td,
+.t-input-number,
+.t-input-number input {
+  font-variant-numeric: tabular-nums;
 }
 
 .num-hero {

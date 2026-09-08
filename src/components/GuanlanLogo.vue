@@ -126,7 +126,7 @@ const uid = Math.random().toString(36).substring(2, 8);
       font-size: 15px;
       font-weight: 600;
       white-space: nowrap;
-      font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
+      font-family: var(--td-font-family);
 
       .brand-name {
         letter-spacing: 0.5px;
@@ -151,7 +151,7 @@ const uid = Math.random().toString(36).substring(2, 8);
       font-weight: 400;
       letter-spacing: 1px;
       line-height: 16px;
-      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-family: var(--td-font-family-mono);
     }
   }
 

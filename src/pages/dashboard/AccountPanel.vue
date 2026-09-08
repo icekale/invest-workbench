@@ -177,8 +177,8 @@ const actionTheme: Record<string, 'default' | 'success' | 'warning' | 'danger'> 
   exit: 'danger',
 };
 const actionRank: Record<string, number> = { exit: 0, reduce: 1, add: 2, hold: 3 };
-const ALLOC_COLORS = ['#0d706d', '#d4a054', '#3569bb', '#5b9a6a'];
-const CASH_COLOR = '#c5cdd3';
+const ALLOC_COLORS = ['#0d706d', '#dfb56d', '#3569bb', '#16815f'];
+const CASH_COLOR = '#b7c0c5';
 const riskIcon = { warn: 'error-triangle-filled', info: 'calendar-filled', ok: 'secured-filled' };
 function cssVar(name: string, fallback: string) {
   if (typeof window === 'undefined') return fallback;

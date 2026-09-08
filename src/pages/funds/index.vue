@@ -120,7 +120,7 @@
           </div>
 
           <div class="opp-card__progress">
-            <t-progress :percentage="o.score" :color="o.score >= 80 ? '#b8433e' : '#1668dc'" :label="false" />
+            <t-progress :percentage="o.score" :color="o.score >= 80 ? '#b8433e' : '#3569bb'" :label="false" />
           </div>
 
           <div class="opp-card__footer">
@@ -340,7 +340,7 @@ const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score:
 // 宏观信号色彩
 const toneTimelineDot: Record<string, string> = {
   偏多: '#b8433e', // Guanlan gain red
-  中性: '#1668dc', // Primary blue
+  中性: '#3569bb', // Guanlan blue
   偏空: '#16815f', // Guanlan loss green
 };
 
@@ -739,7 +739,7 @@ function convertOppToTodo(o: Opportunity) {
 }
 
 .thesis-quote-mark {
-  color: var(--guanlan-accent, #c99846);
+  color: var(--guanlan-gold, #dfb56d);
   font-weight: bold;
   font-family: Georgia, serif;
 }

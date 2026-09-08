@@ -659,7 +659,7 @@ function toggleTodo(id: string, status: TodoStatus) {
   }
 
   .code-mono {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--td-font-family-mono);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

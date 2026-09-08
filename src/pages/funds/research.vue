@@ -471,7 +471,7 @@ defineOptions({ name: 'FundsResearch' });
 }
 
 .sgl-method code {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--td-font-family-mono);
   background: var(--td-bg-color-secondarycontainer);
   padding: 2px 6px;
   border-radius: var(--td-radius-small);

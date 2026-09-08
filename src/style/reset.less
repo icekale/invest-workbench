@@ -1,16 +1,20 @@
 // 对部分样式进行重置
 body {
   background: var(--td-bg-color-page);
-  color: var(--td-text-color-secondary);
+  color: var(--td-text-color-primary);
   font: var(--td-font-body-medium);
-  font-family: -apple-system, BlinkMacSystemFont, var(--td-font-family);
+  font-family: var(--td-font-family);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   padding: 0;
   margin: 0;
 }
 
-pre {
-  font-family: var(--td-font-family);
+pre,
+code,
+kbd,
+samp {
+  font-family: var(--td-font-family-mono, ui-monospace, Menlo, Consolas, monospace);
 }
 
 ul,
