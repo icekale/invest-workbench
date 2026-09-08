@@ -49,7 +49,7 @@
 }
 
 .t-default-menu.t-menu--dark {
-  background: var(--td-gray-color-13);
+  background: var(--guanlan-sidebar, var(--td-gray-color-13));
 }
 
 .@{starter-prefix} {
@@ -177,8 +177,8 @@
   }
 
   &-side-nav-placeholder {
-    flex: 1 1 232px;
-    min-width: 232px;
+    flex: 1 1 var(--guanlan-sidebar-width, 220px);
+    min-width: var(--guanlan-sidebar-width, 220px);
     transition: all 0.3s;
 
     &-hidden {

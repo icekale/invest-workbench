@@ -1,0 +1,146 @@
+export interface BookRow {
+  code: string;
+  name: string;
+  quantity: number;
+  cost: number;
+  tag?: string;
+  marketValue: number | null;
+  pnl: number | null;
+  pnlPct: number | null;
+  thesisId?: string;
+  action?: string;
+}
+
+export interface ThesisLite {
+  id: string;
+  status: string;
+  title: string;
+  code: string;
+}
+export interface JournalLite {
+  date: string;
+}
+export interface TodoLite {
+  account?: string;
+  name: string;
+  reason: string;
+  status: string;
+  side: string;
+}
+
+const yuan = (n: number) => Math.round(n * 100) / 100;
+
+export function summarize(rows: BookRow[], cash: number) {
+  const cost = yuan(rows.reduce((s, r) => s + r.cost * r.quantity, 0));
+  if (!rows.length) {
+    return { cost: 0, mv: 0, pnl: 0, pnlPct: 0, cash, pos: 0, cashPct: cash > 0 ? 1 : 0 };
+  }
+  if (rows.every((r) => r.marketValue == null)) {
+    return {
+      cost,
+      mv: null as number | null,
+      pnl: null as number | null,
+      pnlPct: null as number | null,
+      cash,
+      pos: null as number | null,
+      cashPct: null as number | null,
+    };
+  }
+  const mv = yuan(rows.reduce((s, r) => s + (r.marketValue ?? 0), 0));
+  const pnl = yuan(mv - cost);
+  const total = mv + cash;
+  const pos = total > 0 ? mv / total : 0;
+  return { cost, mv, pnl, pnlPct: cost > 0 ? pnl / cost : null, cash, pos, cashPct: 1 - pos };
+}
+
+export function allocation(rows: BookRow[], cash: number) {
+  const parts = rows.filter((r): r is BookRow & { marketValue: number } => r.marketValue != null);
+  const invested = parts.reduce((s, r) => s + r.marketValue, 0);
+  const total = invested + Math.max(0, cash);
+  if (!total) return [] as { name: string; pct: number }[];
+  const map = new Map<string, number>();
+  for (const p of parts) {
+    const k = p.tag || p.name;
+    map.set(k, (map.get(k) || 0) + p.marketValue);
+  }
+  const items = [...map.entries()].map(([name, v]) => ({ name, pct: v / total })).sort((a, b) => b.pct - a.pct);
+  if (cash > 0) items.push({ name: '现金', pct: cash / total });
+  return items;
+}
+
+export function healthScore(rows: BookRow[], theses: ThesisLite[], journal: JournalLite[], cash: number) {
+  const alloc = allocation(rows, cash);
+  const hhi = alloc.reduce((s, a) => s + a.pct * a.pct, 0);
+  const diversify = Math.round(Math.max(0, Math.min(100, (1 - hhi) * 130)));
+  const covered = rows.filter((r) => r.thesisId && theses.some((t) => t.id === r.thesisId && t.status !== 'invalid'));
+  const thesis = rows.length ? Math.round((covered.length / rows.length) * 100) : 100;
+  const invested = rows.reduce((s, r) => s + (r.marketValue ?? 0), 0);
+  const overweight = rows.some((r) => invested > 0 && (r.marketValue ?? 0) / invested > 0.25);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recent = journal.some((j) => !Number.isNaN(Date.parse(j.date)) && Date.parse(j.date) >= weekAgo);
+  const discipline = overweight ? 68 : recent ? 92 : 80;
+  const total = Math.round(diversify * 0.4 + thesis * 0.3 + discipline * 0.3);
+  return { diversify, thesis, discipline, total };
+}
+
+export function risks(rows: BookRow[], theses: ThesisLite[], todos: TodoLite[]) {
+  const items: { title: string; desc: string; hint: string; tone: 'warn' | 'info' | 'ok' }[] = [];
+  const invested = rows.reduce((s, r) => s + (r.marketValue ?? 0), 0);
+  for (const r of rows) {
+    if (!invested || r.marketValue == null) continue;
+    const w = r.marketValue / invested;
+    if (w > 0.25) {
+      items.push({
+        title: `${r.name}超过单票上限`,
+        desc: `当前 ${(w * 100).toFixed(1)}% · 上限 25%`,
+        hint: '减仓',
+        tone: 'warn',
+      });
+    }
+  }
+  for (const r of rows) {
+    const th = theses.find((t) => t.id === r.thesisId);
+    if (th?.status === 'invalid' || th?.status === 'watch') {
+      items.push({
+        title: `${r.name}论文待复核`,
+        desc: th.title,
+        hint: th.status === 'invalid' ? '证伪' : '本周',
+        tone: 'info',
+      });
+    }
+  }
+  for (const t of todos.filter((x) => x.status === 'open').slice(0, 2)) {
+    items.push({
+      title: `${t.name}${t.side === 'buy' ? '待买' : '待卖'}`,
+      desc: t.reason,
+      hint: '待办',
+      tone: 'info',
+    });
+  }
+  if (!items.length) {
+    items.push({ title: '整体回撤仍在控制内', desc: '没有超配或失效论文', hint: '正常', tone: 'ok' });
+  }
+  return items.slice(0, 3);
+}
+
+export function sparkSeries(endPct: number, n = 22) {
+  const ys: number[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const t = i / (n - 1);
+    const smooth = t * t * (3 - 2 * t);
+    const wiggle = Math.sin(i * 1.7) * 0.01 * (1 - t);
+    ys.push(+(100 * (1 + endPct * smooth + wiggle)).toFixed(2));
+  }
+  ys[n - 1] = +(100 * (1 + endPct)).toFixed(2);
+  return ys;
+}
+
+export function shortCode(code: string) {
+  return code.replace(/^(sh|sz|bj)/i, '');
+}
+
+export function healthNote(score: number, topName: string | undefined) {
+  if (score >= 85) return '宽基为主，波动与集中度可控';
+  if (score >= 70) return topName ? `集中度略高，关注 ${topName}` : '集中度略高，关注单一敞口';
+  return '分散度偏低，先处理超配';
+}

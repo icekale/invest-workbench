@@ -18,6 +18,10 @@
     "prepare": "husky",
     "site:preview": "npm run build && cp -r dist _site",
     "check:quotes": "node --experimental-strip-types scripts/check-quotes.ts",
+    "check:fund": "node --experimental-strip-types scripts/check-fund.ts",
+    "check:backup": "node --experimental-strip-types scripts/check-backup.ts",
+    "fit:funds": "node --experimental-strip-types scripts/fit-fund-sample.ts",
+    "check:book": "node --experimental-strip-types scripts/check-book.ts",
     "test": "echo \"no test specified,work in process\"",
     "test:coverage": "echo \"no test:coverage specified,work in process\""
   },

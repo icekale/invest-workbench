@@ -9,14 +9,12 @@
       </div>
 
       <login />
-      <tdesign-setting />
     </div>
 
     <footer class="copyright">{{ t('common.copyright') }}</footer>
   </div>
 </template>
 <script setup lang="ts">
-import TdesignSetting from '@/layouts/setting.vue';
 import { t } from '@/locales';
 
 import LoginHeader from './components/Header.vue';

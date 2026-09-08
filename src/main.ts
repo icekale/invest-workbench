@@ -9,8 +9,9 @@ import i18n from './locales';
 
 import 'tdesign-vue-next/es/style/index.css';
 import '@/style/index.less';
-import '@/style/invest.less';
 import './permission';
+
+document.documentElement.setAttribute('data-skin', 'guanlan');
 
 const app = createApp(App);
 

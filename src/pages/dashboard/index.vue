@@ -1,90 +1,79 @@
 <template>
-  <div class="invest-page">
-    <h1 class="invest-title">投资驾驶舱</h1>
-    <p class="invest-sub">
-      股票与 ETF 同一套指标。现价来自腾讯行情。
-      <t-button size="small" variant="outline" :loading="invest.quoteLoading" @click="invest.refreshQuotes()">
-        刷新行情
-      </t-button>
-      <span v-if="invest.quoteError" class="invest-muted"> {{ invest.quoteError }}</span>
-    </p>
-
-    <div class="invest-card" style="margin-bottom: 12px">
-      <div class="invest-grid-2">
-        <div>
-          <div class="invest-muted">两账户成本</div>
-          <div class="invest-kpi">{{ money(totalCost) }}</div>
-        </div>
-        <div>
-          <div class="invest-muted">两账户市值</div>
-          <div class="invest-kpi">{{ money(totalMv) }}</div>
-        </div>
-        <div>
-          <div class="invest-muted">浮动盈亏</div>
-          <div class="invest-kpi" :class="pnlClass(totalPnl)">{{ money(totalPnl) }}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="invest-grid-2" style="margin-bottom: 12px">
-      <account-panel title="股票账户" :rows="invest.stockRows" />
-      <account-panel title="ETF 账户" :rows="invest.etfRows" />
-    </div>
-
-    <div class="invest-grid-2">
-      <section class="invest-card">
-        <div class="invest-muted">每日宏观</div>
-        <div v-for="code in indexes" :key="code" style="margin-top: 8px">
-          <strong>{{ invest.quotes[code]?.name || code }}</strong>
-          <span :class="pnlClass(invest.quotes[code]?.changePct ?? null)">
-            {{ invest.quotes[code] ? invest.quotes[code].price : '—' }}
-            {{ invest.quotes[code] ? `${invest.quotes[code].changePct}%` : '' }}
-          </span>
-        </div>
-        <p v-for="n in macroNotes" :key="n.id" class="invest-sub">{{ n.date }} · {{ n.title }} — {{ n.body }}</p>
-      </section>
-      <section class="invest-card">
-        <div class="invest-muted">机会池</div>
-        <t-table :data="opportunity" :columns="opCols" row-key="code" size="small" hover @row-click="goFund" />
-      </section>
-    </div>
-  </div>
+  <t-space direction="vertical" :size="16" style="width: 100%">
+    <t-space align="center" break-line>
+      <span style="color: var(--td-text-color-secondary)">今天先管理风险，再寻找值得下注的赔率。</span>
+      <t-space>
+        <t-button variant="outline" :loading="invest.quoteLoading" @click="refresh()">刷新行情</t-button>
+        <t-button variant="outline" @click="exportSnap">导出快照</t-button>
+        <t-button variant="outline" @click="router.push('/funds')">记录一条</t-button>
+        <t-button theme="primary" @click="editOpen = true">编辑持仓</t-button>
+      </t-space>
+    </t-space>
+    <t-alert v-if="closed" theme="warning" message="今日休市，展示最近交易日收盘价" />
+    <t-tabs v-model="tab" @change="onTab">
+      <t-tab-panel value="stock" label="股票账户">
+        <account-panel title="股票账户" :rows="invest.stockRows" :cash="invest.cash.stock" />
+      </t-tab-panel>
+      <t-tab-panel value="etf" label="ETF 账户">
+        <account-panel title="ETF 账户" :rows="invest.etfRows" :cash="invest.cash.etf" />
+      </t-tab-panel>
+    </t-tabs>
+    <holdings-editor v-model:visible="editOpen" />
+  </t-space>
 </template>
 <script setup lang="ts">
-import type { TableRowData } from 'tdesign-vue-next';
-import { computed, onMounted } from 'vue';
+import { MessagePlugin } from 'tdesign-vue-next';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { indexes, macroNotes, opportunity } from '@/mock/invest';
 import { useInvestStore } from '@/store';
+import { fetchTradeMonth } from '@/utils/backup';
 
 import AccountPanel from './AccountPanel.vue';
+import HoldingsEditor from './HoldingsEditor.vue';
 
 defineOptions({ name: 'DashboardIndex' });
 
 const invest = useInvestStore();
 const router = useRouter();
-onMounted(() => invest.refreshQuotes());
+const tab = ref('stock');
+const editOpen = ref(false);
+const closed = ref(false);
+let timer = 0;
 
-const money = (n: number | null) => (n == null ? '—' : n.toLocaleString('zh-CN', { maximumFractionDigits: 0 }));
-const pnlClass = (n: number | null) => (n == null ? '' : n >= 0 ? 'invest-up' : 'invest-down');
+onMounted(async () => {
+  await refresh();
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  try {
+    const days = await fetchTradeMonth(now.getFullYear(), now.getMonth() + 1);
+    closed.value = days.length > 0 && !days.some((d) => d.date === today && d.open);
+  } catch {
+    closed.value = false;
+  }
+  timer = window.setInterval(refresh, 60_000, true);
+});
+onUnmounted(() => clearInterval(timer));
 
-const totalCost = computed(() => invest.enriched.reduce((s, r) => s + r.cost * r.quantity, 0));
-const totalMv = computed(() =>
-  invest.enriched.every((r) => r.marketValue == null)
-    ? null
-    : invest.enriched.reduce((s, r) => s + (r.marketValue ?? 0), 0),
-);
-const totalPnl = computed(() => (totalMv.value == null ? null : totalMv.value - totalCost.value));
+async function refresh(silent = false) {
+  await invest.refreshQuotes();
+  if (silent) return;
+  MessagePlugin.success(
+    invest.quoteAt ? `行情已更新 ${new Date(invest.quoteAt).toTimeString().slice(0, 5)}` : '行情已刷新',
+  );
+}
 
-const opCols = [
-  { colKey: 'name', title: '基金' },
-  { colKey: 'yield', title: '收益' },
-  { colKey: 'vix', title: '波动' },
-  { colKey: 'loss', title: '回撤' },
-];
+function onTab(value: string | number) {
+  MessagePlugin.info(`已切换到${value === 'etf' ? 'ETF' : '股票'}账户`);
+}
 
-function goFund({ row }: { row: TableRowData }) {
-  if (typeof row.code === 'string') router.push(`/funds/detail/${row.code}`);
+function exportSnap() {
+  const blob = new Blob([JSON.stringify(invest.snapshot(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `invest-snapshot-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  MessagePlugin.success('快照已下载');
 }
 </script>

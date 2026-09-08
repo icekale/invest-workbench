@@ -2,40 +2,20 @@
   <div :class="layoutCls">
     <t-head-menu :class="menuCls" :theme="menuTheme" expand-type="popup" :value="active">
       <template #logo>
-        <span v-if="showLogo" class="header-logo-container" @click="handleNav('/dashboard/base')">
-          <logo-full class="t-logo" />
+        <h1 v-if="layout === 'side'" class="guanlan-topbar-title">{{ t('common.appName') }}</h1>
+        <span v-else-if="showLogo" class="header-logo-container" @click="handleNav('/dashboard/index')">
+          {{ t('common.appName') }}
         </span>
-        <div v-else class="header-operate-left">
-          <search :layout="layout" />
-        </div>
       </template>
       <template v-if="layout !== 'side'" #default>
         <menu-content class="header-menu" :nav-data="menu" />
       </template>
       <template #operations>
         <div class="operations-container">
-          <!-- 搜索框 -->
-          <search v-if="layout !== 'side'" :layout="layout" />
-
-          <!-- 全局通知 -->
-          <notice />
-
-          <t-tooltip placement="bottom" :content="t('layout.header.code')">
-            <t-button theme="default" shape="square" variant="text" @click="navToGitHub">
-              <t-icon name="logo-github" />
-            </t-button>
-          </t-tooltip>
-          <t-tooltip placement="bottom" :content="t('layout.header.help')">
-            <t-button theme="default" shape="square" variant="text" @click="navToHelper">
-              <t-icon name="help-circle" />
-            </t-button>
-          </t-tooltip>
-          <language-switcher />
+          <span class="guanlan-topbar-date">{{ dateStr }}</span>
+          <search-box :layout="layout" />
           <t-dropdown :min-column-width="120" trigger="click">
             <template #dropdown>
-              <t-dropdown-item class="operations-dropdown-container-item" @click="handleNav('/user/index')">
-                <user-circle-icon />{{ t('layout.header.user') }}
-              </t-dropdown-item>
               <t-dropdown-item class="operations-dropdown-container-item" @click="handleLogout">
                 <poweroff-icon />{{ t('layout.header.signOut') }}
               </t-dropdown-item>
@@ -48,33 +28,25 @@
               <template #suffix><chevron-down-icon /></template>
             </t-button>
           </t-dropdown>
-          <t-tooltip placement="bottom" :content="t('layout.header.setting')">
-            <t-button theme="default" shape="square" variant="text" @click="toggleSettingPanel">
-              <setting-icon />
-            </t-button>
-          </t-tooltip>
         </div>
       </template>
     </t-head-menu>
   </div>
 </template>
 <script setup lang="ts">
-import { ChevronDownIcon, PoweroffIcon, SettingIcon, UserCircleIcon } from 'tdesign-icons-vue-next';
+import { ChevronDownIcon, PoweroffIcon } from 'tdesign-icons-vue-next';
 import type { PropType } from 'vue';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 
-import LogoFull from '@/assets/assets-logo-full.svg?component';
-import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';
-import { useSettingStore, useUserStore } from '@/store';
+import { useUserStore } from '@/store';
 import type { MenuRoute, ModeType } from '@/types/interface';
 
 import MenuContent from './MenuContent.vue';
-import Notice from './Notice.vue';
-import Search from './Search.vue';
+import SearchBox from './Search.vue';
 
 const { theme, layout, showLogo, menu, isFixed, isCompact } = defineProps({
   theme: {
@@ -108,14 +80,7 @@ const { theme, layout, showLogo, menu, isFixed, isCompact } = defineProps({
 });
 
 const router = useRouter();
-const settingStore = useSettingStore();
 const user = useUserStore();
-
-const toggleSettingPanel = () => {
-  settingStore.updateConfig({
-    showSettingPanel: true,
-  });
-};
 
 const active = computed(() => getActive());
 
@@ -133,6 +98,11 @@ const menuCls = computed(() => {
 });
 const menuTheme = computed(() => theme as ModeType);
 
+const dateStr = computed(() => {
+  const d = new Date();
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`;
+});
+
 const handleNav = (url: string) => {
   router.push(url);
 };
@@ -142,14 +112,6 @@ const handleLogout = () => {
     path: '/login',
     query: { redirect: router.currentRoute.value.fullPath },
   });
-};
-
-const navToGitHub = () => {
-  window.open('https://github.com/tencent/tdesign-vue-next-starter');
-};
-
-const navToHelper = () => {
-  window.open('https://tdesign.tencent.com/starter/docs/vue-next/get-started');
 };
 </script>
 <style lang="less" scoped>
@@ -164,7 +126,7 @@ const navToHelper = () => {
     }
 
     &-side {
-      left: 232px;
+      left: var(--guanlan-sidebar-width, 220px);
       right: 0;
       z-index: 10;
       width: auto;
@@ -216,7 +178,11 @@ const navToHelper = () => {
   width: 184px;
   height: 26px;
   display: flex;
+  align-items: center;
   margin-left: 24px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--td-text-color-primary);
 
   .t-logo {

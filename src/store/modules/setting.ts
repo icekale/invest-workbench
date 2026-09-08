@@ -103,6 +103,12 @@ export const useSettingStore = defineStore('setting', {
   },
   persist: {
     pick: [...keys(STYLE_CONFIG), 'colorList', 'chartColors'],
+    afterHydrate(ctx) {
+      ctx.store.skin = 'guanlan';
+      ctx.store.brandTheme = '#0d706d';
+      ctx.store.sideMode = 'dark';
+      document.documentElement.setAttribute('data-skin', 'guanlan');
+    },
   },
 });
 

@@ -53,6 +53,36 @@ export default ({ mode }: ConfigEnv): UserConfig => {
           changeOrigin: true,
           rewrite: (p: string) => p.replace(/^\/qt/, ''),
         },
+        '/em': {
+          target: 'https://fundmobapi.eastmoney.com',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/em/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Referer', 'https://fund.eastmoney.com/');
+            });
+          },
+        },
+        '/sina': {
+          target: 'https://hq.sinajs.cn',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/sina/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Referer', 'https://finance.sina.com.cn/');
+            });
+          },
+        },
+        '/szse': {
+          target: 'https://www.szse.cn',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/szse/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Referer', 'https://www.szse.cn/');
+            });
+          },
+        },
       },
     },
 

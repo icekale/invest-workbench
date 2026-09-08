@@ -32,15 +32,11 @@ Object.entries(langModules).forEach(([path, module]) => {
 
 export { langCode };
 
-// 获取初始语言：优先本地存储，其次浏览器偏好，最后默认中文
+// 获取初始语言：优先本地存储，否则默认中文（单人中文工具，不跟随浏览器偏好）
 const getInitialLocale = (): SupportedLocale => {
   const stored = localStorage.getItem(localeConfigKey);
   if (stored && supportedLocales.includes(stored as SupportedLocale)) {
     return stored as SupportedLocale;
-  }
-  const preferred = navigator.languages?.[0]?.replace(/-/g, '_');
-  if (preferred && supportedLocales.includes(preferred as SupportedLocale)) {
-    return preferred as SupportedLocale;
   }
   return 'zh_CN';
 };

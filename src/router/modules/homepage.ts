@@ -31,7 +31,7 @@ export default [
     name: 'funds',
     redirect: '/funds/index',
     meta: {
-      title: { zh_CN: '公募研究', en_US: 'Funds' },
+      title: { zh_CN: '研究与决策', en_US: 'Research' },
       icon: shallowRef(SearchIcon),
       orderNo: 1,
       single: true,
@@ -41,7 +41,7 @@ export default [
         path: 'index',
         name: 'FundsIndex',
         component: () => import('@/pages/funds/index.vue'),
-        meta: { title: { zh_CN: '公募研究', en_US: 'Funds' } },
+        meta: { title: { zh_CN: '研究与决策', en_US: 'Research' } },
       },
       {
         path: 'detail/:code',
@@ -55,6 +55,30 @@ export default [
         component: () => import('@/pages/funds/compare.vue'),
         meta: { title: { zh_CN: '基金对比', en_US: 'Compare' }, hidden: true },
       },
+      {
+        path: 'research',
+        name: 'FundsResearch',
+        component: () => import('@/pages/funds/research.vue'),
+        meta: { title: { zh_CN: '方法论', en_US: 'Research' }, hidden: true },
+      },
+      {
+        path: 'recommend',
+        name: 'FundsRecommend',
+        component: () => import('@/pages/funds/recommend.vue'),
+        meta: { title: { zh_CN: '优质精选', en_US: 'Picks' }, hidden: true },
+      },
+      {
+        path: 'database',
+        name: 'FundsDatabase',
+        component: () => import('@/pages/funds/database.vue'),
+        meta: { title: { zh_CN: '基金数据', en_US: 'Database' }, hidden: true },
+      },
+      {
+        path: 'portfolios',
+        name: 'FundsPortfolios',
+        component: () => import('@/pages/funds/portfolios.vue'),
+        meta: { title: { zh_CN: '智能组合', en_US: 'Portfolios' }, hidden: true },
+      },
     ],
   },
   {
@@ -63,9 +87,9 @@ export default [
     name: 'plan',
     redirect: '/plan/index',
     meta: {
-      title: { zh_CN: '计划与执行', en_US: 'Plan' },
+      title: { zh_CN: '账户与数据', en_US: 'Accounts' },
       icon: shallowRef(EditIcon),
-      orderNo: 2,
+      orderNo: 3,
       single: true,
     },
     children: [
@@ -73,7 +97,7 @@ export default [
         path: 'index',
         name: 'PlanIndex',
         component: () => import('@/pages/plan/index.vue'),
-        meta: { title: { zh_CN: '计划与执行', en_US: 'Plan' } },
+        meta: { title: { zh_CN: '账户与数据', en_US: 'Accounts' } },
       },
     ],
   },
@@ -85,7 +109,7 @@ export default [
     meta: {
       title: { zh_CN: '持有与复盘', en_US: 'Review' },
       icon: shallowRef(ChartIcon),
-      orderNo: 3,
+      orderNo: 2,
       single: true,
     },
     children: [

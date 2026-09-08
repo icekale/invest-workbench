@@ -1,0 +1,106 @@
+/* 观澜世界：墨绿侧栏 + 纸面卡片。tabular 数字是主角；涨红跌绿只属于数字。 */
+
+:root {
+  --td-bg-color-page: #f6f7f9;
+
+  accent-color: var(--td-brand-color);
+}
+
+::selection {
+  background: var(--td-brand-color-2, var(--td-brand-color-light));
+  color: var(--td-text-color-primary);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--td-scrollbar-color, rgb(0 0 0 / 18%));
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--td-scrollbar-hover-color, rgb(0 0 0 / 30%));
+}
+
+/* 涨红跌绿：全局唯一出处，只用于数字与 Tag */
+.up {
+  color: var(--td-error-color);
+}
+
+.down {
+  color: var(--td-success-color);
+}
+
+/* 数字主角：观澜 metric 24px tabular */
+.num-hero {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-primary);
+}
+
+.tdesign-starter-content-layout {
+  /* 一次入场：内容带微升淡入，尊重系统减弱动态 */
+  animation: board-enter 0.24s cubic-bezier(0, 0, 0.15, 1) both;
+
+  .t-card {
+    border: 1px solid var(--td-component-border);
+    border-radius: var(--td-radius-medium);
+    box-shadow: var(--td-shadow-1);
+  }
+
+  /* 站牌：卡片头一条规则线，标题即站名 */
+  .t-card__header {
+    border-bottom: 1px solid var(--td-component-stroke);
+  }
+
+  .t-card__title {
+    font-size: 15px;
+    letter-spacing: 0.01em;
+  }
+
+  .t-statistic__number,
+  .t-table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 行情表：表头是小号站名列，行间规则线 */
+  .t-table th {
+    font-weight: 400;
+    color: var(--td-text-color-secondary);
+  }
+}
+
+@keyframes board-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tdesign-starter-content-layout {
+    animation: none;
+  }
+}
+
+:root[theme-mode='dark'] {
+  --td-bg-color-page: #0a0a0a;
+
+  .tdesign-starter-content-layout .t-card {
+    border-color: rgb(255 255 255 / 10%);
+  }
+
+  .tdesign-starter-content-layout .t-card__header {
+    border-bottom-color: rgb(255 255 255 / 8%);
+  }
+}

@@ -11,28 +11,20 @@ export interface Holding {
   name: string;
   quantity: number;
   cost: number;
+  tag?: string;
   health: Health;
   action: ActionPoint;
   thesisId: string;
 }
 
-export interface MacroNote {
+export interface MacroBrief {
   id: string;
+  time: string;
   title: string;
   body: string;
-  date: string;
-}
-
-export interface Fund {
-  code: string;
-  name: string;
-  manager: string;
-  type: string;
-  yield: number;
-  vix: number;
-  loss: number;
-  score: number;
-  star: number;
+  topic: string;
+  tone: string;
+  account: AccountId | 'all';
 }
 
 export interface SmartPortfolio {
@@ -74,5 +66,24 @@ export interface Thesis {
 export interface JournalEntry {
   id: string;
   date: string;
+  topic: string;
+  conclusion: string;
   body: string;
+}
+
+export interface Opportunity {
+  id: string;
+  name: string;
+  account: AccountId;
+  thesis: string;
+  score: number;
+  note: string;
+}
+
+export interface Prefs {
+  isolate: boolean;
+  closeRemind: boolean;
+  healthDate: Record<AccountId, string>;
+  health: Record<AccountId, number>;
+  healthDelta: Record<AccountId, number>;
 }

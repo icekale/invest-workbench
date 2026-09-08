@@ -10,12 +10,17 @@
       @expand="onExpanded"
     >
       <template #logo>
-        <span v-if="showLogo" :class="`${prefix}-side-nav-logo-wrapper`" @click="goHome">
-          <component :is="getLogo()" :class="logoCls" />
+        <span v-if="showLogo" class="guanlan-brand" :class="{ 'guanlan-brand--compact': collapsed }" @click="goHome">
+          <span class="guanlan-brand-mark">发</span>
+          <span v-if="!collapsed" class="guanlan-brand-copy">
+            <span class="guanlan-brand-name">{{ t('common.appName') }}</span>
+            <span class="guanlan-brand-caption">仓位 · 结构 · 交易节奏</span>
+          </span>
         </span>
       </template>
       <menu-content :nav-data="menu" />
       <template #operations>
+        <div v-show="!collapsed" class="guanlan-sidebar-note">以持仓结构为先，交易只服务再平衡。</div>
         <t-button variant="text" shape="square" @click="changeCollapsed">
           <template #icon><t-icon name="view-list" /></template>
         </t-button>
@@ -36,8 +41,6 @@ import type { PropType } from 'vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import AssetLogoFull from '@/assets/assets-logo-full.svg?component';
-import AssetLogo from '@/assets/assets-t-logo.svg?component';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';
@@ -122,14 +125,6 @@ const changeCollapsed = () => {
 const sideMode = computed(() => {
   return theme === 'dark';
 });
-const logoCls = computed(() => {
-  return [
-    `${prefix}-side-nav-logo-${collapsed.value ? 't' : 'tdesign'}-logo`,
-    {
-      [`${prefix}-side-nav-dark`]: sideMode.value,
-    },
-  ];
-});
 const versionCls = computed(() => {
   return [
     `version-container`,
@@ -180,11 +175,6 @@ onUnmounted(() => {
 
 const goHome = () => {
   router.push('/dashboard/base');
-};
-
-const getLogo = () => {
-  if (collapsed.value) return AssetLogo;
-  return AssetLogoFull;
 };
 </script>
 <style lang="less" scoped></style>
