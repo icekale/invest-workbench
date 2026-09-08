@@ -134,78 +134,6 @@
           </t-list>
         </t-card>
 
-        <!-- 数据与功能接入状态 -->
-        <t-card title="迭代路线与功能接入">
-          <template #actions>
-            <span class="plan-sub-action">已接入 3/3 核心能力</span>
-          </template>
-          <div class="future-list">
-            <div v-for="item in futureFeatures" :key="item.step" class="future-item">
-              <div class="future-icon-badge" :class="item.badgeClass">
-                <svg
-                  v-if="item.iconType === 'sheet'"
-                  class="future-svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <path d="M8 13h8" />
-                  <path d="M8 17h8" />
-                  <path d="M12 13v8" />
-                </svg>
-                <svg
-                  v-else-if="item.iconType === 'broadcast'"
-                  class="future-svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9" />
-                  <path d="M7.8 13.2a6 6 0 0 1 0-8.5" />
-                  <circle cx="12" cy="9" r="2" />
-                  <path d="M12 11v11" />
-                  <path d="m9 22 3-8 3 8" />
-                  <path d="M16.2 4.8c2.4 2.3 2.4 6.1 0 8.5" />
-                  <path d="M19.1 1.9a14.2 14.2 0 0 1 0 14.2" />
-                </svg>
-                <svg
-                  v-else-if="item.iconType === 'bell'"
-                  class="future-svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-                  <path d="M4 2C2.8 3.7 2 5.7 2 8" />
-                  <path d="M22 8c0-2.3-.8-4.3-2-6" />
-                </svg>
-              </div>
-              <div class="future-content">
-                <div class="future-title">{{ item.title }}</div>
-                <div class="future-desc">{{ item.desc }}</div>
-              </div>
-              <div class="future-right">
-                <t-tag size="small" theme="success" variant="light">已接入</t-tag>
-                <t-button size="small" variant="text" theme="primary" @click="handleRouteStep(item.step)">
-                  {{ item.actionText }}
-                </t-button>
-              </div>
-            </div>
-          </div>
-        </t-card>
-
         <!-- 数据来源 -->
         <t-card title="数据来源与网络状态">
           <t-list split>
@@ -252,7 +180,6 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
 
 import { disciplineRules, planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
@@ -264,7 +191,6 @@ import TransactionLedger from './components/TransactionLedger.vue';
 
 defineOptions({ name: 'PlanIndex' });
 
-const router = useRouter();
 const invest = useInvestStore();
 
 const activeTab = ref<'overview' | 'ledger' | 'alerts'>('overview');
@@ -341,43 +267,6 @@ const checks = computed(() =>
   }),
 );
 
-const futureFeatures = [
-  {
-    step: '第 1 步',
-    title: '持仓与交易台账',
-    desc: '导入成交记录后自动计算成本、收益与换手',
-    iconType: 'sheet',
-    badgeClass: 'badge-green',
-    actionText: '进入台账',
-  },
-  {
-    step: '第 2 步',
-    title: '宏观与行情数据',
-    desc: '接入实时行情与本地宏观简报，支持每日行情复盘',
-    iconType: 'broadcast',
-    badgeClass: 'badge-blue',
-    actionText: '查看研究',
-  },
-  {
-    step: '第 3 步',
-    title: '买卖点提醒',
-    desc: '根据估值、价格和论文状态生成动作提醒与交易待办',
-    iconType: 'bell',
-    badgeClass: 'badge-amber',
-    actionText: '查看提醒',
-  },
-];
-
-function handleRouteStep(step: string) {
-  if (step === '第 1 步') {
-    activeTab.value = 'ledger';
-  } else if (step === '第 2 步') {
-    router.push('/funds/index');
-  } else if (step === '第 3 步') {
-    activeTab.value = 'alerts';
-  }
-}
-
 function toggleTodo(id: string, status: TodoStatus) {
   invest.setTodoStatus(id, status === 'open' ? 'done' : 'open');
 }
@@ -427,82 +316,6 @@ function toggleTodo(id: string, status: TodoStatus) {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-}
-
-.plan-sub-action {
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-}
-
-.future-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 4px 0;
-}
-
-.future-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-}
-
-.future-icon-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-
-.badge-green {
-  background-color: #e8f7ee;
-  color: #16815f;
-}
-
-.badge-blue {
-  background-color: #e8f3ff;
-  color: #1668dc;
-}
-
-.badge-amber {
-  background-color: #fef3e6;
-  color: #d46b08;
-}
-
-.future-svg {
-  width: 20px;
-  height: 20px;
-}
-
-.future-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.future-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-  line-height: 22px;
-}
-
-.future-desc {
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-  line-height: 20px;
-}
-
-.future-right {
-  flex-shrink: 0;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .acct-form :deep(.t-input-number) {
