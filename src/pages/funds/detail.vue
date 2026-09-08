@@ -15,21 +15,21 @@
       </t-descriptions>
       <t-row :gutter="16" style="margin-top: 16px">
         <t-col :span="3">
-          <t-statistic title="近1年收益率" :value="fund.year ?? 0" unit="%" :loading="fund.year == null" />
+          <t-statistic title="近1年收益率" :value="fund.year ?? 0" unit="%" :loading="detailLoading" />
         </t-col>
         <t-col :span="3">
-          <t-statistic title="年化波动率" :value="fund.stddev ?? 0" :loading="fund.stddev == null" />
+          <t-statistic title="年化波动率" :value="fund.stddev ?? 0" :loading="detailLoading" />
         </t-col>
         <t-col :span="3">
           <t-statistic
             title="最大回撤"
             :value="fund.drawdown == null ? 0 : -fund.drawdown"
             unit="%"
-            :loading="fund.drawdown == null"
+            :loading="detailLoading"
           />
         </t-col>
         <t-col :span="3">
-          <t-statistic title="研选分" :value="score ?? 0" :loading="score == null" />
+          <t-statistic title="研选分" :value="score ?? 0" :loading="detailLoading" />
         </t-col>
       </t-row>
       <t-alert v-if="note" theme="info" :message="note" style="margin-top: 12px" />
@@ -106,6 +106,7 @@ const route = useRoute();
 const router = useRouter();
 const invest = useInvestStore();
 const fund = ref<FundDetail | null>(null);
+const detailLoading = ref(true);
 const nav = ref<NavPoint[]>([]);
 const error = ref('');
 const navError = ref('');
@@ -191,6 +192,7 @@ function renderChart() {
 }
 
 async function load(code: string) {
+  detailLoading.value = true;
   fund.value = null;
   nav.value = [];
   sample.value = null;
@@ -207,15 +209,24 @@ async function load(code: string) {
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : '基金详情加载失败';
-    return;
   }
   try {
     const all = await loadSample();
     sample.value = all.find((f) => f.code === code) || null;
-    if (sample.value) model.value = await loadFundModel();
+    if (sample.value) {
+      model.value = await loadFundModel();
+      if (fund.value) {
+        if (fund.value.stddev == null && sample.value.vix != null) fund.value.stddev = sample.value.vix;
+        if (fund.value.drawdown == null && sample.value.loss != null) fund.value.drawdown = Math.abs(sample.value.loss);
+        if (fund.value.year == null && sample.value.yield != null) fund.value.year = sample.value.yield;
+      }
+    }
   } catch {
     sample.value = null;
+  } finally {
+    detailLoading.value = false;
   }
+  if (!fund.value) return;
   navLoading.value = true;
   try {
     nav.value = await fetchFundNav(code);

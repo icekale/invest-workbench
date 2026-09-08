@@ -65,6 +65,8 @@ export default ({ mode }: ConfigEnv): UserConfig => {
           rewrite: (p: string) => p.replace(/^\/em/, ''),
           configure(proxy) {
             proxy.on('proxyReq', (req) => {
+              req.setHeader('Host', 'fundmobapi.eastmoney.com');
+              req.setHeader('User-Agent', 'EFund/6.5.5 (iPhone; iOS 17.4; Scale/3.00)');
               req.setHeader('Referer', 'https://fund.eastmoney.com/');
             });
           },

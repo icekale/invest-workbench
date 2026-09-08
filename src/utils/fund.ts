@@ -191,9 +191,45 @@ export async function fetchFundRank(size = 80): Promise<FundRank[]> {
 }
 
 export async function fetchFundDetail(code: string): Promise<FundDetail> {
-  const res = await fetch(`/em/FundMNewApi/FundMNBaseInfo?FCODE=${encodeURIComponent(code)}&${APP}`);
-  if (!res.ok) throw new Error(`fund detail http ${res.status}`);
-  return parseDetailBody(await res.json());
+  const url = `/em/FundMNewApi/FundMNBaseInfo?FCODE=${encodeURIComponent(code)}&${APP}`;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.Datas && typeof json.Datas === 'object') {
+        return parseDetailBody(json);
+      }
+    }
+  } catch {
+    // try sample fallback
+  }
+
+  // fallback to statistical.csv sample
+  const { loadSample } = await import('./fund-model');
+  const all = await loadSample().catch(() => []);
+  const found = all.find((f) => f.code === code);
+  if (found) {
+    return {
+      code: found.code,
+      name: found.name,
+      type: found.type,
+      nav: null,
+      day: null,
+      week: null,
+      month: null,
+      month3: null,
+      month6: null,
+      year: found.yield,
+      year3: null,
+      ytd: null,
+      drawdown: Math.abs(found.loss),
+      stddev: found.vix,
+      sharpe: null,
+      manager: found.manager || '—',
+      company: found.company || '—',
+    };
+  }
+  throw new Error('未获取到该基金详情');
 }
 
 export async function fetchFundDetails(codes: string[]): Promise<FundDetail[]> {
@@ -223,11 +259,18 @@ export function parseNavBody(json: unknown): NavPoint[] {
 }
 
 export async function fetchFundNav(code: string, size = 250): Promise<NavPoint[]> {
-  const res = await fetch(
-    `/em/FundMNewApi/FundMNHisNetList?FCODE=${encodeURIComponent(code)}&pageIndex=1&pageSize=${size}&${APP}`,
-  );
-  if (!res.ok) throw new Error(`fund nav http ${res.status}`);
-  return parseNavBody(await res.json());
+  try {
+    const res = await fetch(
+      `/em/FundMNewApi/FundMNHisNetList?FCODE=${encodeURIComponent(code)}&pageIndex=1&pageSize=${size}&${APP}`,
+    );
+    if (res.ok) {
+      const pts = parseNavBody(await res.json());
+      if (pts.length) return pts;
+    }
+  } catch {
+    // network fallback
+  }
+  return [];
 }
 
 export interface GrowthPoint {

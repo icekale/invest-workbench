@@ -27,12 +27,21 @@ export interface MacroBrief {
   account: AccountId | 'all';
 }
 
+export interface SmartPortfolioFund {
+  code: string;
+  weight: number;
+  name: string;
+  type?: string;
+  nav?: number | null;
+  year?: number | null;
+}
+
 export interface SmartPortfolio {
   id: string;
   name: string;
   risk: string;
   blurb: string;
-  funds: { code: string; weight: number }[];
+  funds: SmartPortfolioFund[];
 }
 
 export interface CustomPortfolio {

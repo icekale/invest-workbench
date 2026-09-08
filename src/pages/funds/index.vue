@@ -178,13 +178,13 @@
             <t-tag size="small" variant="light">{{ row.type }}</t-tag>
           </template>
           <template #year="{ row }">
-            <span :class="pctClass(row.year)">{{ fmtPctWithSign(row.year) }}</span>
+            <span :class="pctClass(row.year)" class="pct-val">{{ fmtPctWithSign(row.year) }}</span>
           </template>
           <template #ytd="{ row }">
-            <span :class="pctClass(row.ytd)">{{ fmtPctWithSign(row.ytd) }}</span>
+            <span :class="pctClass(row.ytd)" class="pct-val">{{ fmtPctWithSign(row.ytd) }}</span>
           </template>
           <template #week="{ row }">
-            <span :class="pctClass(row.week)">{{ fmtPctWithSign(row.week) }}</span>
+            <span :class="pctClass(row.week)" class="pct-val">{{ fmtPctWithSign(row.week) }}</span>
           </template>
           <template #op="{ row }">
             <t-link theme="primary" hover="color" @click.stop="goDetail(row.code)">详情</t-link>
@@ -237,34 +237,67 @@
     <t-row :gutter="[16, 16]">
       <t-col v-if="picks.length" :xs="12" :span="6">
         <t-card title="研选组合" subtitle="精选前 4 只等权配置 (各 25%)">
+          <template #actions>
+            <t-tag size="small" theme="primary" variant="light">动态研选</t-tag>
+          </template>
           <p class="portfolio-blurb">兼顾高收益、控波动与回撤不失控，构建多资产平衡组合。</p>
-          <t-list size="small">
-            <t-list-item v-for="f in picks" :key="f.code">
-              <div class="hold-row">
-                <span class="hold-name">{{ f.name }}</span>
-                <span class="hold-w">25%</span>
+          <t-list size="small" :split="true" class="portfolio-holdings-list">
+            <t-list-item v-for="f in picks" :key="f.code" class="portfolio-hold-item" @click="goDetail(f.code)">
+              <div class="hold-row-enhanced">
+                <div class="hold-info">
+                  <div class="hold-top-line">
+                    <span class="hold-name-text">{{ f.name }}</span>
+                    <t-tag size="small" variant="outline" class="hold-tag">{{ f.type }}</t-tag>
+                  </div>
+                  <div class="hold-sub-line">
+                    <span class="hold-code-text">{{ f.code }}</span>
+                    <span v-if="f.nav != null" class="hold-stat-nav">净值 {{ f.nav.toFixed(4) }}</span>
+                    <span v-if="f.year != null" :class="pctClass(f.year)" class="hold-stat-year">
+                      近1年 {{ fmtPctWithSign(f.year) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="hold-action-side">
+                  <span class="hold-weight-pill">25%</span>
+                  <t-link theme="primary" hover="color" size="small" @click.stop="goDetail(f.code)"> 详情 </t-link>
+                </div>
               </div>
             </t-list-item>
           </t-list>
-          <template #actions>
+          <div style="margin-top: 12px; text-align: right">
             <t-button size="small" variant="text" theme="primary" @click="router.push('/funds/portfolios')">
               策略调优 →
             </t-button>
-          </template>
+          </div>
         </t-card>
       </t-col>
 
       <t-col v-for="p in smartPortfolios" :key="p.id" :xs="12" :span="6">
         <t-card :title="p.name">
           <template #actions>
-            <t-tag size="small" :theme="riskTheme(p.risk)" variant="light">{{ p.risk }}</t-tag>
+            <t-tag size="small" :theme="riskTheme(p.risk)" variant="light">{{ p.risk }}风险</t-tag>
           </template>
           <p class="portfolio-blurb">{{ p.blurb }}</p>
-          <t-list size="small">
-            <t-list-item v-for="f in p.funds" :key="f.code">
-              <div class="hold-row">
-                <span class="hold-name">{{ fundName(f.code) }}</span>
-                <span class="hold-w">{{ Math.round(f.weight * 100) }}%</span>
+          <t-list size="small" :split="true" class="portfolio-holdings-list">
+            <t-list-item v-for="f in p.funds" :key="f.code" class="portfolio-hold-item" @click="goDetail(f.code)">
+              <div class="hold-row-enhanced">
+                <div class="hold-info">
+                  <div class="hold-top-line">
+                    <span class="hold-name-text">{{ f.name || fundName(f.code) }}</span>
+                    <t-tag v-if="f.type" size="small" variant="outline" class="hold-tag">{{ f.type }}</t-tag>
+                  </div>
+                  <div class="hold-sub-line">
+                    <span class="hold-code-text">{{ f.code }}</span>
+                    <span v-if="f.nav != null" class="hold-stat-nav">净值 {{ f.nav.toFixed(4) }}</span>
+                    <span v-if="f.year != null" :class="pctClass(f.year)" class="hold-stat-year">
+                      近1年 {{ fmtPctWithSign(f.year) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="hold-action-side">
+                  <span class="hold-weight-pill">{{ Math.round(f.weight * 100) }}%</span>
+                  <t-link theme="primary" hover="color" size="small" @click.stop="goDetail(f.code)"> 详情 </t-link>
+                </div>
               </div>
             </t-list-item>
           </t-list>
@@ -370,14 +403,14 @@ const filteredRank = computed(() => {
 const picks = computed(() => screened.value.slice(0, 4));
 
 const rankCols = [
-  { colKey: 'pick', title: '对比', width: 50 },
-  { colKey: 'name', title: '基金名称', minWidth: 160 },
+  { colKey: 'pick', title: '对比', width: 48 },
+  { colKey: 'name', title: '基金名称', minWidth: 170 },
   { colKey: 'code', title: '代码', width: 90 },
-  { colKey: 'type', title: '类型', width: 100 },
-  { colKey: 'year', title: '近1年', width: 90 },
-  { colKey: 'ytd', title: '今年来', width: 90 },
-  { colKey: 'week', title: '近一周', width: 90 },
-  { colKey: 'op', title: '操作', width: 70 },
+  { colKey: 'type', title: '类型', width: 95 },
+  { colKey: 'year', title: '近1年', width: 100 },
+  { colKey: 'ytd', title: '今年来', width: 95 },
+  { colKey: 'week', title: '近一周', width: 95 },
+  { colKey: 'op', title: '操作', width: 65 },
 ];
 
 const screenCols = [
@@ -766,6 +799,111 @@ function convertOppToTodo(o: Opportunity) {
   font-size: 14px;
   color: var(--td-text-color-secondary);
   line-height: 1.5;
+}
+
+.pct-val {
+  display: inline-block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.portfolio-holdings-list {
+  :deep(.t-list-item) {
+    padding: 8px 6px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    border-radius: 6px;
+
+    &:hover {
+      background-color: var(--td-bg-color-container-hover, rgb(0 0 0 / 3%));
+
+      .hold-name-text {
+        color: var(--td-brand-color, #0d706d);
+      }
+    }
+  }
+}
+
+.hold-row-enhanced {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+
+  .hold-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+
+    .hold-top-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+
+      .hold-name-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--td-text-color-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: color 0.15s ease;
+      }
+
+      .hold-tag {
+        flex-shrink: 0;
+        font-size: 10px;
+        padding: 0 4px;
+        height: 18px;
+        line-height: 16px;
+      }
+    }
+
+    .hold-sub-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--td-text-color-secondary);
+      font-variant-numeric: tabular-nums;
+      flex-wrap: nowrap;
+
+      .hold-code-text {
+        font-family: var(--td-font-family-mono, monospace);
+        color: var(--td-text-color-placeholder);
+      }
+
+      .hold-stat-nav {
+        color: var(--td-text-color-secondary);
+      }
+
+      .hold-stat-year {
+        font-weight: 500;
+      }
+    }
+  }
+
+  .hold-action-side {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+
+    .hold-weight-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--td-bg-color-secondarycontainer, #f3f5f8);
+      color: var(--td-text-color-primary);
+      font-family: var(--td-font-family-mono, monospace);
+      font-variant-numeric: tabular-nums;
+    }
+  }
 }
 
 .hold-row {
