@@ -540,7 +540,7 @@ onUnmounted(() => {
   chart = null;
 });
 </script>
-<style scoped>
+<style scoped lang="less">
 .panel {
   max-width: 100%;
   overflow-x: hidden;
@@ -776,24 +776,34 @@ onUnmounted(() => {
   .stat-card {
     :deep(.t-card__body) {
       padding: 12px 10px;
+      overflow: hidden;
     }
 
-    :deep(.t-statistic__title) {
+    :deep(.t-statistic-title) {
       font-size: 12px;
       margin-bottom: 2px;
     }
 
-    :deep(.t-statistic__content) {
-      font-size: clamp(16px, 4.2vw, 22px);
-      line-height: 26px;
+    :deep(.t-statistic-content-value) {
+      font-size: clamp(15px, 4.4vw, 19px);
+      line-height: 24px;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
 
-    :deep(.t-statistic__extra) {
+    :deep(.t-statistic-content-suffix),
+    :deep(.t-statistic-content-unit) {
+      font-size: 12px;
+    }
+
+    :deep(.t-statistic-extra) {
       font-size: 11px;
       margin-top: 2px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
     }
   }
 
@@ -983,8 +993,8 @@ onUnmounted(() => {
 
   .m-pos-grid {
     display: grid;
-    grid-template-columns: 1.15fr 1fr 1.05fr;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
     padding: 8px 0;
     border-top: 1px solid var(--guanlan-line, #f0f3f5);
     border-bottom: 1px solid var(--guanlan-line, #f0f3f5);
@@ -995,6 +1005,7 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    overflow: hidden;
 
     &.text-center {
       text-align: center;
@@ -1014,8 +1025,10 @@ onUnmounted(() => {
 
   .col-val-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 3px;
+    gap: 2px 4px;
+    min-width: 0;
     line-height: 20px;
 
     &.justify-center {
@@ -1029,9 +1042,10 @@ onUnmounted(() => {
 
   .col-price,
   .col-mv {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     line-height: 20px;
+    white-space: nowrap;
   }
 
   .col-mv {
@@ -1039,8 +1053,10 @@ onUnmounted(() => {
   }
 
   .col-day-chg {
+    flex-basis: 100%;
     font-size: 11px;
     font-weight: 500;
+    white-space: nowrap;
   }
 
   .col-pnl-pill {
