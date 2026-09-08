@@ -414,10 +414,10 @@ function handleApplyHoldings() {
 .import-errors {
   margin-top: 10px;
   padding: 8px 12px;
-  background: #fff2f0;
-  border-radius: 6px;
+  background: var(--td-error-color-1);
+  border-radius: var(--td-radius-small);
   font-size: 12px;
-  color: #cf1322;
+  color: var(--td-error-color);
 }
 
 .error-title {

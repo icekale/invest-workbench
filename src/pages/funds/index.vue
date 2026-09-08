@@ -734,14 +734,13 @@ function convertOppToTodo(o: Opportunity) {
   line-height: 1.5;
   background: var(--td-bg-color-container);
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--td-radius-small, 6px);
   position: relative;
 }
 
 .thesis-quote-mark {
   color: var(--guanlan-gold, #dfb56d);
   font-weight: bold;
-  font-family: Georgia, serif;
 }
 
 .opp-card__footer {

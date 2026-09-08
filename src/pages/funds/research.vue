@@ -93,7 +93,7 @@
 
       <h2>二、相关性分析</h2>
       <div class="card">
-        <img alt="相关系数热力图" src="/methodology/corr-heatmap.png" />
+        <img alt="相关系数热力图" src="/methodology/corr-heatmap.png" loading="lazy" />
         <table>
           <tr>
             <th>变量</th>
@@ -129,11 +129,11 @@
       <h2>三、关系可视化</h2>
       <div class="card">
         <h3>4.1 两两散点（含回归线）</h3>
-        <img alt="两两散点" src="/methodology/pairwise-scatter.png" />
+        <img alt="两两散点" src="/methodology/pairwise-scatter.png" loading="lazy" />
         <h3>4.2 各变量分布</h3>
-        <img alt="分布" src="/methodology/distributions.png" />
+        <img alt="分布" src="/methodology/distributions.png" loading="lazy" />
         <h3>4.3 三维散点（Yield–Vix–Loss）</h3>
-        <img alt="三维散点" src="/methodology/scatter-3d.png" />
+        <img alt="三维散点" src="/methodology/scatter-3d.png" loading="lazy" />
         <div class="note">
           Vix–Loss 散点呈紧密负向带状结构，是三者关系的骨架；Yield 轴上高收益样本点分布更分散，对 Loss 的解释力弱于
           Vix。
@@ -200,7 +200,7 @@
         </div>
 
         <h3>4.3 残差诊断</h3>
-        <img alt="残差诊断" src="/methodology/residual-diag.png" />
+        <img alt="残差诊断" src="/methodology/residual-diag.png" loading="lazy" />
         <div class="note">
           残差围绕 0 随机分布、近似对称，无明显异方差或弯曲结构，线性模型设定基本合理，右尾略存重损失样本。
         </div>
@@ -229,7 +229,7 @@
             <td>3.1017</td>
           </tr>
         </table>
-        <img alt="预测Loss实际vs预测(RF)" src="/methodology/pred-loss-rf.png" />
+        <img alt="预测Loss实际vs预测(RF)" src="/methodology/pred-loss-rf.png" loading="lazy" />
 
         <h3>5.2 预测 Yield（特征：Vix, Loss）</h3>
         <table>
@@ -252,7 +252,7 @@
             <td>11.2874</td>
           </tr>
         </table>
-        <img alt="预测Yield实际vs预测(RF)" src="/methodology/pred-yield-rf.png" />
+        <img alt="预测Yield实际vs预测(RF)" src="/methodology/pred-yield-rf.png" loading="lazy" />
 
         <h3>5.3 预测 Vix（特征：Yield, Loss）</h3>
         <table>
@@ -275,7 +275,7 @@
             <td>0.2088</td>
           </tr>
         </table>
-        <img alt="预测Vix实际vs预测(RF)" src="/methodology/pred-vix-rf.png" />
+        <img alt="预测Vix实际vs预测(RF)" src="/methodology/pred-vix-rf.png" loading="lazy" />
         <div class="note">
           Loss 与 Vix 均可被高精度预测（R²≈0.95），说明二者近乎由彼此及收益线性决定；而
           Yield（收益）最难预测（R²≈0.6–0.68），印证"收益包含较多不可由风险/损失解释的噪声"。

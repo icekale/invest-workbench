@@ -10,16 +10,20 @@
         </t-card>
       </t-col>
       <t-col :xs="6" :sm="6" :xl="3">
-        <t-card :bordered="false" class="alert-kpi-card danger-card">
+        <t-card :bordered="false" class="alert-kpi-card">
           <div class="kpi-label">触及止损 / 破损</div>
-          <div class="kpi-value num-hero">{{ dangerCount }}</div>
+          <div class="kpi-value num-hero" :style="{ color: dangerCount ? 'var(--guanlan-gain)' : 'inherit' }">
+            {{ dangerCount }}
+          </div>
           <div class="kpi-tip">严格执行风控纪律</div>
         </t-card>
       </t-col>
       <t-col :xs="6" :sm="6" :xl="3">
-        <t-card :bordered="false" class="alert-kpi-card warning-card">
+        <t-card :bordered="false" class="alert-kpi-card">
           <div class="kpi-label">目标止盈 / 需复核</div>
-          <div class="kpi-value num-hero">{{ warningCount }}</div>
+          <div class="kpi-value num-hero" :style="{ color: warningCount ? 'var(--guanlan-warning)' : 'inherit' }">
+            {{ warningCount }}
+          </div>
           <div class="kpi-tip">锁定收益或检视逻辑</div>
         </t-card>
       </t-col>
@@ -61,7 +65,7 @@
 
       <!-- 提醒列表 -->
       <div v-else class="alerts-grid">
-        <div v-for="item in filteredAlerts" :key="item.id" class="alert-item-card" :class="`border-${item.level}`">
+        <div v-for="item in filteredAlerts" :key="item.id" class="alert-item-card" :class="`level-${item.level}`">
           <div class="alert-card-head">
             <div class="alert-head-left">
               <t-tag size="small" :theme="levelTheme(item.level)" variant="light">{{ typeLabel(item.type) }}</t-tag>
@@ -237,16 +241,9 @@ function saveConfig() {
 <style scoped>
 .alert-kpi-card {
   background: var(--guanlan-surface-soft);
+  border: 1px solid var(--guanlan-line);
   border-radius: 8px;
   padding: 14px 16px;
-}
-
-.danger-card {
-  border-left: 3px solid var(--guanlan-red);
-}
-
-.warning-card {
-  border-left: 3px solid var(--guanlan-amber);
 }
 
 .kpi-label {
@@ -279,22 +276,30 @@ function saveConfig() {
 
 .alert-item-card {
   padding: 14px 16px;
-  background: var(--guanlan-surface-soft);
+  background: var(--td-bg-color-container);
   border: 1px solid var(--guanlan-line);
   border-radius: 8px;
   transition: all 0.2s ease;
 }
 
-.border-danger {
-  border-left: 4px solid var(--guanlan-red);
+.alert-item-card:hover {
+  border-color: var(--td-component-stroke);
+  box-shadow: var(--td-shadow-1);
 }
 
-.border-warning {
-  border-left: 4px solid var(--guanlan-amber);
+.level-danger {
+  border-color: rgb(184 67 62 / 28%);
+  background: linear-gradient(180deg, rgb(184 67 62 / 4%) 0%, var(--td-bg-color-container) 100%);
 }
 
-.border-info {
-  border-left: 4px solid var(--guanlan-blue);
+.level-warning {
+  border-color: rgb(184 120 45 / 28%);
+  background: linear-gradient(180deg, rgb(184 120 45 / 4%) 0%, var(--td-bg-color-container) 100%);
+}
+
+.level-info {
+  border-color: rgb(53 105 187 / 28%);
+  background: linear-gradient(180deg, rgb(53 105 187 / 4%) 0%, var(--td-bg-color-container) 100%);
 }
 
 .alert-card-head {
