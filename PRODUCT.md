@@ -20,7 +20,7 @@ web
 
 ## Operating Context
 
-本地 Vite 开发，生产 Nginx 反代。持仓、待办、论文、复盘记在浏览器 localStorage。每天先开驾驶舱，再进公募研究。账号 `xiong` / `demo`。
+本地 Vite 开发，生产 Nginx 反代。持仓、待办、论文、复盘记在浏览器 localStorage。每天先开驾驶舱，再进公募研究。账号 `xiong` / `demo`。桌面为主，手机浏览器用抽屉导航扫仓，不另做 App。
 
 ## Capabilities and Constraints
 

@@ -40,6 +40,39 @@
   }
 }
 
+@media (width <= 767px) {
+  .t-layout.t-layout--with-sider > .t-layout {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .t-layout__sider {
+    width: 0 !important;
+    overflow: visible;
+  }
+
+  .@{starter-prefix}-side-nav-placeholder,
+  .@{starter-prefix}-side-nav-placeholder-hidden {
+    display: none;
+    flex-basis: 0;
+    min-width: 0;
+  }
+
+  .@{starter-prefix}-side-nav {
+    transform: translate3d(-100%, 0, 0);
+  }
+
+  html[data-mobile-nav='open'] .@{starter-prefix}-side-nav {
+    z-index: 1100;
+    transform: none;
+    box-shadow: var(--td-shadow-3);
+  }
+
+  .@{starter-prefix}-layout {
+    height: calc(100dvh - 56px - 52px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+
 .t-menu--dark .t-menu__operations .t-icon {
   color: rgb(255 255 255 / 55%);
 

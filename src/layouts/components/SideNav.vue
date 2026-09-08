@@ -156,9 +156,14 @@ const router = useRouter();
 const settingStore = useSettingStore();
 
 const autoCollapsed = () => {
-  const isCompact = window.innerWidth <= MIN_POINT;
+  const width = window.innerWidth;
+  if (width <= 767) {
+    settingStore.updateConfig({ isSidebarCompact: false, mobileNavOpen: false });
+    return;
+  }
   settingStore.updateConfig({
-    isSidebarCompact: isCompact,
+    isSidebarCompact: width <= MIN_POINT,
+    mobileNavOpen: false,
   });
 };
 

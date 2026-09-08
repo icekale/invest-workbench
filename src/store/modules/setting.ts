@@ -12,6 +12,7 @@ import { generateColorMap, insertThemeStylesheet } from '@/utils/color';
 const state: Record<string, any> = {
   ...STYLE_CONFIG,
   showSettingPanel: false,
+  mobileNavOpen: false,
   colorList: {} as TColorSeries,
   chartColors: LIGHT_CHART_COLORS,
 };

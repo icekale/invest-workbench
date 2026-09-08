@@ -2,6 +2,9 @@
   <div :class="layoutCls">
     <t-head-menu :class="menuCls" :theme="menuTheme" expand-type="popup" :value="active">
       <template #logo>
+        <t-button class="guanlan-menu-btn" variant="text" shape="square" @click="toggleMobileNav">
+          <template #icon><t-icon name="view-list" /></template>
+        </t-button>
         <h1 v-if="layout === 'side'" class="guanlan-topbar-title">{{ t('common.appName') }}</h1>
         <span v-else-if="showLogo" class="header-logo-container" @click="handleNav('/dashboard/index')">
           {{ t('common.appName') }}
@@ -42,7 +45,7 @@ import { useRouter } from 'vue-router';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';
-import { useUserStore } from '@/store';
+import { useSettingStore, useUserStore } from '@/store';
 import type { MenuRoute, ModeType } from '@/types/interface';
 
 import MenuContent from './MenuContent.vue';
@@ -81,6 +84,11 @@ const { theme, layout, showLogo, menu, isFixed, isCompact } = defineProps({
 
 const router = useRouter();
 const user = useUserStore();
+const settingStore = useSettingStore();
+
+const toggleMobileNav = () => {
+  settingStore.mobileNavOpen = !settingStore.mobileNavOpen;
+};
 
 const active = computed(() => getActive());
 
@@ -134,6 +142,14 @@ const handleLogout = () => {
 
       &-compact {
         left: 64px;
+      }
+
+      @media (width <= 767px) {
+        left: 0;
+
+        &-compact {
+          left: 0;
+        }
       }
     }
   }

@@ -386,3 +386,125 @@ body {
 .t-radio-group .t-radio-button {
   border-radius: 8px;
 }
+
+.guanlan-menu-btn,
+.guanlan-tabbar {
+  display: none;
+}
+
+.guanlan-nav-mask {
+  display: none;
+}
+
+@media (width <= 767px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .guanlan-menu-btn {
+    display: none;
+  }
+
+  .guanlan-nav-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    background: rgb(20 33 43 / 45%);
+  }
+
+  .t-head-menu .t-menu__logo:not(:empty) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .t-head-menu .t-head-menu__inner {
+    height: calc(56px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0 4px;
+  }
+
+  .guanlan-topbar-title {
+    overflow: hidden;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+  }
+
+  .guanlan-topbar-date,
+  .header-menu-search,
+  .header-user-account,
+  .header-user-btn .t-button__suffix {
+    display: none;
+  }
+
+  .tdesign-starter-content-layout {
+    padding: 12px;
+  }
+
+  .guanlan-tabbar {
+    display: flex;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+    height: calc(52px + env(safe-area-inset-bottom));
+    padding: 0 8px env(safe-area-inset-bottom);
+    border-top: 1px solid var(--guanlan-line);
+    background: var(--guanlan-surface);
+    box-shadow: 0 -8px 24px rgb(24 40 51 / 4%);
+  }
+
+  .guanlan-tabbar-item {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    color: var(--guanlan-muted);
+    font-size: 11px;
+    line-height: 1.2;
+    text-decoration: none;
+    gap: 2px;
+  }
+
+  .guanlan-tabbar-icon {
+    font-size: 20px;
+  }
+
+  .guanlan-tabbar-item.is-active {
+    color: var(--guanlan-accent);
+    font-weight: 600;
+  }
+
+  .t-default-menu.t-menu--dark .t-menu__item {
+    height: 44px;
+  }
+
+  .t-default-menu .t-menu__operations .t-button {
+    display: none;
+  }
+
+  .t-table__content {
+    overflow-x: auto;
+  }
+
+  .t-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: 480px;
+  }
+
+  .t-input .t-input__inner,
+  .t-textarea__inner {
+    font-size: 16px;
+  }
+}
+
+@media (pointer: coarse) {
+  .t-button {
+    min-height: 40px;
+  }
+}

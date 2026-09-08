@@ -19,6 +19,8 @@
         </t-layout>
       </t-layout>
     </template>
+    <div v-show="settingStore.mobileNavOpen" class="guanlan-nav-mask" @click="settingStore.mobileNavOpen = false" />
+    <mobile-tab-bar />
     <setting-com />
   </div>
 </template>
@@ -26,7 +28,7 @@
 import '@/style/layout.less';
 
 import { storeToRefs } from 'pinia';
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { prefix } from '@/config/global';
@@ -35,6 +37,7 @@ import { useSettingStore, useTabsRouterStore } from '@/store';
 import LayoutContent from './components/LayoutContent.vue';
 import LayoutHeader from './components/LayoutHeader.vue';
 import LayoutSideNav from './components/LayoutSideNav.vue';
+import MobileTabBar from './components/MobileTabBar.vue';
 import SettingCom from './setting.vue';
 
 const route = useRoute();
@@ -59,15 +62,35 @@ const appendNewRoute = () => {
   tabsRouterStore.appendTabRouterList({ path, query, title: titleObj, name, isAlive: true, meta: route.meta });
 };
 
+const onEsc = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') settingStore.mobileNavOpen = false;
+};
+
 onMounted(() => {
   appendNewRoute();
+  window.addEventListener('keydown', onEsc);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onEsc);
+  document.body.style.overflow = '';
+  document.documentElement.setAttribute('data-mobile-nav', '');
 });
 
 watch(
   () => route.path,
   () => {
     appendNewRoute();
+    settingStore.mobileNavOpen = false;
     document.querySelector(`.${prefix}-layout`)?.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+);
+
+watch(
+  () => settingStore.mobileNavOpen,
+  (open) => {
+    document.documentElement.setAttribute('data-mobile-nav', open ? 'open' : '');
+    document.body.style.overflow = open ? 'hidden' : '';
   },
 );
 </script>
