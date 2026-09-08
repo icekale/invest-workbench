@@ -1,22 +1,37 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
-    <t-space align="center" break-line>
-      <span style="color: var(--td-text-color-secondary)">今天先管理风险，再寻找值得下注的赔率。</span>
-      <t-space break-line>
-        <t-button variant="outline" :loading="invest.quoteLoading" @click="refresh()">刷新行情</t-button>
-        <t-button variant="outline" @click="exportSnap">导出快照</t-button>
-        <t-button variant="outline" @click="triggerImport">导入快照</t-button>
-        <t-button variant="outline" @click="router.push('/review')">记录复盘</t-button>
-        <t-button theme="primary" @click="editOpen = true">编辑持仓</t-button>
-      </t-space>
-    </t-space>
+    <div class="dash-action-bar">
+      <span class="dash-slogan">今天先管理风险，再寻找值得下注的赔率。</span>
+      <div class="dash-btn-group">
+        <t-button variant="outline" size="small" :loading="invest.quoteLoading" @click="refresh()">
+          <template #icon><t-icon name="refresh" /></template>
+          刷新行情
+        </t-button>
+        <t-button variant="outline" size="small" @click="exportSnap">
+          <template #icon><t-icon name="download" /></template>
+          导出快照
+        </t-button>
+        <t-button variant="outline" size="small" @click="triggerImport">
+          <template #icon><t-icon name="upload" /></template>
+          导入快照
+        </t-button>
+        <t-button variant="outline" size="small" @click="router.push('/review')">
+          <template #icon><t-icon name="chart" /></template>
+          记录复盘
+        </t-button>
+        <t-button theme="primary" size="small" @click="editOpen = true">
+          <template #icon><t-icon name="edit" /></template>
+          编辑持仓
+        </t-button>
+      </div>
+    </div>
     <t-alert v-if="closed" theme="warning" message="今日休市，展示最近交易日收盘价" />
     <t-tabs v-model="tab" @change="onTab">
       <t-tab-panel value="stock" label="股票账户">
-        <account-panel title="股票账户" :rows="invest.stockRows" :cash="invest.cash.stock" />
+        <account-panel title="股票账户" :rows="invest.stockRows" :cash="invest.cash.stock" @edit="editOpen = true" />
       </t-tab-panel>
       <t-tab-panel value="etf" label="ETF 账户">
-        <account-panel title="ETF 账户" :rows="invest.etfRows" :cash="invest.cash.etf" />
+        <account-panel title="ETF 账户" :rows="invest.etfRows" :cash="invest.cash.etf" @edit="editOpen = true" />
       </t-tab-panel>
     </t-tabs>
     <holdings-editor v-model:visible="editOpen" />
@@ -131,3 +146,44 @@ function handleFileChange(e: Event) {
   reader.readAsText(file);
 }
 </script>
+<style scoped>
+.dash-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dash-slogan {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.dash-btn-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (width <= 767px) {
+  .dash-action-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dash-btn-group {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+
+    :deep(.t-button) {
+      flex-shrink: 0;
+    }
+  }
+}
+</style>

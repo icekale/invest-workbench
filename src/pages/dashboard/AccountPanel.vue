@@ -1,8 +1,8 @@
 <template>
   <t-space class="panel" direction="vertical" :size="16" style="width: 100%">
-    <t-row :gutter="[16, 16]">
-      <t-col :xs="12" :sm="6" :xl="3">
-        <t-card>
+    <t-row :gutter="[12, 12]" class="kpi-row">
+      <t-col :xs="6" :sm="6" :xl="3">
+        <t-card class="stat-card">
           <t-statistic title="持仓市值" :value="stats.mv ?? 0" :precision="2" :loading="stats.mv == null">
             <template #extra>
               <span :style="{ color: pnlColor(stats.pnl) }">
@@ -12,15 +12,15 @@
           </t-statistic>
         </t-card>
       </t-col>
-      <t-col :xs="12" :sm="6" :xl="3">
-        <t-card>
+      <t-col :xs="6" :sm="6" :xl="3">
+        <t-card class="stat-card">
           <t-statistic title="持仓成本" :value="stats.cost" :precision="2">
             <template #extra>仓位 {{ pctInt(stats.pos) }} · 现金 {{ pctInt(stats.cashPct) }}</template>
           </t-statistic>
         </t-card>
       </t-col>
-      <t-col :xs="12" :sm="6" :xl="3">
-        <t-card>
+      <t-col :xs="6" :sm="6" :xl="3">
+        <t-card class="stat-card">
           <t-statistic
             title="浮动盈亏"
             :value="stats.pnl ?? 0"
@@ -32,8 +32,8 @@
           </t-statistic>
         </t-card>
       </t-col>
-      <t-col :xs="12" :sm="6" :xl="3">
-        <t-card>
+      <t-col :xs="6" :sm="6" :xl="3">
+        <t-card class="stat-card">
           <t-statistic title="持仓健康度" :value="health.total" suffix="/100">
             <template #extra>{{ note }}</template>
           </t-statistic>
@@ -48,31 +48,150 @@
             <template #actions><span class="card-cap">单位净值 · 近 30 个交易日</span></template>
             <div ref="lineEl" class="nav-line" />
           </t-card>
-          <t-card title="持仓与买卖点">
+          <t-card class="gl-mod holdings-mod" title="持仓与买卖点">
+            <template #actions>
+              <span class="card-cap">{{ sorted.length }} 只标的 · 动态建议</span>
+            </template>
             <t-empty v-if="!rows.length" description="还没有持仓" />
-            <div v-else class="table-wrap">
-              <t-table :data="sorted" :columns="columns" row-key="code" size="small">
-                <template #name="{ row }">
-                  <div class="symbol-cell">
-                    <div class="symbol-name">{{ row.name }}</div>
-                    <t-space :size="4" class="symbol-tags">
-                      <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
-                      <t-tag v-if="row.tag" size="small" variant="light">{{ row.tag }}</t-tag>
-                    </t-space>
+            <div v-else class="holdings-module">
+              <!-- 移动端轻量快捷筛选 -->
+              <div v-if="sorted.length > 1" class="mobile-filter-row">
+                <button
+                  v-for="f in filterOptions"
+                  :key="f.key"
+                  type="button"
+                  class="m-filter-pill"
+                  :class="{ 'is-active': currentFilter === f.key }"
+                  @click="currentFilter = f.key"
+                >
+                  <span>{{ f.label }}</span>
+                  <span class="pill-count">{{ f.count }}</span>
+                </button>
+              </div>
+
+              <!-- 桌面端表格 (>= 768px) -->
+              <div class="desktop-table-wrap">
+                <t-table :data="sorted" :columns="columns" row-key="code" size="small">
+                  <template #name="{ row }">
+                    <div class="symbol-cell">
+                      <div class="symbol-name">{{ row.name }}</div>
+                      <t-space :size="4" class="symbol-tags">
+                        <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
+                        <t-tag v-if="row.tag" size="small" variant="light">{{ row.tag }}</t-tag>
+                      </t-space>
+                    </div>
+                  </template>
+                  <template #mv="{ row }">{{ money(row.marketValue) }}</template>
+                  <template #cost="{ row }">{{ px(row.cost) }}</template>
+                  <template #last="{ row }">{{ row.last == null ? '—' : px(row.last) }}</template>
+                  <template #pnl="{ row }">
+                    <span :style="{ color: pnlColor(row.pnlPct) }">{{ pct(row.pnlPct) }}</span>
+                  </template>
+                  <template #action="{ row }">
+                    <t-tag size="small" variant="light" :theme="actionTheme[row.action]">{{
+                      actionMap[row.action]
+                    }}</t-tag>
+                  </template>
+                </t-table>
+              </div>
+
+              <!-- 移动端原生金融卡片流 (<= 767px) -->
+              <div class="mobile-cards-stream">
+                <div
+                  v-for="row in displayedRows"
+                  :key="row.code"
+                  class="m-pos-card"
+                  :class="`border-act-${row.action}`"
+                  @click="emit('edit')"
+                >
+                  <!-- 顶部标的信息与买卖点动作 -->
+                  <div class="m-pos-header">
+                    <div class="m-pos-symbol">
+                      <div class="m-symbol-main">
+                        <span class="m-stock-name">{{ row.name }}</span>
+                        <span class="code-mono">{{ shortCode(row.code) }}</span>
+                      </div>
+                      <div class="m-symbol-sub">
+                        <t-tag v-if="row.tag" size="small" variant="light" class="m-tag">{{ row.tag }}</t-tag>
+                        <span class="m-sub-qty">
+                          {{ row.quantity.toLocaleString() }} {{ account === 'etf' ? '份' : '股' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- 醒目的买卖点动作徽章 -->
+                    <div class="m-action-tag" :class="`act-${row.action}`">
+                      <span class="act-pulse"></span>
+                      <span class="act-name">{{ actionMap[row.action] }}</span>
+                    </div>
                   </div>
-                </template>
-                <template #mv="{ row }">{{ money(row.marketValue) }}</template>
-                <template #cost="{ row }">{{ px(row.cost) }}</template>
-                <template #last="{ row }">{{ row.last == null ? '—' : px(row.last) }}</template>
-                <template #pnl="{ row }">
-                  <span :style="{ color: pnlColor(row.pnlPct) }">{{ pct(row.pnlPct) }}</span>
-                </template>
-                <template #action="{ row }">
-                  <t-tag size="small" variant="light" :theme="actionTheme[row.action]">{{
-                    actionMap[row.action]
-                  }}</t-tag>
-                </template>
-              </t-table>
+
+                  <!-- 核心 3 列金融指标网格 -->
+                  <div class="m-pos-grid">
+                    <!-- 第 1 列：现价 / 成本 -->
+                    <div class="m-grid-col">
+                      <span class="col-lbl">现价 / 成本</span>
+                      <div class="col-val-row">
+                        <span class="col-price tabular-nums" :style="{ color: priceChangeColor(row) }">
+                          {{ row.last == null ? '—' : px(row.last) }}
+                        </span>
+                        <span
+                          v-if="row.changePct != null"
+                          class="col-day-chg tabular-nums"
+                          :style="{ color: pnlColor(row.changePct) }"
+                        >
+                          {{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct.toFixed(2) }}%
+                        </span>
+                      </div>
+                      <span class="col-sub tabular-nums">成本 {{ px(row.cost) }}</span>
+                    </div>
+
+                    <!-- 第 2 列：持仓市值 / 占比 -->
+                    <div class="m-grid-col text-center">
+                      <span class="col-lbl">持仓市值</span>
+                      <div class="col-val-row justify-center">
+                        <span class="col-mv tabular-nums">{{ money(row.marketValue) }}</span>
+                      </div>
+                      <span class="col-sub">占比 {{ calcWeight(row.marketValue) }}</span>
+                    </div>
+
+                    <!-- 第 3 列：浮动盈亏 -->
+                    <div class="m-grid-col text-right">
+                      <span class="col-lbl">浮动盈亏</span>
+                      <div class="col-val-row justify-end">
+                        <span class="col-pnl-pill tabular-nums" :class="pnlClass(row.pnlPct)">
+                          {{ pct(row.pnlPct) }}
+                        </span>
+                      </div>
+                      <span class="col-sub tabular-nums" :style="{ color: pnlColor(row.pnl) }">
+                        {{ signed(row.pnl) }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- 买卖点建议 / 纪律风控提示条 -->
+                  <div v-if="alertMap[row.code]" class="m-alert-box" :class="`lvl-${alertMap[row.code].level}`">
+                    <t-icon name="error-circle-filled" size="14px" class="box-icon" />
+                    <div class="box-text">
+                      <span class="box-title">{{ alertMap[row.code].title }}:</span>
+                      <span class="box-desc">{{ alertMap[row.code].detail }}</span>
+                    </div>
+                  </div>
+                  <div v-else-if="row.action !== 'hold'" class="m-guide-box" :class="`guide-${row.action}`">
+                    <t-icon
+                      :name="row.action === 'add' ? 'add-circle-filled' : 'info-circle-filled'"
+                      size="14px"
+                      class="box-icon"
+                    />
+                    <span class="box-desc">{{ getActionGuide(row) }}</span>
+                  </div>
+                </div>
+
+                <!-- 筛选空状态 -->
+                <div v-if="!displayedRows.length" class="m-filter-empty">
+                  <span>该分类下暂无标的</span>
+                </div>
+              </div>
             </div>
           </t-card>
         </t-space>
@@ -161,6 +280,7 @@ interface Row {
 }
 
 const props = defineProps<{ title: string; rows: Row[]; cash: number }>();
+const emit = defineEmits<{ (e: 'edit'): void }>();
 
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
@@ -262,6 +382,75 @@ watch(
 const sorted = computed(() =>
   [...props.rows].sort((a, b) => (actionRank[a.action] ?? 9) - (actionRank[b.action] ?? 9)),
 );
+
+// 买卖点与风控提醒映射
+const alertMap = computed(() => {
+  const map: Record<string, (typeof invest.activeAlerts)[number]> = {};
+  for (const a of invest.activeAlerts) {
+    if (a.account === account.value) {
+      map[a.code] = a;
+    }
+  }
+  return map;
+});
+
+// 组合总市值与标的占比
+const totalMarketValue = computed(() => props.rows.reduce((sum, r) => sum + (r.marketValue ?? 0), 0));
+
+function calcWeight(mv: number | null): string {
+  if (!mv || !totalMarketValue.value) return '—';
+  return `${((mv / totalMarketValue.value) * 100).toFixed(1)}%`;
+}
+
+function priceChangeColor(row: Row): string {
+  if (row.changePct == null || row.changePct === 0) return 'var(--td-text-color-primary)';
+  return row.changePct > 0 ? 'var(--guanlan-gain, #b8433e)' : 'var(--guanlan-loss, #16815f)';
+}
+
+function pnlClass(pctVal: number | null): string {
+  if (pctVal == null || pctVal === 0) return 'pnl-neutral';
+  return pctVal > 0 ? 'pnl-gain' : 'pnl-loss';
+}
+
+function getActionGuide(row: Row): string {
+  const diff = row.pnlPct != null ? `${(row.pnlPct * 100).toFixed(1)}%` : '';
+  if (row.action === 'add') {
+    return `标的现处于加仓估值区间${diff ? `（浮动 ${diff}）` : ''}，可按计划分批补仓`;
+  }
+  if (row.action === 'reduce') {
+    return `收益已达 ${diff || '目标位'}，触及观察/减仓区间，建议分批锁定利润`;
+  }
+  if (row.action === 'exit') {
+    return '已触及止盈/止损离场线，建议严格落实交易纪律';
+  }
+  return '';
+}
+
+// 移动端轻量快捷筛选
+const currentFilter = ref<'all' | 'action' | 'gain' | 'loss'>('all');
+const actionCount = computed(() => sorted.value.filter((r) => r.action !== 'hold' || alertMap.value[r.code]).length);
+const gainCount = computed(() => sorted.value.filter((r) => (r.pnl ?? 0) > 0).length);
+const lossCount = computed(() => sorted.value.filter((r) => (r.pnl ?? 0) < 0).length);
+
+const filterOptions = computed(() => [
+  { key: 'all' as const, label: '全部', count: sorted.value.length },
+  ...(actionCount.value > 0 ? [{ key: 'action' as const, label: '需关注', count: actionCount.value }] : []),
+  { key: 'gain' as const, label: '盈利', count: gainCount.value },
+  { key: 'loss' as const, label: '浮亏', count: lossCount.value },
+]);
+
+const displayedRows = computed(() => {
+  if (currentFilter.value === 'action') {
+    return sorted.value.filter((r) => r.action !== 'hold' || alertMap.value[r.code]);
+  }
+  if (currentFilter.value === 'gain') {
+    return sorted.value.filter((r) => (r.pnl ?? 0) > 0);
+  }
+  if (currentFilter.value === 'loss') {
+    return sorted.value.filter((r) => (r.pnl ?? 0) < 0);
+  }
+  return sorted.value;
+});
 
 const columns = [
   { colKey: 'name', title: '标的', minWidth: 180 },
@@ -366,6 +555,16 @@ onUnmounted(() => {
 .table-wrap {
   overflow-x: auto;
   max-width: 100%;
+}
+
+.desktop-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.mobile-filter-row,
+.mobile-cards-stream {
+  display: none;
 }
 
 .gl-mod :deep(.t-card__header) {
@@ -565,6 +764,392 @@ onUnmounted(() => {
   .alloc {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+/* 移动端持仓与买卖点卡片流适配 (<= 767px) */
+@media (width <= 767px) {
+  .desktop-table-wrap {
+    display: none !important;
+  }
+
+  .stat-card {
+    :deep(.t-card__body) {
+      padding: 12px 10px;
+    }
+
+    :deep(.t-statistic__title) {
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    :deep(.t-statistic__content) {
+      font-size: clamp(16px, 4.2vw, 22px);
+      line-height: 26px;
+    }
+
+    :deep(.t-statistic__extra) {
+      font-size: 11px;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .mobile-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .m-filter-pill {
+    border: 1px solid var(--guanlan-line, #e6eaed);
+    background: var(--td-bg-color-container, #fff);
+    border-radius: 14px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--guanlan-muted, #5e6c76);
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+
+    .pill-count {
+      font-size: 10px;
+      opacity: 0.8;
+      font-variant-numeric: tabular-nums;
+    }
+
+    &.is-active {
+      background: var(--td-brand-color, #0d706d);
+      border-color: var(--td-brand-color, #0d706d);
+      color: #fff;
+      font-weight: 500;
+    }
+  }
+
+  .mobile-cards-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .m-pos-card {
+    background: var(--td-bg-color-container, #fff);
+    border: 1px solid var(--guanlan-line, #e6eaed);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition:
+      transform 0.1s ease,
+      box-shadow 0.15s ease;
+    cursor: pointer;
+    user-select: none;
+
+    &:active {
+      transform: scale(0.99);
+      background: var(--td-bg-color-secondarycontainer, #f7f9fa);
+    }
+
+    &.border-act-add {
+      border-left: 3px solid var(--guanlan-gain, #b8433e);
+    }
+
+    &.border-act-reduce {
+      border-left: 3px solid var(--guanlan-warning, #b8782d);
+    }
+
+    &.border-act-exit {
+      border-left: 3px solid var(--guanlan-gain, #b8433e);
+    }
+
+    &.border-act-hold {
+      border-left: 3px solid transparent;
+    }
+  }
+
+  .m-pos-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .m-pos-symbol {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-symbol-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 20px;
+  }
+
+  .m-stock-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--guanlan-ink, #14212b);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .m-symbol-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .m-tag {
+    font-size: 11px;
+    height: 18px;
+    line-height: 18px;
+    padding: 0 4px;
+  }
+
+  .m-sub-qty {
+    font-size: 11px;
+    color: var(--td-text-color-placeholder, #8e9ba5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-action-tag {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 18px;
+
+    .act-pulse {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    &.act-add {
+      background: rgb(184 67 62 / 8%);
+      border: 1px solid rgb(184 67 62 / 25%);
+      color: var(--guanlan-gain, #b8433e);
+
+      .act-pulse {
+        background: var(--guanlan-gain, #b8433e);
+      }
+    }
+
+    &.act-reduce {
+      background: rgb(184 120 45 / 8%);
+      border: 1px solid rgb(184 120 45 / 25%);
+      color: var(--guanlan-warning, #b8782d);
+
+      .act-pulse {
+        background: var(--guanlan-warning, #b8782d);
+      }
+    }
+
+    &.act-exit {
+      background: rgb(184 67 62 / 12%);
+      border: 1px solid rgb(184 67 62 / 35%);
+      color: var(--guanlan-gain, #b8433e);
+
+      .act-pulse {
+        background: var(--guanlan-gain, #b8433e);
+      }
+    }
+
+    &.act-hold {
+      background: rgb(13 112 109 / 6%);
+      border: 1px solid rgb(13 112 109 / 18%);
+      color: var(--td-brand-color, #0d706d);
+
+      .act-pulse {
+        background: var(--td-brand-color, #0d706d);
+      }
+    }
+  }
+
+  .m-pos-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1.05fr;
+    gap: 6px;
+    padding: 8px 0;
+    border-top: 1px solid var(--guanlan-line, #f0f3f5);
+    border-bottom: 1px solid var(--guanlan-line, #f0f3f5);
+    margin-bottom: 8px;
+  }
+
+  .m-grid-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    &.text-center {
+      text-align: center;
+    }
+
+    &.text-right {
+      text-align: right;
+    }
+  }
+
+  .col-lbl {
+    font-size: 11px;
+    color: var(--td-text-color-secondary, #5e6c76);
+    line-height: 16px;
+    margin-bottom: 2px;
+  }
+
+  .col-val-row {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    line-height: 20px;
+
+    &.justify-center {
+      justify-content: center;
+    }
+
+    &.justify-end {
+      justify-content: flex-end;
+    }
+  }
+
+  .col-price,
+  .col-mv {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .col-mv {
+    color: var(--guanlan-ink, #14212b);
+  }
+
+  .col-day-chg {
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .col-pnl-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 16px;
+
+    &.pnl-gain {
+      color: var(--guanlan-gain, #b8433e);
+      background: rgb(184 67 62 / 8%);
+    }
+
+    &.pnl-loss {
+      color: var(--guanlan-loss, #16815f);
+      background: rgb(22 129 95 / 8%);
+    }
+
+    &.pnl-neutral {
+      color: var(--td-text-color-secondary);
+      background: var(--td-bg-color-secondarycontainer);
+    }
+  }
+
+  .col-sub {
+    font-size: 11px;
+    color: var(--td-text-color-placeholder, #8e9ba5);
+    line-height: 16px;
+    margin-top: 2px;
+  }
+
+  .m-alert-box,
+  .m-guide-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 18px;
+
+    .box-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .box-title {
+      font-weight: 600;
+      margin-right: 4px;
+    }
+
+    .box-desc {
+      font-size: 12px;
+    }
+  }
+
+  .m-alert-box {
+    &.lvl-danger {
+      background: rgb(184 67 62 / 6%);
+      color: var(--guanlan-gain, #b8433e);
+
+      .box-desc {
+        color: var(--guanlan-ink, #14212b);
+      }
+    }
+
+    &.lvl-warning {
+      background: rgb(184 120 45 / 8%);
+      color: var(--guanlan-warning, #b8782d);
+
+      .box-desc {
+        color: var(--guanlan-ink, #14212b);
+      }
+    }
+
+    &.lvl-info {
+      background: rgb(13 112 109 / 6%);
+      color: var(--td-brand-color, #0d706d);
+
+      .box-desc {
+        color: var(--guanlan-ink, #14212b);
+      }
+    }
+  }
+
+  .m-guide-box {
+    &.guide-add {
+      background: rgb(184 67 62 / 5%);
+      color: var(--guanlan-gain, #b8433e);
+    }
+
+    &.guide-reduce {
+      background: rgb(184 120 45 / 6%);
+      color: var(--guanlan-warning, #b8782d);
+    }
+
+    &.guide-exit {
+      background: rgb(184 67 62 / 8%);
+      color: var(--guanlan-gain, #b8433e);
+    }
+  }
+
+  .m-filter-empty {
+    text-align: center;
+    padding: 24px 0;
+    font-size: 13px;
+    color: var(--td-text-color-placeholder, #8e9ba5);
   }
 }
 </style>
