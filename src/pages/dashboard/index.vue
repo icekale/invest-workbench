@@ -149,7 +149,7 @@ function handleFileChange(e: Event) {
 .dash-action-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
 }
