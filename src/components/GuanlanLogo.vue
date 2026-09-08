@@ -161,15 +161,36 @@ const uid = Math.random().toString(36).substring(2, 8);
   /* Light Theme (e.g. for light header, docs) */
   &.theme-light {
     .brand-name {
-      color: var(--td-text-color-primary, #14212b);
+      color: var(--guanlan-ink, #14212b);
     }
 
     .brand-sep {
-      color: var(--td-brand-color, #0d706d);
+      color: var(--guanlan-gold, #dfb56d);
     }
 
     .brand-app {
-      color: var(--td-text-color-primary, #14212b);
+      color: var(--guanlan-muted, #4f5d67);
+    }
+  }
+
+  @media (width <= 480px) {
+    gap: 8px;
+
+    .brand-title {
+      font-size: 14px;
+
+      .brand-app {
+        font-size: 13px;
+      }
+    }
+  }
+
+  @media (width <= 350px) {
+    .brand-title {
+      .brand-sep,
+      .brand-app {
+        display: none;
+      }
     }
   }
 }

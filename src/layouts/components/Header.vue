@@ -1,6 +1,11 @@
 <template>
   <div :class="layoutCls">
     <t-head-menu :class="menuCls" :theme="menuTheme" expand-type="popup" :value="active">
+      <template #logo>
+        <div class="header-logo-wrap" @click="goHome">
+          <guanlan-logo theme="light" :mark-size="28" />
+        </div>
+      </template>
       <template v-if="layout !== 'side'" #default>
         <menu-content class="header-menu" :nav-data="menu" />
       </template>
@@ -33,6 +38,7 @@ import type { PropType } from 'vue';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 
+import GuanlanLogo from '@/components/GuanlanLogo.vue';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';
@@ -75,6 +81,10 @@ const { theme, layout, menu, isFixed, isCompact } = defineProps({
 
 const router = useRouter();
 const user = useUserStore();
+
+const goHome = () => {
+  router.push('/dashboard/index');
+};
 
 const active = computed(() => getActive());
 
@@ -148,6 +158,18 @@ const handleLogout = () => {
 
   :deep(.t-menu__item) {
     min-width: unset;
+  }
+}
+
+.header-logo-wrap {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+
+  &:hover {
+    opacity: 0.85;
   }
 }
 

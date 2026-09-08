@@ -360,12 +360,23 @@ body {
 }
 
 .t-head-menu .t-menu__logo {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.t-head-menu .t-menu__logo:empty {
+  display: none;
+}
+
+/* 侧栏模式下桌面端已有侧栏 Logo，顶栏内 Logo 默认隐藏 */
+.t-header-menu-fixed-side .t-menu__logo {
   display: none;
 }
 
 .t-head-menu .t-head-menu__inner {
   height: 64px;
-  padding: 0 28px 0 8px;
+  padding: 0 28px 0 16px;
   border-bottom: 1px solid var(--guanlan-line);
 }
 
@@ -497,7 +508,16 @@ body {
 
   .t-head-menu .t-head-menu__inner {
     height: calc(56px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 12px 0 4px;
+    padding: env(safe-area-inset-top) 12px 0;
+  }
+
+  /* 移动端侧栏隐藏，顶栏左侧常驻显示 Logo */
+  .t-head-menu .t-menu__logo,
+  .t-header-menu-fixed-side .t-menu__logo {
+    display: flex !important;
+    align-items: center;
+    height: 100%;
+    margin-right: auto;
   }
 
   .guanlan-topbar-title {
