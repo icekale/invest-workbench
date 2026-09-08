@@ -35,6 +35,14 @@ export interface SmartPortfolio {
   funds: { code: string; weight: number }[];
 }
 
+export interface CustomPortfolio {
+  id: string;
+  name: string;
+  desc: string;
+  maxLoss: number;
+  codes: string[];
+}
+
 export interface PlanTarget {
   code: string;
   account: AccountId;

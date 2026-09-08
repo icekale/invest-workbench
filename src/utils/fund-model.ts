@@ -488,6 +488,24 @@ export function matchPortfolio(funds: SampleFund[], maxLoss: number): SampleFund
   return [...picked.values()].map((x) => x.f);
 }
 
+export function portfolioStats(funds: SampleFund[]) {
+  const avg = (pick: (f: SampleFund) => number | null | undefined) => {
+    const xs = funds.map(pick).filter((v): v is number => v != null && Number.isFinite(v));
+    if (!xs.length) return 0;
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+  };
+  return {
+    yield: avg((f) => f.yield),
+    vix: avg((f) => f.vix),
+    loss: avg((f) => f.loss),
+    ret1y: avg((f) => f.ret1y),
+    inst: avg((f) => f.inst),
+    shares: avg((f) => f.shares),
+    bonds: avg((f) => f.bonds),
+    cash: avg((f) => f.cash),
+  };
+}
+
 export const FUND_TYPES = TYPES;
 
 let sampleCache: SampleFund[] | null = null;

@@ -230,6 +230,142 @@ export async function fetchFundNav(code: string, size = 250): Promise<NavPoint[]
   return parseNavBody(await res.json());
 }
 
+export interface GrowthPoint {
+  date: string;
+  value: number;
+}
+
+export function combineEqualNav(series: NavPoint[][]): GrowthPoint[] {
+  const good = series.filter((s) => s.length >= 2);
+  if (!good.length) return [];
+  const maps = good.map((s) => new Map(s.map((p) => [p.date, p.nav])));
+  const dates = [...new Set(good.flatMap((s) => s.map((p) => p.date)))].sort();
+  let start = 0;
+  while (start < dates.length && !maps.every((m) => m.has(dates[start]))) start += 1;
+  if (start >= dates.length - 1) return [];
+  const base = maps.map((m) => m.get(dates[start])!);
+  const last = base.slice();
+  const out: GrowthPoint[] = [];
+  for (let i = start; i < dates.length; i++) {
+    const d = dates[i];
+    for (let j = 0; j < maps.length; j++) {
+      const v = maps[j].get(d);
+      if (v != null) last[j] = v;
+    }
+    const growth = last.reduce((s, n, j) => s + n / base[j], 0) / last.length;
+    out.push({ date: d, value: Math.round((growth - 1) * 10000) / 100 });
+  }
+  return out;
+}
+
+export function periodReturn(points: GrowthPoint[], months: number): number | null {
+  if (points.length < 2) return null;
+  const end = points[points.length - 1];
+  const t = Date.parse(`${end.date}T00:00:00`);
+  if (!Number.isFinite(t)) return null;
+  const cut = new Date(t);
+  cut.setMonth(cut.getMonth() - months);
+  const cutStr = `${cut.getFullYear()}-${String(cut.getMonth() + 1).padStart(2, '0')}-${String(cut.getDate()).padStart(2, '0')}`;
+  const start = points.find((p) => p.date >= cutStr) ?? points[0];
+  const a = 1 + start.value / 100;
+  const b = 1 + end.value / 100;
+  if (a <= 0) return null;
+  return Math.round((b / a - 1) * 10000) / 100;
+}
+
+export const HIST_LABELS = ['<-2%', '-2~-1', '-1~0', '0~1', '1~2', '>2%'] as const;
+
+function histBucket(d: number): number {
+  if (d < -2) return 0;
+  if (d < -1) return 1;
+  if (d < 0) return 2;
+  if (d < 1) return 3;
+  if (d < 2) return 4;
+  return 5;
+}
+
+export function dailyReturnHist(points: GrowthPoint[]) {
+  const buckets = HIST_LABELS.map((label) => ({ label, n: 0 }));
+  let up = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = 1 + points[i - 1].value / 100;
+    const b = 1 + points[i].value / 100;
+    if (a <= 0) continue;
+    const d = (b / a - 1) * 100;
+    if (d > 0) up += 1;
+    buckets[histBucket(d)].n += 1;
+  }
+  return { buckets, up, days: Math.max(0, points.length - 1) };
+}
+
+export interface HoldingSlice {
+  name: string;
+  code: string;
+  kind: '股票' | '债券';
+  weight: number;
+}
+
+export function parsePositionBody(json: unknown): HoldingSlice[] {
+  const d = (json as { Datas?: unknown }).Datas;
+  if (!d || typeof d !== 'object') return [];
+  const row = d as Record<string, unknown>;
+  const out: HoldingSlice[] = [];
+  const stocks = Array.isArray(row.fundStocks) ? row.fundStocks : [];
+  for (const x of stocks) {
+    if (!x || typeof x !== 'object') continue;
+    const r = x as Record<string, unknown>;
+    const name = String(r.GPJC ?? '').trim();
+    const code = String(r.GPDM ?? '').trim();
+    const w = num(r.JZBL);
+    if (!name || w == null || w <= 0) continue;
+    out.push({ name, code, kind: '股票', weight: w });
+  }
+  const bonds = Array.isArray(row.fundboods) ? row.fundboods : [];
+  for (const x of bonds) {
+    if (!x || typeof x !== 'object') continue;
+    const r = x as Record<string, unknown>;
+    const name = String(r.ZQMC ?? '').trim();
+    const code = String(r.ZQDM ?? '').trim();
+    const w = num(r.ZJZBL) ?? num(r.JZBL);
+    if (!name || w == null || w <= 0) continue;
+    out.push({ name, code, kind: '债券', weight: w });
+  }
+  return out;
+}
+
+export function mergePositions(bags: HoldingSlice[][]): HoldingSlice[] {
+  if (!bags.length) return [];
+  const w = 1 / bags.length;
+  const map = new Map<string, HoldingSlice>();
+  for (const bag of bags) {
+    for (const p of bag) {
+      const k = `${p.kind}:${p.code || p.name}`;
+      const prev = map.get(k);
+      const add = p.weight * w;
+      if (prev) prev.weight += add;
+      else map.set(k, { ...p, weight: add });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.weight - a.weight);
+}
+
+export async function fetchFundPosition(code: string): Promise<HoldingSlice[]> {
+  const url = `/em/FundMNewApi/FundMNInverstPosition?FCODE=${encodeURIComponent(code)}&${APP}`;
+  let last = 'fund position empty';
+  for (let i = 0; i < 2; i++) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`fund position http ${res.status}`);
+      const rows = parsePositionBody(await res.json());
+      if (rows.length) return rows;
+      last = 'fund position empty';
+    } catch (e) {
+      last = e instanceof Error ? e.message : last;
+    }
+  }
+  throw new Error(last);
+}
+
 export function fmtPct(n: number | null): string {
   return n == null ? '—' : `${n.toFixed(2)}%`;
 }

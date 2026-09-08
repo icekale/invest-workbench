@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 
 import {
+  combineEqualNav,
+  dailyReturnHist,
   isShareClass,
+  mergePositions,
   num,
   parseDetailBody,
   parseNavBody,
+  parsePositionBody,
   parseRankBody,
+  periodReturn,
   researchScore,
   riskNote,
   typeBucket,
@@ -15,9 +20,12 @@ import {
   fitMetrics,
   isRecommend,
   mapCategory,
+  matchPortfolio,
   olsFit,
   parseStatisticalCsv,
+  portfolioStats,
   predictForest,
+  riskProfile,
 } from '../src/utils/fund-model.ts';
 
 const rank = parseRankBody({
@@ -109,6 +117,60 @@ const sample = parseStatisticalCsv(
 );
 assert.equal(sample[0].type, '混合型');
 assert.equal(isRecommend(sample[0]), true);
+const pool = parseStatisticalCsv(
+  'code,name,category,risk,company,manager,size,rating,quota,institutionalProportion,shares,bonds,cash,yield,vix,loss,last1y,valueDate\n000001,华夏成长混合A,混合型,中风险,华夏,张三,20,5,-1,60,80,10,10,20,1.2,-10,18,2026-01-01\n000002,华夏成长混合C,混合型,中风险,华夏,张三,20,5,-1,60,80,10,10,21,1.2,-9,18,2026-01-01\n000003,深回撤混合,混合型,高风险,华夏,张三,20,5,-1,60,80,10,10,30,2,-20,18,2026-01-01\n000004,限额混合,混合型,中风险,华夏,张三,20,5,100,60,80,10,10,8,1,-1,8,2026-01-01\n',
+);
+const hit = matchPortfolio(pool, 12);
+assert.deepEqual(
+  hit.map((f) => f.code),
+  ['000001'],
+);
+assert.equal(riskProfile(0.6).label, '保守型');
+assert.equal(riskProfile(4).label, '平衡型');
+const st = portfolioStats(sample);
+assert.equal(st.yield, 20);
+assert.equal(st.loss, -10);
+assert.equal(portfolioStats([]).yield, 0);
+
+const g = combineEqualNav([
+  [
+    { date: '2026-01-01', nav: 1 },
+    { date: '2026-01-02', nav: 1.1 },
+    { date: '2026-02-01', nav: 1.21 },
+  ],
+  [
+    { date: '2026-01-01', nav: 2 },
+    { date: '2026-02-01', nav: 2.2 },
+  ],
+]);
+assert.equal(g[0].value, 0);
+assert.equal(g[g.length - 1].value, 15.5);
+assert.equal(periodReturn(g, 1), 15.5);
+assert.equal(combineEqualNav([[{ date: '2026-01-01', nav: 1 }]]).length, 0);
+assert.equal(periodReturn([], 1), null);
+const hist = dailyReturnHist([
+  { date: '2026-01-01', value: 0 },
+  { date: '2026-01-02', value: 1.5 },
+  { date: '2026-01-03', value: -1 },
+]);
+assert.equal(hist.days, 2);
+assert.equal(hist.up, 1);
+assert.equal(
+  hist.buckets.reduce((s, b) => s + b.n, 0),
+  2,
+);
+
+const pos = parsePositionBody({
+  Datas: {
+    fundStocks: [{ GPDM: '600519', GPJC: '贵州茅台', JZBL: '10' }],
+    fundboods: [{ ZQDM: '230023', ZQMC: '23国债23', ZJZBL: '8' }],
+  },
+});
+assert.equal(pos.length, 2);
+assert.equal(parsePositionBody({ Datas: null }).length, 0);
+const merged = mergePositions([pos, [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 10 }]]);
+assert.equal(merged[0].name, '贵州茅台');
+assert.equal(merged[0].weight, 10);
 
 const y = [5, 7, 9, 11];
 const x1 = [1, 2, 3, 4];

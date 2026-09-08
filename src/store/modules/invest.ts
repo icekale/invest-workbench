@@ -12,6 +12,7 @@ import {
 } from '@/mock/invest';
 import type {
   AccountId,
+  CustomPortfolio,
   Holding,
   JournalEntry,
   Opportunity,
@@ -33,6 +34,7 @@ const LS_THESIS = 'invest-v2-theses';
 const LS_CASH = 'invest-v2-cash';
 const LS_OPPS = 'invest-v2-opportunities';
 const LS_PREFS = 'invest-prefs';
+const LS_PORT = 'invest-v2-portfolios';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -77,6 +79,7 @@ export const useInvestStore = defineStore('invest', {
         healthDelta: { ...prefsSeed.healthDelta, ...raw.healthDelta },
       } satisfies Prefs;
     })(),
+    customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
   }),
   getters: {
     enriched: (state) => enrich(state.holdings, state.quotes),
@@ -156,6 +159,18 @@ export const useInvestStore = defineStore('invest', {
     addOpportunity(row: Omit<Opportunity, 'id'>) {
       this.opportunities = [{ ...row, id: `o${Date.now()}` }, ...this.opportunities];
       localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
+    },
+    saveCustomPortfolio(row: CustomPortfolio) {
+      const i = this.customPortfolios.findIndex((p) => p.id === row.id);
+      const next = this.customPortfolios.slice();
+      if (i >= 0) next[i] = row;
+      else next.unshift(row);
+      this.customPortfolios = next;
+      localStorage.setItem(LS_PORT, JSON.stringify(next));
+    },
+    removeCustomPortfolio(id: string) {
+      this.customPortfolios = this.customPortfolios.filter((p) => p.id !== id);
+      localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
     },
     setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
       this.prefs = { ...this.prefs, [key]: value };
