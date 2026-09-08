@@ -2,7 +2,7 @@
   <t-space direction="vertical" :size="16" style="width: 100%">
     <t-space align="center" break-line>
       <span style="color: var(--td-text-color-secondary)">今天先管理风险，再寻找值得下注的赔率。</span>
-      <t-space>
+      <t-space break-line>
         <t-button variant="outline" :loading="invest.quoteLoading" @click="refresh()">刷新行情</t-button>
         <t-button variant="outline" @click="exportSnap">导出快照</t-button>
         <t-button variant="outline" @click="router.push('/funds')">记录一条</t-button>
@@ -36,7 +36,7 @@ defineOptions({ name: 'DashboardIndex' });
 
 const invest = useInvestStore();
 const router = useRouter();
-const tab = ref('stock');
+const tab = ref(new URLSearchParams(window.location.search).get('tab') === 'etf' ? 'etf' : 'stock');
 const editOpen = ref(false);
 const closed = ref(false);
 let timer = 0;

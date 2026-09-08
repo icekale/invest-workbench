@@ -14,7 +14,6 @@
           <span class="guanlan-brand-mark">发</span>
           <span v-if="!collapsed" class="guanlan-brand-copy">
             <span class="guanlan-brand-name">{{ t('common.appName') }}</span>
-            <span class="guanlan-brand-caption">仓位 · 结构 · 交易节奏</span>
           </span>
         </span>
       </template>

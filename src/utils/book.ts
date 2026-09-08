@@ -53,18 +53,31 @@ export function summarize(rows: BookRow[], cash: number) {
   return { cost, mv, pnl, pnlPct: cost > 0 ? pnl / cost : null, cash, pos, cashPct: 1 - pos };
 }
 
-export function allocation(rows: BookRow[], cash: number) {
+export function allocation(rows: BookRow[], cash: number, targets: { code: string; targetWeight: number }[] = []) {
   const parts = rows.filter((r): r is BookRow & { marketValue: number } => r.marketValue != null);
   const invested = parts.reduce((s, r) => s + r.marketValue, 0);
   const total = invested + Math.max(0, cash);
-  if (!total) return [] as { name: string; pct: number }[];
+  if (!total) return [] as { name: string; pct: number; target: number | null }[];
   const map = new Map<string, number>();
   for (const p of parts) {
     const k = p.tag || p.name;
     map.set(k, (map.get(k) || 0) + p.marketValue);
   }
-  const items = [...map.entries()].map(([name, v]) => ({ name, pct: v / total })).sort((a, b) => b.pct - a.pct);
-  if (cash > 0) items.push({ name: '现金', pct: cash / total });
+  const targetByTag = new Map<string, number>();
+  for (const t of targets) {
+    const row = rows.find((r) => r.code === t.code);
+    const k = row?.tag || row?.name;
+    if (!k) continue;
+    targetByTag.set(k, (targetByTag.get(k) || 0) + t.targetWeight);
+  }
+  const targetSum = [...targetByTag.values()].reduce((s, v) => s + v, 0);
+  const cashTarget = targetByTag.size ? Math.max(0, 1 - targetSum) : null;
+  const items = [...map.entries()]
+    .map(([name, v]) => ({ name, pct: v / total, target: targetByTag.get(name) ?? null }))
+    .sort((a, b) => b.pct - a.pct);
+  if (cash > 0 || cashTarget != null) {
+    items.push({ name: '现金', pct: Math.max(0, cash) / total, target: cashTarget });
+  }
   return items;
 }
 
@@ -83,9 +96,28 @@ export function healthScore(rows: BookRow[], theses: ThesisLite[], journal: Jour
   return { diversify, thesis, discipline, total };
 }
 
-export function risks(rows: BookRow[], theses: ThesisLite[], todos: TodoLite[]) {
-  const items: { title: string; desc: string; hint: string; tone: 'warn' | 'info' | 'ok' }[] = [];
+export function risks(
+  rows: BookRow[],
+  theses: ThesisLite[],
+  todos: TodoLite[],
+  cash = 0,
+  targets: { code: string; targetWeight: number }[] = [],
+) {
+  const items: { title: string; desc: string; hint: string; extra: string; tone: 'warn' | 'info' | 'ok' }[] = [];
   const invested = rows.reduce((s, r) => s + (r.marketValue ?? 0), 0);
+  for (const a of allocation(rows, cash, targets)) {
+    if (a.name === '现金' || a.target == null) continue;
+    const gap = a.target - a.pct;
+    if (Math.abs(gap) < 0.015) continue;
+    const under = gap > 0;
+    items.push({
+      title: `${a.name}${under ? '低于' : '超过'}目标权重`,
+      desc: `当前 ${(a.pct * 100).toFixed(1)}% · 目标 ${(a.target * 100).toFixed(1)}%`,
+      hint: '调整',
+      extra: `${under ? '+' : ''}${Math.round(gap * 100)}%`,
+      tone: 'warn',
+    });
+  }
   for (const r of rows) {
     if (!invested || r.marketValue == null) continue;
     const w = r.marketValue / invested;
@@ -93,7 +125,8 @@ export function risks(rows: BookRow[], theses: ThesisLite[], todos: TodoLite[]) 
       items.push({
         title: `${r.name}超过单票上限`,
         desc: `当前 ${(w * 100).toFixed(1)}% · 上限 25%`,
-        hint: '减仓',
+        hint: '调整',
+        extra: `-${Math.round((w - 0.25) * 100)}%`,
         tone: 'warn',
       });
     }
@@ -104,7 +137,8 @@ export function risks(rows: BookRow[], theses: ThesisLite[], todos: TodoLite[]) 
       items.push({
         title: `${r.name}论文待复核`,
         desc: th.title,
-        hint: th.status === 'invalid' ? '证伪' : '本周',
+        hint: th.status === 'invalid' ? '复核' : '耐心',
+        extra: th.status === 'invalid' ? '证伪' : '等待',
         tone: 'info',
       });
     }
@@ -114,16 +148,35 @@ export function risks(rows: BookRow[], theses: ThesisLite[], todos: TodoLite[]) 
       title: `${t.name}${t.side === 'buy' ? '待买' : '待卖'}`,
       desc: t.reason,
       hint: '待办',
+      extra: t.side === 'buy' ? '买入' : '卖出',
       tone: 'info',
     });
   }
-  if (!items.length) {
-    items.push({ title: '整体回撤仍在控制内', desc: '没有超配或失效论文', hint: '正常', tone: 'ok' });
+  if (cash > 0) {
+    const rich = invested + cash > 0 && cash / (invested + cash) >= 0.15;
+    items.push({
+      title: rich ? '现金垫较充足' : '现金垫偏低',
+      desc: `剩余可用资金 ¥${Math.round(cash).toLocaleString('zh-CN')}`,
+      hint: rich ? '正常' : '关注',
+      extra: '',
+      tone: rich ? 'ok' : 'warn',
+    });
   }
-  return items.slice(0, 3);
+  if (!items.length) {
+    items.push({
+      title: '整体回撤仍在控制内',
+      desc: '没有超配或失效论文',
+      hint: '正常',
+      extra: '',
+      tone: 'ok',
+    });
+  }
+  const pick = (['warn', 'info', 'ok'] as const).flatMap((tone) => items.filter((i) => i.tone === tone).slice(0, 1));
+  const rest = items.filter((i) => !pick.includes(i));
+  return [...pick, ...rest].slice(0, 3);
 }
 
-export function sparkSeries(endPct: number, n = 22) {
+export function sparkSeries(endPct: number, n = 30) {
   const ys: number[] = [];
   for (let i = 0; i < n; i += 1) {
     const t = i / (n - 1);
