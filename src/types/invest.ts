@@ -88,10 +88,54 @@ export interface Opportunity {
   note: string;
 }
 
+export interface Transaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  account: AccountId;
+  code: string;
+  name: string;
+  side: TradeSide;
+  price: number;
+  quantity: number;
+  amount: number;
+  fee?: number;
+  note?: string;
+}
+
+export interface LedgerSummary {
+  totalBuyAmount: number;
+  totalSellAmount: number;
+  realizedPnL: number;
+  totalFee: number;
+  turnoverRate: number; // 换手率，小数，如 0.25 表示 25%
+  tradeCount: number;
+}
+
+export type AlertType = 'take_profit' | 'stop_loss' | 'thesis_risk' | 'rebalance' | 'valuation';
+export type AlertLevel = 'info' | 'warning' | 'danger';
+
+export interface TradeAlert {
+  id: string;
+  code: string;
+  name: string;
+  account: AccountId;
+  type: AlertType;
+  level: AlertLevel;
+  title: string;
+  detail: string;
+  suggestedAction: ActionPoint;
+  suggestedQty?: number;
+  triggerTime: string;
+  isRead?: boolean;
+}
+
 export interface Prefs {
   isolate: boolean;
   closeRemind: boolean;
   healthDate: Record<AccountId, string>;
   health: Record<AccountId, number>;
   healthDelta: Record<AccountId, number>;
+  stopLossPct?: number; // 默认 -8%
+  takeProfitPct?: number; // 默认 25%
+  rebalanceThresholdPct?: number; // 默认 3%
 }

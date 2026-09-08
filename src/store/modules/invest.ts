@@ -6,9 +6,11 @@ import {
   indexes,
   journal as seedJournal,
   opportunities as seedOpps,
+  planTargets,
   prefsSeed,
   theses as seedTheses,
   tradeTodos as seedTodos,
+  transactionsSeed,
 } from '@/mock/invest';
 import type {
   AccountId,
@@ -20,9 +22,12 @@ import type {
   Thesis,
   ThesisStatus,
   TodoStatus,
+  TradeAlert,
   TradeTodo,
+  Transaction,
 } from '@/types/invest';
 import { fetchSinaQuotes } from '@/utils/backup';
+import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes } from '@/utils/quote';
 
@@ -35,6 +40,7 @@ const LS_CASH = 'invest-v2-cash';
 const LS_OPPS = 'invest-v2-opportunities';
 const LS_PREFS = 'invest-prefs';
 const LS_PORT = 'invest-v2-portfolios';
+const LS_TX = 'invest-v2-transactions';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -69,7 +75,8 @@ export const useInvestStore = defineStore('invest', {
     theses: readLS<Thesis[]>(LS_THESIS, seedTheses),
     cash: readLS<{ stock: number; etf: number }>(LS_CASH, cashSeed),
     opportunities: readLS<Opportunity[]>(LS_OPPS, seedOpps),
-    prefs: (() => {
+    transactions: readLS<Transaction[]>(LS_TX, transactionsSeed),
+    prefs: ((): Prefs => {
       const raw = readLS<Partial<Prefs>>(LS_PREFS, {});
       return {
         isolate: raw.isolate ?? prefsSeed.isolate,
@@ -77,7 +84,10 @@ export const useInvestStore = defineStore('invest', {
         healthDate: { ...prefsSeed.healthDate, ...raw.healthDate },
         health: { ...prefsSeed.health, ...raw.health },
         healthDelta: { ...prefsSeed.healthDelta, ...raw.healthDelta },
-      } satisfies Prefs;
+        stopLossPct: raw.stopLossPct ?? prefsSeed.stopLossPct ?? -0.08,
+        takeProfitPct: raw.takeProfitPct ?? prefsSeed.takeProfitPct ?? 0.25,
+        rebalanceThresholdPct: raw.rebalanceThresholdPct ?? prefsSeed.rebalanceThresholdPct ?? 0.03,
+      };
     })(),
     customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
   }),
@@ -85,6 +95,24 @@ export const useInvestStore = defineStore('invest', {
     enriched: (state) => enrich(state.holdings, state.quotes),
     stockRows: (state) => enrich(state.holdings, state.quotes).filter((h) => h.account === 'stock'),
     etfRows: (state) => enrich(state.holdings, state.quotes).filter((h) => h.account === 'etf'),
+    totalHoldingMv: (state) =>
+      enrich(state.holdings, state.quotes).reduce((sum, h) => sum + (h.marketValue ?? h.cost * h.quantity), 0),
+    totalPortfolioValue: (state) => {
+      const holdingMv = enrich(state.holdings, state.quotes).reduce(
+        (sum, h) => sum + (h.marketValue ?? h.cost * h.quantity),
+        0,
+      );
+      return holdingMv + state.cash.stock + state.cash.etf;
+    },
+    ledgerSummary: (state): ReturnType<typeof calculateLedger> => {
+      const holdingMv = enrich(state.holdings, state.quotes).reduce(
+        (sum, h) => sum + (h.marketValue ?? h.cost * h.quantity),
+        0,
+      );
+      return calculateLedger(state.transactions, holdingMv);
+    },
+    activeAlerts: (state): TradeAlert[] =>
+      scanTradeAlerts(state.holdings, state.quotes, state.theses, planTargets, state.prefs),
   },
   actions: {
     persistHoldings() {
@@ -129,6 +157,52 @@ export const useInvestStore = defineStore('invest', {
     setTodoStatus(id: string, status: TodoStatus) {
       this.todos = this.todos.map((t) => (t.id === id ? { ...t, status } : t));
       localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+    },
+    addTodo(todo: Omit<TradeTodo, 'id' | 'status'>) {
+      const row: TradeTodo = {
+        ...todo,
+        id: `td_${Date.now()}`,
+        status: 'open',
+      };
+      this.todos = [row, ...this.todos];
+      localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+    },
+    removeTodo(id: string) {
+      this.todos = this.todos.filter((t) => t.id !== id);
+      localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+    },
+    persistTransactions() {
+      localStorage.setItem(LS_TX, JSON.stringify(this.transactions));
+    },
+    addTransaction(row: Omit<Transaction, 'id' | 'amount'>) {
+      const amount = Number((row.price * row.quantity).toFixed(2));
+      const tx: Transaction = {
+        ...row,
+        id: `tx_${Date.now()}`,
+        amount,
+      };
+      this.transactions = [tx, ...this.transactions];
+      this.persistTransactions();
+    },
+    importTransactions(rows: Transaction[], syncHoldings = false) {
+      this.transactions = [...rows, ...this.transactions];
+      this.persistTransactions();
+      if (syncHoldings) {
+        this.applyTransactionsToHoldings();
+      }
+    },
+    removeTransaction(id: string) {
+      this.transactions = this.transactions.filter((t) => t.id !== id);
+      this.persistTransactions();
+    },
+    clearTransactions() {
+      this.transactions = [];
+      this.persistTransactions();
+    },
+    applyTransactionsToHoldings() {
+      const recomputed = recalculateHoldingsFromTransactions(this.transactions, this.theses);
+      this.holdings = recomputed;
+      this.persistHoldings();
     },
     toggleWatch(code: string) {
       this.watchlist = this.watchlist.includes(code)

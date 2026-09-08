@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { allocation, healthScore, risks, shortCode, sparkSeries, summarize } from '../src/utils/book.ts';
+import { calculateLedger, parseTransactionsCsv, recalculateHoldingsFromTransactions } from '../src/utils/ledger.ts';
 
 const empty = summarize([], 100);
 assert.equal(empty.mv, 0);
@@ -43,4 +44,27 @@ assert.equal(under[0].tone, 'warn');
 assert.match(under[0].extra, /^\+/);
 
 assert.equal(shortCode('sh510300'), '510300');
+
+// 校验台账解析、持仓加权成本重算与换手率计算
+const csvSample = `日期,账户,代码,名称,买卖,成交价,成交量,手续费
+2025-01-01,股票,sh600519,贵州茅台,买入,1600,100,20
+2025-01-10,股票,sh600519,贵州茅台,买入,1800,100,20
+2025-01-15,股票,sh600519,贵州茅台,卖出,1900,50,20`;
+const parsed = parseTransactionsCsv(csvSample);
+assert.equal(parsed.success, true);
+assert.equal(parsed.rows.length, 3);
+
+const computedHoldings = recalculateHoldingsFromTransactions(parsed.rows);
+assert.equal(computedHoldings.length, 1);
+assert.equal(computedHoldings[0].quantity, 150);
+// 成本应为加权平均成本约 1700
+assert.ok(computedHoldings[0].cost > 1690 && computedHoldings[0].cost < 1710);
+
+const ledger = calculateLedger(parsed.rows, 300000);
+assert.equal(ledger.tradeCount, 3);
+assert.equal(ledger.totalBuyAmount, 340000);
+assert.equal(ledger.totalSellAmount, 95000);
+assert.ok(ledger.realizedPnL > 9000); // 卖出50股，成本约1700，卖出价1900，盈利约10000减去手续费
+assert.ok(ledger.turnoverRate > 0);
+
 console.log('check-book ok');

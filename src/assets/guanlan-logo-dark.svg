@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 56" width="280" height="56" fill="none">
+  <defs>
+    <linearGradient id="ld-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111f27" />
+      <stop offset="50%" stop-color="#162a34" />
+      <stop offset="100%" stop-color="#0c232b" />
+    </linearGradient>
+    <linearGradient id="ld-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5e0a9" />
+      <stop offset="45%" stop-color="#dfb56d" />
+      <stop offset="100%" stop-color="#af8239" />
+    </linearGradient>
+    <linearGradient id="ld-teal-wave" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0d706d" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#16815f" stop-opacity="0.75" />
+    </linearGradient>
+    <radialGradient id="ld-glow" cx="70%" cy="30%" r="55%">
+      <stop offset="0%" stop-color="#dfb56d" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#162a34" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Left Icon Mark -->
+  <g transform="translate(6, 6)">
+    <rect width="44" height="44" rx="10" fill="url(#ld-bg)" />
+    <rect width="44" height="44" rx="10" fill="url(#ld-glow)" />
+    <rect width="44" height="44" rx="10" stroke="url(#ld-gold)" stroke-width="1.2" stroke-opacity="0.9" />
+
+    <path
+      d="M5 29 C 11 29, 14 23, 20 23 C 25 23, 28 27, 34 27 C 37 27, 38.5 26.5, 39 26 L 39 34 C 39 36.8, 36.8 39, 34 39 L 10 39 C 7.2 39, 5 36.8, 5 34 Z"
+      fill="url(#ld-teal-wave)"
+    />
+
+    <path
+      d="M6 28 C 12 28, 16 19.5, 21.5 19.5 C 26.5 19.5, 30 25.5, 35 25.5 C 37 25.5, 38.2 25, 39 24.2"
+      stroke="url(#ld-gold)"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    <path
+      d="M9 33 C 15 33, 18 31, 24 31 C 30 31, 33 33, 37 33"
+      stroke="url(#ld-gold)"
+      stroke-width="1.1"
+      stroke-linecap="round"
+      stroke-opacity="0.8"
+    />
+
+    <g transform="translate(31, 13)">
+      <circle cx="0" cy="0" r="1.3" fill="#fff" />
+      <path d="M0 -3 L0 3 M-3 0 L3 0" stroke="url(#ld-gold)" stroke-width="0.8" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <!-- Divider Line -->
+  <line x1="62" y1="16" x2="62" y2="40" stroke="#0d706d" stroke-opacity="0.25" stroke-width="1" />
+
+  <!-- Brand Typography -->
+  <g transform="translate(74, 0)">
+    <text x="0" y="27" fill="#14212b" font-family="'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="600" letter-spacing="0.5">
+      观澜<tspan fill="#0d706d" font-weight="400" dx="6">|</tspan><tspan fill="#2c3e4c" font-size="15" font-weight="500" dx="6">投资研究工作台</tspan>
+    </text>
+
+    <text x="0" y="42" fill="#5e6c76" font-family="'SF Pro Text', -apple-system, sans-serif" font-size="9" font-weight="600" letter-spacing="1.8">
+      GUANLAN · CAPITAL &amp; CYCLE WORKBENCH
+    </text>
+  </g>
+</svg>

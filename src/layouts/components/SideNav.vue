@@ -10,12 +10,9 @@
       @expand="onExpanded"
     >
       <template #logo>
-        <span v-if="showLogo" class="guanlan-brand" :class="{ 'guanlan-brand--compact': collapsed }" @click="goHome">
-          <span class="guanlan-brand-mark">发</span>
-          <span v-if="!collapsed" class="guanlan-brand-copy">
-            <span class="guanlan-brand-name">{{ t('common.appName') }}</span>
-          </span>
-        </span>
+        <div v-if="showLogo" class="guanlan-brand" :class="{ 'guanlan-brand--compact': collapsed }" @click="goHome">
+          <guanlan-logo theme="dark" :compact="collapsed" :mark-size="collapsed ? 26 : 30" :show-sub="false" />
+        </div>
       </template>
       <menu-content :nav-data="menu" />
       <template #operations>
@@ -40,6 +37,7 @@ import type { PropType } from 'vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
+import GuanlanLogo from '@/components/GuanlanLogo.vue';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';

@@ -1,10 +1,10 @@
 <template>
   <header class="login-header">
-    <logo-full-icon class="logo" />
+    <guanlan-logo theme="dark" :mark-size="32" />
   </header>
 </template>
 <script setup lang="ts">
-import LogoFullIcon from '@/assets/assets-logo-full.svg?component';
+import GuanlanLogo from '@/components/GuanlanLogo.vue';
 </script>
 <style lang="less" scoped>
 .login-header {
@@ -12,12 +12,6 @@ import LogoFullIcon from '@/assets/assets-logo-full.svg?component';
   display: flex;
   align-items: center;
   backdrop-filter: blur(10px);
-  color: var(--td-text-color-primary);
   height: var(--td-comp-size-xxxl);
-
-  .logo {
-    width: 178px;
-    height: var(--td-comp-size-s);
-  }
 }
 </style>
