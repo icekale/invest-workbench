@@ -5,10 +5,6 @@
         <t-button class="guanlan-menu-btn" variant="text" shape="square" aria-label="打开导航" @click="toggleMobileNav">
           <template #icon><t-icon name="view-list" /></template>
         </t-button>
-        <h1 v-if="layout === 'side'" class="guanlan-topbar-title">{{ t('common.appName') }}</h1>
-        <span v-else-if="showLogo" class="header-logo-container" @click="handleNav('/dashboard/index')">
-          {{ t('common.appName') }}
-        </span>
       </template>
       <template v-if="layout !== 'side'" #default>
         <menu-content class="header-menu" :nav-data="menu" />
@@ -51,7 +47,7 @@ import type { MenuRoute, ModeType } from '@/types/interface';
 import MenuContent from './MenuContent.vue';
 import SearchBox from './Search.vue';
 
-const { theme, layout, showLogo, menu, isFixed, isCompact } = defineProps({
+const { theme, layout, menu, isFixed, isCompact } = defineProps({
   theme: {
     type: String,
     default: 'light',
@@ -110,10 +106,6 @@ const dateStr = computed(() => {
   const d = new Date();
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`;
 });
-
-const handleNav = (url: string) => {
-  router.push(url);
-};
 
 const handleLogout = () => {
   router.push({
