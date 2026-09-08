@@ -1,7 +1,6 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
     <div class="dash-action-bar">
-      <span class="dash-slogan">今天先管理风险，再寻找值得下注的赔率。</span>
       <div class="dash-btn-group">
         <t-button variant="outline" size="small" :loading="invest.quoteLoading" @click="refresh()">
           <template #icon><t-icon name="refresh" /></template>
@@ -150,14 +149,9 @@ function handleFileChange(e: Event) {
 .dash-action-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.dash-slogan {
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
+  gap: 8px;
 }
 
 .dash-btn-group {
@@ -178,15 +172,9 @@ function handleFileChange(e: Event) {
 
 @media (width <= 767px) {
   .dash-action-bar {
-    flex-direction: column;
-    align-items: flex-start;
+    justify-content: flex-start;
     gap: 8px;
     margin-bottom: 2px;
-  }
-
-  .dash-slogan {
-    font-size: 12px;
-    line-height: 18px;
   }
 
   .dash-btn-group {
