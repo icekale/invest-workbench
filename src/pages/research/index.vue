@@ -18,6 +18,13 @@
       </div>
       <div class="overview-strip__divider" />
       <div class="overview-strip__item">
+        <span class="overview-strip__label">估值低估机会</span>
+        <span class="overview-strip__val" style="color: var(--guanlan-gain, #16815f)">
+          {{ bargainCount }} <small>只极低/偏低</small>
+        </span>
+      </div>
+      <div class="overview-strip__divider" />
+      <div class="overview-strip__item">
         <span class="overview-strip__label">万得 EDB 状态</span>
         <span class="overview-strip__val edb-status"> <span class="edb-dot" />已接入 </span>
       </div>
@@ -202,6 +209,216 @@
           </div>
         </t-col>
       </t-row>
+    </t-card>
+
+    <!-- 核心指数估值分位与买卖信号 (Valuation Radar & Signals) -->
+    <t-card
+      class="valuation-radar-card"
+      title="A股核心指数估值分位与买卖信号"
+      subtitle="实时追踪核心宽基与行业 PE/PB 历史百分位与估值温度计，以安全边际与击球点指引仓位动态增减"
+    >
+      <template #actions>
+        <div class="val-header-actions">
+          <t-radio-group v-model="valFilter" variant="default-filled" size="small">
+            <t-radio-button value="all">全部 ({{ valList.length }})</t-radio-button>
+            <t-radio-button value="broad">大盘宽基</t-radio-button>
+            <t-radio-button value="dividend">红利防守</t-radio-button>
+            <t-radio-button value="growth">成长科技</t-radio-button>
+            <t-radio-button value="sector">行业赛道</t-radio-button>
+          </t-radio-group>
+          <t-radio-group v-model="valViewMode" variant="default-filled" size="small" style="margin-left: 8px">
+            <t-radio-button value="cards">卡片视图</t-radio-button>
+            <t-radio-button value="table">详细列表</t-radio-button>
+          </t-radio-group>
+          <t-button
+            size="small"
+            variant="outline"
+            :loading="valLoading"
+            style="margin-left: 8px"
+            @click="loadValuations"
+          >
+            <template #icon><t-icon name="refresh" /></template>
+            刷新估值
+          </t-button>
+        </div>
+      </template>
+
+      <!-- 估值分位图例与状态提示条 -->
+      <div class="val-legend-strip">
+        <div class="legend-items">
+          <span class="legend-dot green">🟢 &lt;20% 极度低估 (强力买入)</span>
+          <span class="legend-dot teal">🟢 20%~40% 合理偏低 (积极加仓)</span>
+          <span class="legend-dot yellow">🟡 40%~60% 合理中枢 (中性持有)</span>
+          <span class="legend-dot orange">🟠 60%~80% 合理偏高 (适度止盈)</span>
+          <span class="legend-dot red">🔴 &gt;80% 极度高估 (风险防守)</span>
+        </div>
+        <div class="val-summary-text">
+          <span
+            >共跟踪 <strong>{{ valList.length }}</strong> 只核心指数 · 处于低估机会区
+            <strong>{{ bargainCount }}</strong> 只</span
+          >
+        </div>
+      </div>
+
+      <!-- 卡片网格视图 -->
+      <div v-if="valViewMode === 'cards'" class="val-cards-grid">
+        <div
+          v-for="item in filteredValuations"
+          :key="item.code"
+          class="val-card"
+          :class="`val-signal-${item.signal.toLowerCase()}`"
+          @click="openValChartModal(item)"
+        >
+          <div class="val-card-header">
+            <div class="val-title-box">
+              <strong class="val-name">{{ item.name }}</strong>
+              <span class="val-code">{{ item.code.toUpperCase() }}</span>
+            </div>
+            <span
+              class="val-signal-badge"
+              :style="{ backgroundColor: `${item.color}1a`, color: item.color, borderColor: item.color }"
+            >
+              {{ item.signalLabel }}
+            </span>
+          </div>
+
+          <div class="val-data-row">
+            <div class="val-price-box">
+              <span class="val-price">{{ item.price }}</span>
+              <span class="val-change" :class="item.changePct >= 0 ? 'is-up' : 'is-down'">
+                {{ item.changePct >= 0 ? `+${item.changePct}%` : `${item.changePct}%` }}
+              </span>
+            </div>
+            <div class="val-pe-box">
+              <span class="pe-label">PE(TTM)</span>
+              <strong class="pe-val">{{ item.pe }}</strong>
+            </div>
+          </div>
+
+          <!-- 分位数刻度条 -->
+          <div class="val-gauge-wrapper">
+            <div class="gauge-meta">
+              <span class="gauge-label">历史分位 (10年)</span>
+              <strong class="gauge-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
+            </div>
+            <div class="gauge-bar-track">
+              <!-- 20% 机会区间 -->
+              <div class="gauge-zone zone-opp" style="width: 20%" title="0-20% 机会低估区" />
+              <!-- 20-40% 偏低区间 -->
+              <div class="gauge-zone zone-low" style="width: 20%" title="20-40% 偏低区" />
+              <!-- 40-60% 中枢区间 -->
+              <div class="gauge-zone zone-mid" style="width: 20%" title="40-60% 合理中枢" />
+              <!-- 60-80% 偏高区间 -->
+              <div class="gauge-zone zone-high" style="width: 20%" title="60-80% 偏高区" />
+              <!-- 80-100% 高估区间 -->
+              <div class="gauge-zone zone-risk" style="width: 20%" title="80-100% 高估危险区" />
+              <!-- 光标指示针 -->
+              <div
+                class="gauge-pointer"
+                :style="{ left: `${Math.max(2, Math.min(98, item.pePercentile))}%`, backgroundColor: item.color }"
+              />
+            </div>
+            <div class="gauge-axis-labels">
+              <span>0% 极低</span>
+              <span>20% 机会</span>
+              <span>50% 中位</span>
+              <span>80% 警戒</span>
+              <span>100% 极高</span>
+            </div>
+          </div>
+
+          <div class="val-advice-box">
+            <span class="advice-title"
+              >建议配置偏离: <strong>{{ item.allocationTilt }}</strong></span
+            >
+            <p class="advice-text">{{ item.advice }}</p>
+          </div>
+
+          <div class="val-card-footer" @click.stop>
+            <div class="etf-anchor" @click="openValChartModal(item)">
+              <span class="etf-tag">标的</span>
+              <span class="etf-name">{{ item.etfName }}</span>
+              <span class="etf-code">({{ item.etfCode }})</span>
+            </div>
+            <div class="val-card-btns">
+              <t-button size="small" variant="text" theme="primary" @click="openValChartModal(item)"> 走势 → </t-button>
+              <t-button size="small" theme="primary" variant="outline" @click="quickAddValuationTodo(item)">
+                + 待办
+              </t-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 详细列表视图 -->
+      <t-table
+        v-else
+        :data="filteredValuations"
+        :columns="valTableColumns"
+        row-key="code"
+        size="small"
+        class="val-table"
+      >
+        <template #indexInfo="{ row }">
+          <div class="table-idx-cell">
+            <strong class="idx-name">{{ row.name }}</strong>
+            <span class="idx-code">{{ row.code.toUpperCase() }}</span>
+            <t-tag size="small" variant="outline" class="idx-cat">{{ row.categoryLabel }}</t-tag>
+          </div>
+        </template>
+
+        <template #etfInfo="{ row }">
+          <div class="table-etf-cell">
+            <span class="etf-name">{{ row.etfName }}</span>
+            <span class="etf-code">{{ row.etfCode }}</span>
+          </div>
+        </template>
+
+        <template #priceInfo="{ row }">
+          <div class="table-price-cell">
+            <strong class="idx-price">{{ row.price }}</strong>
+            <span class="idx-chg" :class="row.changePct >= 0 ? 'is-up' : 'is-down'">
+              {{ row.changePct >= 0 ? `+${row.changePct}%` : `${row.changePct}%` }}
+            </span>
+          </div>
+        </template>
+
+        <template #peInfo="{ row }">
+          <div class="table-pe-cell">
+            <span class="pe-val">{{ row.pe }}</span>
+            <small class="pe-sub">10年中位 {{ row.peStats.p50 }}</small>
+          </div>
+        </template>
+
+        <template #percentileInfo="{ row }">
+          <div class="table-pct-cell">
+            <div class="pct-num" :style="{ color: row.color }">{{ row.pePercentile }}%</div>
+            <t-progress :percentage="row.pePercentile" :color="row.color" :label="false" size="small" class="pct-bar" />
+          </div>
+        </template>
+
+        <template #signalInfo="{ row }">
+          <t-tag size="small" :theme="row.statusTag" variant="light">
+            {{ row.signalLabel }}
+          </t-tag>
+        </template>
+
+        <template #adviceInfo="{ row }">
+          <div class="table-advice-cell">
+            <span class="tilt-badge">{{ row.allocationTilt }}</span>
+            <span class="advice-desc">{{ row.advice }}</span>
+          </div>
+        </template>
+
+        <template #op="{ row }">
+          <t-space :size="8">
+            <t-button size="small" variant="text" theme="primary" @click="openValChartModal(row)">走势</t-button>
+            <t-button size="small" variant="outline" theme="primary" @click="quickAddValuationTodo(row)"
+              >+待办</t-button
+            >
+          </t-space>
+        </template>
+      </t-table>
     </t-card>
 
     <!-- 宏观驱动因子 → ETF 资产配置雷达与标的建议 -->
@@ -645,6 +862,77 @@
       </div>
     </t-dialog>
 
+    <!-- 估值走势与通道下钻弹窗 (ECharts) -->
+    <t-dialog
+      v-model:visible="valChartModalVisible"
+      :header="
+        selectedValuation
+          ? `${selectedValuation.name} (${selectedValuation.code.toUpperCase()}) · 估值走势与通道`
+          : '估值历史走势'
+      "
+      width="740px"
+      :footer="false"
+      @opened="renderValuationChart"
+    >
+      <div v-if="selectedValuation" class="val-dialog-body">
+        <div class="val-dialog-header-meta">
+          <div class="meta-col">
+            <span class="m-label">当前最新 PE(TTM)</span>
+            <strong class="m-val highlight">{{ selectedValuation.pe }}</strong>
+          </div>
+          <div class="meta-col">
+            <span class="m-label">历史分位数</span>
+            <strong class="m-val" :style="{ color: selectedValuation.color }">
+              {{ selectedValuation.pePercentile }}% ({{ selectedValuation.signalLabel }})
+            </strong>
+          </div>
+          <div class="meta-col">
+            <span class="m-label">20% 机会低估线</span>
+            <span class="m-val green">{{ selectedValuation.peStats.p20 }}</span>
+          </div>
+          <div class="meta-col">
+            <span class="m-label">50% 价值中枢</span>
+            <span class="m-val">{{ selectedValuation.peStats.p50 }}</span>
+          </div>
+          <div class="meta-col">
+            <span class="m-label">80% 风险警戒线</span>
+            <span class="m-val red">{{ selectedValuation.peStats.p80 }}</span>
+          </div>
+        </div>
+
+        <div class="val-dialog-period-bar">
+          <span class="period-title">历史回溯周期：</span>
+          <t-radio-group v-model="valChartPeriod" variant="default-filled" size="small" @change="renderValuationChart">
+            <t-radio-button :value="3">近3年</t-radio-button>
+            <t-radio-button :value="5">近5年</t-radio-button>
+            <t-radio-button :value="10">近10年</t-radio-button>
+          </t-radio-group>
+        </div>
+
+        <div ref="valChartEl" style="height: 340px; width: 100%; margin-top: 12px" />
+
+        <div class="val-dialog-advice-card" :style="{ borderColor: selectedValuation.color }">
+          <div class="card-hd">
+            <span class="hd-title">🎯 估值诊断与仓位指引</span>
+            <t-tag size="small" :theme="selectedValuation.statusTag" variant="light">
+              建议偏离 {{ selectedValuation.allocationTilt }}
+            </t-tag>
+          </div>
+          <p class="card-desc">{{ selectedValuation.advice }}</p>
+          <div class="card-action-line">
+            <span class="action-hint"
+              >场内直接映射标的：<strong
+                >{{ selectedValuation.etfName }} ({{ selectedValuation.etfCode }})</strong
+              ></span
+            >
+            <t-button size="small" theme="primary" @click="quickAddValuationTodo(selectedValuation)">
+              一键生成买卖待办 →
+            </t-button>
+          </div>
+        </div>
+      </div>
+    </t-dialog>
+
     <!-- 记研判/会议/产业管理弹窗 -->
     <t-dialog
       v-model:visible="macroModalVisible"
@@ -746,14 +1034,17 @@
 </template>
 <script setup lang="ts">
 import { LineChart } from 'echarts/charts';
-import { GridComponent, TooltipComponent } from 'echarts/components';
+import { GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
+import type { PrimaryTableCol } from 'tdesign-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, MacroBrief, MacroEvent } from '@/types/invest';
+import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
+import { fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
 import type { WindMetric, WindNewsItem } from '@/utils/wind';
 import { fetchWindEdb, fetchWindNews } from '@/utils/wind';
 
@@ -762,7 +1053,7 @@ type MacroTopic = '增长' | '流动性' | '政策' | '海外';
 
 defineOptions({ name: 'ResearchIndex' });
 
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer]);
 
 const invest = useInvestStore();
 
@@ -773,6 +1064,35 @@ const growthPmi = ref<WindMetric | null>(null);
 const cpiMetric = ref<WindMetric | null>(null);
 const m2Metric = ref<WindMetric | null>(null);
 const windNewsList = ref<WindNewsItem[]>([]);
+
+// 核心指数估值分位与买卖信号状态
+const valLoading = ref(false);
+const valList = ref<IndexValuationItem[]>([]);
+const valFilter = ref<'all' | IndexCategory>('all');
+const valViewMode = ref<'cards' | 'table'>('cards');
+const selectedValuation = ref<IndexValuationItem | null>(null);
+const valChartModalVisible = ref(false);
+const valChartPeriod = ref<number>(3);
+const valChartEl = ref<HTMLDivElement | null>(null);
+let valChartInstance: echarts.ECharts | null = null;
+
+const filteredValuations = computed(() => {
+  if (valFilter.value === 'all') return valList.value;
+  return valList.value.filter((v) => v.category === valFilter.value);
+});
+
+const bargainCount = computed(() => valList.value.filter((v) => v.pePercentile < 40).length);
+
+const valTableColumns: PrimaryTableCol[] = [
+  { colKey: 'indexInfo', title: '指数名称 / 类别', width: 170 },
+  { colKey: 'etfInfo', title: '对应场内标的', width: 150 },
+  { colKey: 'priceInfo', title: '最新点位 / 涨跌', width: 130 },
+  { colKey: 'peInfo', title: 'PE (TTM)', width: 120 },
+  { colKey: 'percentileInfo', title: '历史估值分位', width: 160 },
+  { colKey: 'signalInfo', title: '估值状态 / 信号', width: 110 },
+  { colKey: 'adviceInfo', title: '仓位建议 / 偏离指引', minWidth: 240 },
+  { colKey: 'op', title: '操作', width: 120, fixed: 'right' },
+];
 
 // 指标下钻图表弹窗
 const chartModalVisible = ref(false);
@@ -1199,18 +1519,137 @@ function refreshWindData() {
   MessagePlugin.success('已触发万得数据实时刷新');
 }
 
+// 核心指数估值逻辑
+async function loadValuations() {
+  valLoading.value = true;
+  try {
+    valList.value = await fetchIndexValuations();
+  } catch (e) {
+    console.error('加载估值数据失败:', e);
+  } finally {
+    valLoading.value = false;
+  }
+}
+
+function openValChartModal(item: IndexValuationItem) {
+  selectedValuation.value = item;
+  valChartModalVisible.value = true;
+}
+
+function renderValuationChart() {
+  nextTick(() => {
+    if (!valChartEl.value || !selectedValuation.value) return;
+    if (!valChartInstance) {
+      valChartInstance = echarts.init(valChartEl.value);
+    }
+    const seriesData = generateValuationHistorySeries(selectedValuation.value, valChartPeriod.value);
+    const item = selectedValuation.value;
+
+    valChartInstance.setOption(
+      {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const p = params[0];
+            return `<div style="font-size:12px;line-height:1.6">
+              <strong>${p.name}</strong><br/>
+              PE(TTM): <strong>${p.value}</strong><br/>
+              当前最新: ${item.pe} (${item.pePercentile}%分位)<br/>
+              20% 机会线: ${item.peStats.p20}<br/>
+              50% 价值中枢: ${item.peStats.p50}<br/>
+              80% 警戒线: ${item.peStats.p80}
+            </div>`;
+          },
+        },
+        grid: { left: 48, right: 36, top: 28, bottom: 28 },
+        xAxis: {
+          type: 'category',
+          data: seriesData.dates,
+          axisLine: { lineStyle: { color: '#dcdcdc' } },
+          axisLabel: { color: '#666', fontSize: 11 },
+        },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          axisLabel: { formatter: '{value}x', color: '#666', fontSize: 11 },
+          splitLine: { lineStyle: { color: '#f0f0f0' } },
+        },
+        series: [
+          {
+            name: `${item.name} PE(TTM)`,
+            type: 'line',
+            data: seriesData.peValues,
+            smooth: true,
+            symbol: 'none',
+            lineStyle: { width: 2.5, color: '#0d706d' },
+            markLine: {
+              symbol: 'none',
+              label: { position: 'end', fontSize: 10 },
+              data: [
+                {
+                  yAxis: item.peStats.p80,
+                  lineStyle: { color: '#b8433e', type: 'dashed', width: 1.5 },
+                  label: { formatter: '80% 警戒: {c}', color: '#b8433e' },
+                },
+                {
+                  yAxis: item.peStats.p50,
+                  lineStyle: { color: '#b8782d', type: 'dashed', width: 1.5 },
+                  label: { formatter: '50% 中枢: {c}', color: '#b8782d' },
+                },
+                {
+                  yAxis: item.peStats.p20,
+                  lineStyle: { color: '#16815f', type: 'dashed', width: 1.5 },
+                  label: { formatter: '20% 机会: {c}', color: '#16815f' },
+                },
+              ],
+            },
+            markArea: {
+              silent: true,
+              data: [
+                [
+                  { yAxis: item.peStats.min, itemStyle: { color: 'rgba(22, 129, 95, 0.08)' } },
+                  { yAxis: item.peStats.p20 },
+                ],
+                [
+                  { yAxis: item.peStats.p80, itemStyle: { color: 'rgba(184, 67, 62, 0.08)' } },
+                  { yAxis: item.peStats.max * 1.1 },
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      true,
+    );
+    valChartInstance.resize();
+  });
+}
+
+function quickAddValuationTodo(item: IndexValuationItem) {
+  todoForm.account = 'etf';
+  todoForm.code = item.etfCode;
+  todoForm.name = item.etfName;
+  todoForm.side = item.pePercentile < 50 ? 'buy' : 'sell';
+  todoForm.quantity = 1000;
+  todoForm.reason = `【估值信号】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，配置偏离建议 ${item.allocationTilt}`;
+  todoDialogVisible.value = true;
+}
+
 onMounted(() => {
   loadWindData();
+  loadValuations();
   window.addEventListener('resize', onResize);
 });
 
 function onResize() {
   chartInstance?.resize();
+  valChartInstance?.resize();
 }
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize);
   chartInstance?.dispose();
+  valChartInstance?.dispose();
 });
 </script>
 <style lang="less" scoped>
@@ -1920,6 +2359,534 @@ onUnmounted(() => {
     color: var(--td-text-color-placeholder);
     margin-top: 12px;
     text-align: right;
+  }
+}
+
+/* 核心指数估值分位与买卖信号看板 */
+.valuation-radar-card {
+  .val-header-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .val-legend-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--td-bg-color-page, #f8fafc);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    border: 1px solid var(--td-border-level-1-color, #eef2f6);
+
+    .legend-items {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+
+      .legend-dot {
+        font-family: var(--td-font-family-mono, monospace);
+        font-variant-numeric: tabular-nums;
+        color: var(--td-text-color-secondary);
+      }
+    }
+
+    .val-summary-text {
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+
+      strong {
+        color: var(--td-text-color-primary);
+        font-family: var(--td-font-family-mono, monospace);
+      }
+    }
+  }
+
+  .val-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 14px;
+
+    .val-card {
+      background: var(--td-bg-color-container);
+      border: 1px solid var(--td-border-level-1-color);
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      &:hover {
+        border-color: var(--td-brand-color, #0d706d);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgb(0 0 0 / 6%);
+      }
+
+      .val-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .val-title-box {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+
+          .val-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--td-text-color-primary);
+          }
+
+          .val-code {
+            font-size: 11px;
+            color: var(--td-text-color-secondary);
+            font-family: var(--td-font-family-mono, monospace);
+          }
+        }
+
+        .val-signal-badge {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid transparent;
+        }
+      }
+
+      .val-data-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+
+        .val-price-box {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+
+          .val-price {
+            font-size: 17px;
+            font-weight: 700;
+            font-family: var(--td-font-family-mono, monospace);
+            font-variant-numeric: tabular-nums;
+            color: var(--td-text-color-primary);
+          }
+
+          .val-change {
+            font-size: 12px;
+            font-family: var(--td-font-family-mono, monospace);
+            font-variant-numeric: tabular-nums;
+
+            &.is-up {
+              color: var(--guanlan-gain, #b8433e);
+            }
+
+            &.is-down {
+              color: var(--guanlan-loss, #16815f);
+            }
+          }
+        }
+
+        .val-pe-box {
+          display: flex;
+          align-items: baseline;
+          gap: 4px;
+
+          .pe-label {
+            font-size: 11px;
+            color: var(--td-text-color-secondary);
+          }
+
+          .pe-val {
+            font-size: 16px;
+            font-weight: 700;
+            font-family: var(--td-font-family-mono, monospace);
+            font-variant-numeric: tabular-nums;
+            color: var(--td-text-color-primary);
+          }
+        }
+      }
+
+      .val-gauge-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .gauge-meta {
+          display: flex;
+          justify-content: space-between;
+          font-size: 11px;
+
+          .gauge-label {
+            color: var(--td-text-color-secondary);
+          }
+
+          .gauge-pct {
+            font-family: var(--td-font-family-mono, monospace);
+            font-size: 12px;
+            font-weight: 700;
+          }
+        }
+
+        .gauge-bar-track {
+          display: flex;
+          height: 7px;
+          border-radius: 4px;
+          overflow: hidden;
+          position: relative;
+          background: #eef2f6;
+
+          .gauge-zone {
+            height: 100%;
+          }
+
+          .zone-opp {
+            background: #16815f;
+            opacity: 0.85;
+          }
+
+          .zone-low {
+            background: #2a9d8f;
+            opacity: 0.75;
+          }
+
+          .zone-mid {
+            background: #dfb56d;
+            opacity: 0.75;
+          }
+
+          .zone-high {
+            background: #e76f51;
+            opacity: 0.8;
+          }
+
+          .zone-risk {
+            background: #b8433e;
+            opacity: 0.85;
+          }
+
+          .gauge-pointer {
+            position: absolute;
+            top: -2px;
+            width: 5px;
+            height: 11px;
+            border-radius: 2px;
+            box-shadow: 0 0 3px rgb(0 0 0 / 50%);
+            transform: translateX(-50%);
+            z-index: 2;
+            border: 1px solid #fff;
+          }
+        }
+
+        .gauge-axis-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 9px;
+          color: var(--td-text-color-placeholder, #94a3b8);
+        }
+      }
+
+      .val-advice-box {
+        background: var(--td-bg-color-page, #f8fafc);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 11px;
+
+        .advice-title {
+          display: block;
+          color: var(--td-text-color-secondary);
+          margin-bottom: 2px;
+
+          strong {
+            color: var(--td-brand-color, #0d706d);
+          }
+        }
+
+        .advice-text {
+          margin: 0;
+          color: var(--td-text-color-primary);
+          line-height: 1.4;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+      }
+
+      .val-card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 2px;
+        padding-top: 6px;
+        border-top: 1px dashed var(--td-border-level-1-color);
+
+        .etf-anchor {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: var(--td-text-color-secondary);
+
+          .etf-tag {
+            background: var(--td-bg-color-page);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 10px;
+            border: 1px solid var(--td-border-level-1-color);
+          }
+
+          .etf-name {
+            font-weight: 500;
+            color: var(--td-text-color-primary);
+          }
+
+          .etf-code {
+            font-family: var(--td-font-family-mono, monospace);
+          }
+        }
+
+        .val-card-btns {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+      }
+    }
+  }
+
+  .val-table {
+    .table-idx-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .idx-name {
+        font-size: 13px;
+        color: var(--td-text-color-primary);
+      }
+
+      .idx-code {
+        font-size: 11px;
+        font-family: var(--td-font-family-mono, monospace);
+        color: var(--td-text-color-secondary);
+      }
+
+      .idx-cat {
+        width: fit-content;
+        margin-top: 2px;
+      }
+    }
+
+    .table-etf-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .etf-name {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--td-text-color-primary);
+      }
+
+      .etf-code {
+        font-size: 11px;
+        font-family: var(--td-font-family-mono, monospace);
+        color: var(--td-text-color-secondary);
+      }
+    }
+
+    .table-price-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .idx-price {
+        font-size: 13px;
+        font-family: var(--td-font-family-mono, monospace);
+        font-variant-numeric: tabular-nums;
+        color: var(--td-text-color-primary);
+      }
+
+      .idx-chg {
+        font-size: 11px;
+        font-family: var(--td-font-family-mono, monospace);
+        font-variant-numeric: tabular-nums;
+
+        &.is-up {
+          color: var(--guanlan-gain, #b8433e);
+        }
+
+        &.is-down {
+          color: var(--guanlan-loss, #16815f);
+        }
+      }
+    }
+
+    .table-pe-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .pe-val {
+        font-size: 13px;
+        font-weight: 600;
+        font-family: var(--td-font-family-mono, monospace);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .pe-sub {
+        font-size: 10px;
+        color: var(--td-text-color-placeholder);
+      }
+    }
+
+    .table-pct-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .pct-num {
+        font-size: 12px;
+        font-weight: 700;
+        font-family: var(--td-font-family-mono, monospace);
+      }
+
+      .pct-bar {
+        width: 100%;
+      }
+    }
+
+    .table-advice-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .tilt-badge {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--td-brand-color, #0d706d);
+      }
+
+      .advice-desc {
+        font-size: 11px;
+        color: var(--td-text-color-secondary);
+        line-height: 1.4;
+      }
+    }
+  }
+}
+
+/* 估值弹窗样式 */
+.val-dialog-body {
+  .val-dialog-header-meta {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    background: var(--td-bg-color-page);
+    border-radius: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--td-border-level-1-color);
+
+    .meta-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .m-label {
+        font-size: 11px;
+        color: var(--td-text-color-secondary);
+      }
+
+      .m-val {
+        font-size: 14px;
+        font-weight: 600;
+        font-family: var(--td-font-family-mono, monospace);
+        font-variant-numeric: tabular-nums;
+        color: var(--td-text-color-primary);
+
+        &.highlight {
+          color: var(--td-brand-color, #0d706d);
+          font-size: 16px;
+        }
+
+        &.green {
+          color: var(--guanlan-gain, #16815f);
+        }
+
+        &.red {
+          color: var(--guanlan-loss, #b8433e);
+        }
+      }
+    }
+  }
+
+  .val-dialog-period-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 10px;
+    gap: 8px;
+
+    .period-title {
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+    }
+  }
+
+  .val-dialog-advice-card {
+    background: var(--td-bg-color-page);
+    border-radius: 8px;
+    border: 1px solid var(--td-border-level-1-color);
+    padding: 12px 16px;
+    margin-top: 14px;
+
+    .card-hd {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+
+      .hd-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--td-text-color-primary);
+      }
+    }
+
+    .card-desc {
+      margin: 0;
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+      line-height: 1.5;
+    }
+
+    .card-action-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--td-border-level-1-color);
+
+      .action-hint {
+        font-size: 12px;
+        color: var(--td-text-color-secondary);
+
+        strong {
+          color: var(--td-text-color-primary);
+        }
+      }
+    }
   }
 }
 
