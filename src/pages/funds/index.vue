@@ -158,17 +158,50 @@
 
           <!-- 视图 2: 近期重点会议 -->
           <div v-else-if="macroSectionTab === 'events'" class="macro-events-panel">
-            <div class="macro-filter-row">
-              <span class="macro-section-sub">重点跟踪未来 60 天对流动性、监管定调与产业带来拐点的重大事件</span>
-              <span class="macro-count-hint">共 {{ invest.macroEvents.length }} 场日程</span>
+            <div class="macro-filter-row events-filter-row">
+              <div class="events-filter-left">
+                <t-radio-group v-model="eventsFilter" variant="default-filled" size="small">
+                  <t-radio-button value="upcoming">即将召开</t-radio-button>
+                  <t-radio-button value="all">全部日程</t-radio-button>
+                  <t-radio-button value="past">已结束</t-radio-button>
+                </t-radio-group>
+                <span class="macro-section-sub events-sub-desc">
+                  实时同步央行议息、关键物价(CPI/PPI)、重大政策研判与核心产业大会
+                </span>
+              </div>
+              <div class="events-filter-right">
+                <t-space :size="8" align="center">
+                  <span class="macro-count-hint">
+                    {{ eventsFilter === 'upcoming' ? '待召开' : eventsFilter === 'past' ? '已结束' : '共' }}
+                    {{ sortedEvents.length }} 场
+                  </span>
+                  <t-button
+                    size="small"
+                    variant="outline"
+                    theme="default"
+                    :loading="invest.macroEventsLoading"
+                    @click="handleRefreshEvents"
+                  >
+                    <template #icon><t-icon name="refresh" /></template>
+                    同步最新日历
+                  </t-button>
+                </t-space>
+              </div>
             </div>
             <div v-if="sortedEvents.length" class="events-list">
               <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
                 <div class="event-card-top">
                   <div class="event-date-col">
                     <span class="event-date-main">{{ ev.date }}</span>
-                    <span class="event-countdown-badge" :class="getEventCountdownClass(ev.date)">
-                      {{ getEventCountdown(ev.date) }}
+                    <span
+                      class="event-countdown-badge"
+                      :class="{
+                        'countdown-urgent': getEventCountdown(ev.date).urgent,
+                        'countdown-future': !getEventCountdown(ev.date).isPast && !getEventCountdown(ev.date).urgent,
+                        'countdown-past': getEventCountdown(ev.date).isPast,
+                      }"
+                    >
+                      {{ getEventCountdown(ev.date).label }}
                     </span>
                   </div>
                   <div class="event-main-col">
@@ -897,6 +930,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import type { AccountId, IndustryFocus, MacroBrief, MacroEvent, Opportunity, TradeSide } from '@/types/invest';
+import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
 
@@ -918,6 +952,7 @@ const typeFilter = ref('全部');
 const typeFilters = ['全部', '股票', '混合', '债券', '指数', 'QDII'];
 const macroFilter = ref('all');
 const macroSectionTab = ref<'signals' | 'events' | 'industries'>('signals');
+const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
@@ -968,43 +1003,21 @@ const weatherForm = reactive({
   suggestedEtfPos: '',
 });
 
-function getEventCountdown(dateStr: string) {
-  try {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const targetDate = new Date(`${currentYear}-${dateStr}T00:00:00`);
-    const diffTime = targetDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return '今日';
-    if (diffDays === 1) return '明日';
-    if (diffDays > 1) return `${diffDays}天后`;
-    if (diffDays === -1) return '昨日';
-    return `${Math.abs(diffDays)}天前`;
-  } catch {
-    return dateStr;
-  }
-}
-
-function getEventCountdownClass(dateStr: string) {
-  try {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const targetDate = new Date(`${currentYear}-${dateStr}T00:00:00`);
-    const diffDays = Math.round(
-      (targetDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) /
-        (1000 * 60 * 60 * 24),
-    );
-    if (diffDays <= 2 && diffDays >= 0) return 'countdown-urgent';
-    if (diffDays > 2) return 'countdown-future';
-    return 'countdown-past';
-  } catch {
-    return '';
-  }
-}
-
 const sortedEvents = computed(() => {
-  return [...invest.macroEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = sortMacroEvents(invest.macroEvents);
+  if (eventsFilter.value === 'upcoming') {
+    return sorted.filter((e) => !getEventCountdown(e.date).isPast);
+  }
+  if (eventsFilter.value === 'past') {
+    return sorted.filter((e) => getEventCountdown(e.date).isPast);
+  }
+  return sorted;
 });
+
+async function handleRefreshEvents() {
+  await invest.refreshMacroEvents();
+  MessagePlugin.success('已同步最新财经日历与会议日程');
+}
 
 function handleEventTargetClick(targetName: string, ev: MacroEvent) {
   invest.openTradeModal({
@@ -1249,6 +1262,7 @@ const screenCols = [
 ];
 
 onMounted(async () => {
+  invest.refreshMacroEvents();
   rankLoading.value = true;
   try {
     rank.value = await fetchFundRank();
@@ -1642,6 +1656,27 @@ function convertOppToTodo(o: Opportunity) {
 /* 重点会议日程 */
 .macro-events-panel {
   min-width: 0;
+
+  .events-filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+
+    .events-filter-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .events-sub-desc {
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+    }
+  }
 
   .events-list {
     display: flex;

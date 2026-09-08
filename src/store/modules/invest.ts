@@ -41,6 +41,7 @@ import type {
   Transaction,
 } from '@/types/invest';
 import { fetchSinaQuotes } from '@/utils/backup';
+import { fetchLiveMacroEvents } from '@/utils/calendar';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
@@ -112,7 +113,17 @@ export const useInvestStore = defineStore('invest', {
     macroWeather: readLS<MacroWeather>(LS_MACRO_WEATHER, macroWeatherSeed),
     macroIndicators: readLS<MacroIndicator[]>(LS_MACRO_INDICATORS, macroIndicatorsSeed),
     macroBriefs: readLS<MacroBrief[]>(LS_MACRO_BRIEFS, seedMacroBriefs),
-    macroEvents: readLS<MacroEvent[]>(LS_MACRO_EVENTS, macroEventsSeed),
+    macroEvents: (() => {
+      const stored = readLS<MacroEvent[]>(LS_MACRO_EVENTS, macroEventsSeed);
+      const hasOldAprilSeed = stored.some((e) => e.date.startsWith('04-') || e.date.startsWith('05-'));
+      if (hasOldAprilSeed) {
+        localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(macroEventsSeed));
+        return macroEventsSeed;
+      }
+      return stored;
+    })(),
+    macroEventsLoading: false,
+    macroEventsLastUpdated: null as string | null,
     industryFocus: readLS<IndustryFocus[]>(LS_INDUSTRY_FOCUS, industryFocusSeed),
     tradeModal: {
       visible: false,
@@ -464,6 +475,42 @@ export const useInvestStore = defineStore('invest', {
       this.macroEvents = [row, ...this.macroEvents];
       localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
       return row;
+    },
+    async refreshMacroEvents() {
+      this.macroEventsLoading = true;
+      try {
+        const liveItems = await fetchLiveMacroEvents(30);
+        if (liveItems.length > 0) {
+          const customUserEvents = this.macroEvents.filter((e) => e.id.startsWith('ev_') && !e.id.startsWith('ev-'));
+          const seen = new Set<string>();
+          const merged: MacroEvent[] = [];
+
+          for (const ev of customUserEvents) {
+            seen.add(ev.title);
+            merged.push(ev);
+          }
+          for (const ev of liveItems) {
+            if (!seen.has(ev.title)) {
+              seen.add(ev.title);
+              merged.push(ev);
+            }
+          }
+          for (const ev of macroEventsSeed) {
+            if (!seen.has(ev.title)) {
+              seen.add(ev.title);
+              merged.push(ev);
+            }
+          }
+
+          this.macroEvents = merged;
+          this.macroEventsLastUpdated = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+          localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+        }
+      } catch (err) {
+        console.warn('[calendar] refreshMacroEvents failed:', err);
+      } finally {
+        this.macroEventsLoading = false;
+      }
     },
     removeMacroEvent(id: string) {
       this.macroEvents = this.macroEvents.filter((e) => e.id !== id);
