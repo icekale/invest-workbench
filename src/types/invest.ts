@@ -17,6 +17,23 @@ export interface Holding {
   thesisId: string;
 }
 
+export interface MacroWeather {
+  cycle: string;
+  sentiment: '偏多' | '中性' | '谨慎' | '防守' | string;
+  suggestedStockPos: string;
+  suggestedEtfPos: string;
+  updatedAt: string;
+}
+
+export interface MacroIndicator {
+  id: string;
+  name: string;
+  value: string;
+  status: string;
+  theme: 'success' | 'warning' | 'danger' | 'default';
+  hint: string;
+}
+
 export interface MacroBrief {
   id: string;
   time: string;
@@ -25,6 +42,15 @@ export interface MacroBrief {
   topic: string;
   tone: string;
   account: AccountId | 'all';
+  actionAdvice?: string;
+  suggestedTodo?: {
+    account: AccountId;
+    code?: string;
+    name: string;
+    side: TradeSide;
+    quantity?: number;
+    reason: string;
+  };
 }
 
 export interface SmartPortfolioFund {

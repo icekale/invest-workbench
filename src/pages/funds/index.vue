@@ -7,7 +7,7 @@
     <div class="overview-strip">
       <div class="overview-strip__item">
         <span class="overview-strip__label">每日宏观信号</span>
-        <span class="overview-strip__val">{{ macros.length }} <small>条简报</small></span>
+        <span class="overview-strip__val">{{ invest.macroBriefs.length }} <small>条研判</small></span>
       </div>
       <div class="overview-strip__divider" />
       <div class="overview-strip__item">
@@ -31,26 +31,115 @@
       <t-col :xs="12" :xl="7">
         <t-card title="每日宏观信号">
           <template #actions>
-            <span class="sub-action-text">每日 08:30 投研晨会纪要</span>
+            <t-space :size="8" align="center">
+              <span class="sub-action-text">{{ invest.macroWeather?.updatedAt || '每日 08:30 晨会定调' }}</span>
+              <t-button size="small" variant="text" theme="primary" @click="openMacroModal"> + 记研判 </t-button>
+            </t-space>
           </template>
-          <t-radio-group v-model="macroFilter" variant="default-filled" style="margin-bottom: 16px">
-            <t-radio-button value="all">全部</t-radio-button>
-            <t-radio-button value="增长">增长</t-radio-button>
-            <t-radio-button value="流动性">流动性</t-radio-button>
-            <t-radio-button value="政策">政策</t-radio-button>
-          </t-radio-group>
+
+          <!-- 宏观天气与建议基准仓位 -->
+          <div class="macro-weather-bar">
+            <div class="weather-col main-cycle">
+              <div class="weather-label">宏观周期定调</div>
+              <div class="weather-val">{{ invest.macroWeather?.cycle }}</div>
+            </div>
+            <div class="weather-col sentiment-badge">
+              <div class="weather-label">市场偏好</div>
+              <t-tag
+                size="small"
+                :theme="
+                  invest.macroWeather?.sentiment === '偏多'
+                    ? 'danger'
+                    : invest.macroWeather?.sentiment === '防守'
+                      ? 'success'
+                      : 'warning'
+                "
+                variant="light"
+              >
+                {{ invest.macroWeather?.sentiment }}
+              </t-tag>
+            </div>
+            <div class="weather-col position-guide">
+              <div class="weather-label">建议基准仓位</div>
+              <div class="weather-val pos-text">
+                股票 <strong>{{ invest.macroWeather?.suggestedStockPos }}</strong> · ETF
+                <strong>{{ invest.macroWeather?.suggestedEtfPos }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- 核心量化温度计 4 锚点 -->
+          <div class="macro-indicators-strip">
+            <div v-for="ind in invest.macroIndicators" :key="ind.id" class="ind-pill" :title="ind.hint">
+              <div class="ind-top">
+                <span class="ind-name">{{ ind.name }}</span>
+                <t-tag size="small" :theme="ind.theme" variant="light">{{ ind.status }}</t-tag>
+              </div>
+              <div class="ind-bottom">
+                <span class="ind-val">{{ ind.value }}</span>
+                <span class="ind-hint">{{ ind.hint }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 筛选过滤与条数 -->
+          <div class="macro-filter-row">
+            <t-radio-group v-model="macroFilter" variant="default-filled">
+              <t-radio-button value="all">全部</t-radio-button>
+              <t-radio-button value="增长">增长</t-radio-button>
+              <t-radio-button value="流动性">流动性</t-radio-button>
+              <t-radio-button value="政策">政策</t-radio-button>
+              <t-radio-button value="海外">海外</t-radio-button>
+            </t-radio-group>
+            <span class="macro-count-hint">共 {{ macros.length }} 条晨会研判</span>
+          </div>
+
+          <!-- 时间轴研判列表 -->
           <t-timeline v-if="macros.length" mode="same">
             <t-timeline-item v-for="m in macros" :key="m.id" :dot-color="toneTimelineDot[m.tone]">
               <div class="macro">
                 <div class="macro-hd">
                   <strong class="macro-title">{{ m.title }}</strong>
-                  <t-space :size="6">
+                  <t-space :size="6" align="center">
                     <t-tag size="small" :theme="toneTagTheme(m.tone)" variant="light">{{ m.tone }}</t-tag>
                     <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
-                    <t-tag size="small" variant="outline">{{ m.account === 'stock' ? '股票' : 'ETF' }}</t-tag>
+                    <t-tag size="small" variant="outline">{{
+                      m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
+                    }}</t-tag>
+                    <span class="macro-time-badge">{{ m.time }}</span>
                   </t-space>
                 </div>
                 <p class="macro-bd">{{ m.body }}</p>
+
+                <!-- 应对策略建议 -->
+                <div v-if="m.actionAdvice" class="macro-action-box">
+                  <span class="action-box-title">【应对策略】</span>
+                  <span class="action-box-text">{{ m.actionAdvice }}</span>
+                </div>
+
+                <!-- 底部交互：转为待办 / 删除 -->
+                <div class="macro-ft">
+                  <t-button
+                    v-if="m.suggestedTodo"
+                    size="small"
+                    theme="primary"
+                    variant="outline"
+                    @click="onConvertMacro(m)"
+                  >
+                    + 转为决策待办 ({{ m.suggestedTodo.side === 'buy' ? '买入' : '卖出' }} {{ m.suggestedTodo.name }})
+                  </t-button>
+                  <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
+                    + 转为研判待办
+                  </t-button>
+
+                  <t-popconfirm
+                    v-if="m.id.startsWith('m_')"
+                    content="确认删除此条自定义研判？"
+                    @confirm="invest.removeMacroBrief(m.id)"
+                  >
+                    <t-button size="small" theme="danger" variant="text">删除</t-button>
+                  </t-popconfirm>
+                </div>
               </div>
             </t-timeline-item>
           </t-timeline>
@@ -337,6 +426,134 @@
         </t-form-item>
       </t-form>
     </t-dialog>
+
+    <!-- 宏观研判与定调弹窗 -->
+    <t-dialog
+      v-model:visible="macroModalVisible"
+      header="宏观研判与定调管理"
+      :on-confirm="saveMacroModal"
+      width="560px"
+    >
+      <t-tabs v-model="macroActiveTab" theme="card" style="margin-bottom: 16px">
+        <t-tab-panel value="brief" label="记一笔晨会研判" />
+        <t-tab-panel value="weather" label="调整宏观天气与基准仓位" />
+      </t-tabs>
+
+      <div v-if="macroActiveTab === 'brief'">
+        <t-form label-align="top">
+          <t-form-item label="研判标题">
+            <t-input v-model="newBrief.title" placeholder="例如：央行公开市场净投放加码，资金面充裕平稳" />
+          </t-form-item>
+          <t-row :gutter="12">
+            <t-col :span="4">
+              <t-form-item label="核心主题">
+                <t-select v-model="newBrief.topic">
+                  <t-option value="增长" label="增长" />
+                  <t-option value="流动性" label="流动性" />
+                  <t-option value="政策" label="政策" />
+                  <t-option value="海外" label="海外" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="多空偏向">
+                <t-select v-model="newBrief.tone">
+                  <t-option value="偏多" label="偏多" />
+                  <t-option value="中性" label="中性" />
+                  <t-option value="偏空" label="偏空" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+            <t-col :span="4">
+              <t-form-item label="关联账户">
+                <t-select v-model="newBrief.account">
+                  <t-option value="all" label="全市场" />
+                  <t-option value="stock" label="股票账户" />
+                  <t-option value="etf" label="ETF账户" />
+                </t-select>
+              </t-form-item>
+            </t-col>
+          </t-row>
+          <t-form-item label="逻辑推导与研判正文">
+            <t-textarea
+              v-model="newBrief.body"
+              placeholder="记录晨报核心数据、影响链条与市场反应"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </t-form-item>
+          <t-form-item label="应对策略建议">
+            <t-input v-model="newBrief.actionAdvice" placeholder="例如：宽基ETF逢调整按计划低吸，避免盘中追高" />
+          </t-form-item>
+
+          <div
+            style="
+              margin: 14px 0 10px;
+              padding: 10px 12px;
+              background: var(--td-bg-color-secondarycontainer, #f8fafc);
+              border-radius: 6px;
+            "
+          >
+            <t-form-item label="联动生成待办建议（可选）" style="margin-bottom: 8px">
+              <t-space align="center">
+                <t-switch v-model="newBrief.enableTodo" />
+                <span style="font-size: 12px; color: var(--td-text-color-secondary)">
+                  保存时同时在右侧「决策待办清单」生成一条待执行动作
+                </span>
+              </t-space>
+            </t-form-item>
+
+            <div v-if="newBrief.enableTodo">
+              <t-row :gutter="12">
+                <t-col :span="4">
+                  <t-form-item label="买卖方向">
+                    <t-radio-group v-model="newBrief.todoSide" variant="default-filled">
+                      <t-radio-button value="buy">买入</t-radio-button>
+                      <t-radio-button value="sell">卖出</t-radio-button>
+                    </t-radio-group>
+                  </t-form-item>
+                </t-col>
+                <t-col :span="8">
+                  <t-form-item label="标的名称">
+                    <t-input v-model="newBrief.todoName" placeholder="例如：沪深300ETF / 贵州茅台" />
+                  </t-form-item>
+                </t-col>
+              </t-row>
+              <t-form-item label="待办执行理由" style="margin-bottom: 0">
+                <t-input v-model="newBrief.todoReason" placeholder="例如：流动性宽裕支撑底仓，逢低补齐目标权重" />
+              </t-form-item>
+            </div>
+          </div>
+        </t-form>
+      </div>
+
+      <div v-else>
+        <t-form label-align="top">
+          <t-form-item label="宏观周期定调">
+            <t-input v-model="weatherForm.cycle" placeholder="例如：货币宽松 · 信用温和扩张" />
+          </t-form-item>
+          <t-form-item label="全市场风险偏好">
+            <t-radio-group v-model="weatherForm.sentiment" variant="default-filled">
+              <t-radio-button value="偏多">偏多</t-radio-button>
+              <t-radio-button value="中性">中性</t-radio-button>
+              <t-radio-button value="谨慎">谨慎</t-radio-button>
+              <t-radio-button value="防守">防守</t-radio-button>
+            </t-radio-group>
+          </t-form-item>
+          <t-row :gutter="12">
+            <t-col :span="6">
+              <t-form-item label="股票账户建议仓位">
+                <t-input v-model="weatherForm.suggestedStockPos" placeholder="例如：60% ~ 70%" />
+              </t-form-item>
+            </t-col>
+            <t-col :span="6">
+              <t-form-item label="ETF账户建议仓位">
+                <t-input v-model="weatherForm.suggestedEtfPos" placeholder="例如：75% ~ 85%" />
+              </t-form-item>
+            </t-col>
+          </t-row>
+        </t-form>
+      </div>
+    </t-dialog>
   </t-space>
 </template>
 <script setup lang="ts">
@@ -344,9 +561,9 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { macroBriefs, smartPortfolios } from '@/mock/invest';
+import { smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
-import type { AccountId, Opportunity } from '@/types/invest';
+import type { AccountId, MacroBrief, Opportunity, TradeSide } from '@/types/invest';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
 
@@ -370,6 +587,113 @@ const macroFilter = ref('all');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
+// 宏观研判与定调弹窗控制
+const macroModalVisible = ref(false);
+const macroActiveTab = ref<'brief' | 'weather'>('brief');
+
+const newBrief = reactive({
+  title: '',
+  topic: '流动性',
+  tone: '偏多',
+  account: 'etf' as AccountId | 'all',
+  body: '',
+  actionAdvice: '',
+  enableTodo: true,
+  todoSide: 'buy' as TradeSide,
+  todoName: '',
+  todoQty: 100,
+  todoReason: '',
+});
+
+const weatherForm = reactive({
+  cycle: '',
+  sentiment: '偏多',
+  suggestedStockPos: '',
+  suggestedEtfPos: '',
+});
+
+function openMacroModal() {
+  weatherForm.cycle = invest.macroWeather?.cycle || '';
+  weatherForm.sentiment = invest.macroWeather?.sentiment || '偏多';
+  weatherForm.suggestedStockPos = invest.macroWeather?.suggestedStockPos || '60% ~ 70%';
+  weatherForm.suggestedEtfPos = invest.macroWeather?.suggestedEtfPos || '75% ~ 85%';
+  macroActiveTab.value = 'brief';
+  macroModalVisible.value = true;
+}
+
+function saveMacroModal() {
+  if (macroActiveTab.value === 'weather') {
+    if (!weatherForm.cycle.trim()) {
+      MessagePlugin.warning('请填写宏观周期定调');
+      return;
+    }
+    invest.updateMacroWeather({
+      cycle: weatherForm.cycle.trim(),
+      sentiment: weatherForm.sentiment,
+      suggestedStockPos: weatherForm.suggestedStockPos.trim() || '60% ~ 70%',
+      suggestedEtfPos: weatherForm.suggestedEtfPos.trim() || '75% ~ 85%',
+      updatedAt: `今日 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 投研定调`,
+    });
+    MessagePlugin.success('宏观天气与基准仓位已更新');
+    macroModalVisible.value = false;
+    return;
+  }
+
+  // brief
+  if (!newBrief.title.trim() || !newBrief.body.trim()) {
+    MessagePlugin.warning('请填写研判标题和逻辑正文');
+    return;
+  }
+
+  const suggestedTodo =
+    newBrief.enableTodo && newBrief.todoName.trim()
+      ? {
+          account: (newBrief.account === 'stock' ? 'stock' : 'etf') as AccountId,
+          name: newBrief.todoName.trim(),
+          side: newBrief.todoSide,
+          quantity: Number(newBrief.todoQty) || 0,
+          reason: newBrief.todoReason.trim() || newBrief.actionAdvice.trim() || newBrief.title.trim(),
+        }
+      : undefined;
+
+  invest.addMacroBrief({
+    title: newBrief.title.trim(),
+    topic: newBrief.topic,
+    tone: newBrief.tone,
+    account: newBrief.account,
+    body: newBrief.body.trim(),
+    actionAdvice: newBrief.actionAdvice.trim() || undefined,
+    suggestedTodo,
+  });
+
+  if (suggestedTodo) {
+    invest.addTodo({
+      account: suggestedTodo.account,
+      code: '',
+      name: suggestedTodo.name,
+      side: suggestedTodo.side,
+      quantity: suggestedTodo.quantity || 0,
+      reason: suggestedTodo.reason,
+    });
+    MessagePlugin.success('已添加晨会研判，并同步在右侧生成决策待办');
+  } else {
+    MessagePlugin.success('已添加一条晨会宏观研判');
+  }
+
+  // reset
+  newBrief.title = '';
+  newBrief.body = '';
+  newBrief.actionAdvice = '';
+  newBrief.todoName = '';
+  newBrief.todoReason = '';
+  macroModalVisible.value = false;
+}
+
+function onConvertMacro(m: MacroBrief) {
+  invest.convertMacroToTodo(m);
+  MessagePlugin.success(`已生成决策待办「${m.suggestedTodo?.name || m.title.slice(0, 10)}」，请在右侧清单查看`);
+}
+
 // 宏观信号色彩
 const toneTimelineDot: Record<string, string> = {
   偏多: '#b8433e', // Guanlan gain red
@@ -385,7 +709,7 @@ function toneTagTheme(tone: string): 'danger' | 'primary' | 'success' | 'default
 }
 
 const macros = computed(() =>
-  macroFilter.value === 'all' ? macroBriefs : macroBriefs.filter((m) => m.topic === macroFilter.value),
+  macroFilter.value === 'all' ? invest.macroBriefs : invest.macroBriefs.filter((m) => m.topic === macroFilter.value),
 );
 
 const openTodos = computed(() => invest.todos.filter((x) => x.status === 'open'));
@@ -643,6 +967,160 @@ function convertOppToTodo(o: Opportunity) {
 }
 
 /* 宏观 */
+.macro-weather-bar {
+  display: grid;
+  grid-template-columns: 1.5fr auto 1.5fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--td-bg-color-container-hover, #f8fafc);
+  border: 1px solid var(--td-component-stroke, #e2e8f0);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+
+  @media (width <= 767px) {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .weather-col {
+    min-width: 0;
+  }
+
+  .weather-label {
+    font-size: 11px;
+    color: var(--td-text-color-secondary);
+    margin-bottom: 2px;
+  }
+
+  .weather-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--td-text-color-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    strong {
+      color: var(--td-brand-color, #0d706d);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+.macro-indicators-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+
+  @media (width <= 900px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (width <= 480px) {
+    grid-template-columns: 1fr;
+  }
+
+  .ind-pill {
+    padding: 8px 10px;
+    background: var(--td-bg-color-secondarycontainer, #f1f5f9);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .ind-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+
+    .ind-name {
+      font-size: 11px;
+      color: var(--td-text-color-secondary);
+      white-space: nowrap;
+    }
+  }
+
+  .ind-bottom {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+
+    .ind-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--td-text-color-primary);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .ind-hint {
+      font-size: 11px;
+      color: var(--td-text-color-placeholder);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+.macro-filter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  .macro-count-hint {
+    font-size: 12px;
+    color: var(--td-text-color-placeholder);
+  }
+}
+
+.macro-time-badge {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-action-box {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--td-brand-color-light, rgb(13 112 109 / 6%));
+  border-left: 2px solid var(--td-brand-color, #0d706d);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+
+  .action-box-title {
+    font-weight: 600;
+    color: var(--td-brand-color, #0d706d);
+    white-space: nowrap;
+  }
+
+  .action-box-text {
+    color: var(--td-text-color-primary);
+  }
+}
+
+.macro-ft {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .macro {
   min-width: 0;
 }

@@ -5,6 +5,9 @@ import {
   holdings as seedHoldings,
   indexes,
   journal as seedJournal,
+  macroBriefs as seedMacroBriefs,
+  macroIndicatorsSeed,
+  macroWeatherSeed,
   opportunities as seedOpps,
   planTargets,
   prefsSeed,
@@ -17,6 +20,9 @@ import type {
   CustomPortfolio,
   Holding,
   JournalEntry,
+  MacroBrief,
+  MacroIndicator,
+  MacroWeather,
   Opportunity,
   Prefs,
   Thesis,
@@ -41,6 +47,9 @@ const LS_OPPS = 'invest-v2-opportunities';
 const LS_PREFS = 'invest-prefs';
 const LS_PORT = 'invest-v2-portfolios';
 const LS_TX = 'invest-v2-transactions';
+const LS_MACRO_WEATHER = 'invest-v2-macro-weather';
+const LS_MACRO_INDICATORS = 'invest-v2-macro-indicators';
+const LS_MACRO_BRIEFS = 'invest-v2-macro-briefs';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -90,6 +99,9 @@ export const useInvestStore = defineStore('invest', {
       };
     })(),
     customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
+    macroWeather: readLS<MacroWeather>(LS_MACRO_WEATHER, macroWeatherSeed),
+    macroIndicators: readLS<MacroIndicator[]>(LS_MACRO_INDICATORS, macroIndicatorsSeed),
+    macroBriefs: readLS<MacroBrief[]>(LS_MACRO_BRIEFS, seedMacroBriefs),
   }),
   getters: {
     enriched: (state) => enrich(state.holdings, state.quotes),
@@ -258,6 +270,53 @@ export const useInvestStore = defineStore('invest', {
       this.customPortfolios = this.customPortfolios.filter((p) => p.id !== id);
       localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
     },
+    updateMacroWeather(partial: Partial<MacroWeather>) {
+      this.macroWeather = { ...this.macroWeather, ...partial };
+      localStorage.setItem(LS_MACRO_WEATHER, JSON.stringify(this.macroWeather));
+    },
+    updateMacroIndicator(id: string, partial: Partial<MacroIndicator>) {
+      this.macroIndicators = this.macroIndicators.map((item) => (item.id === id ? { ...item, ...partial } : item));
+      localStorage.setItem(LS_MACRO_INDICATORS, JSON.stringify(this.macroIndicators));
+    },
+    addMacroBrief(brief: Omit<MacroBrief, 'id' | 'time'> & { time?: string }) {
+      const now = new Date();
+      const timeStr =
+        brief.time || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const row: MacroBrief = {
+        ...brief,
+        id: `m_${Date.now()}`,
+        time: timeStr,
+      };
+      this.macroBriefs = [row, ...this.macroBriefs];
+      localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
+      return row;
+    },
+    removeMacroBrief(id: string) {
+      this.macroBriefs = this.macroBriefs.filter((m) => m.id !== id);
+      localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
+    },
+    convertMacroToTodo(brief: MacroBrief): boolean {
+      if (brief.suggestedTodo) {
+        this.addTodo({
+          account: brief.suggestedTodo.account,
+          code: brief.suggestedTodo.code || '',
+          name: brief.suggestedTodo.name,
+          side: brief.suggestedTodo.side,
+          quantity: brief.suggestedTodo.quantity || 0,
+          reason: brief.suggestedTodo.reason,
+        });
+        return true;
+      }
+      this.addTodo({
+        account: brief.account === 'stock' ? 'stock' : 'etf',
+        code: '',
+        name: brief.title.slice(0, 14),
+        side: brief.tone === '偏空' ? 'sell' : 'buy',
+        quantity: 0,
+        reason: brief.actionAdvice || brief.body.slice(0, 50),
+      });
+      return true;
+    },
     setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
       this.prefs = { ...this.prefs, [key]: value };
       localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
@@ -288,6 +347,9 @@ export const useInvestStore = defineStore('invest', {
         transactions: this.transactions,
         watchlist: this.watchlist,
         customPortfolios: this.customPortfolios,
+        macroWeather: this.macroWeather,
+        macroIndicators: this.macroIndicators,
+        macroBriefs: this.macroBriefs,
       };
     },
     restoreSnapshot(data: any): { success: boolean; message: string; counts?: Record<string, number> } {
@@ -354,6 +416,20 @@ export const useInvestStore = defineStore('invest', {
       if (Array.isArray(data.customPortfolios)) {
         this.customPortfolios = data.customPortfolios;
         localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
+      }
+
+      // 11. 宏观天气与指标
+      if (data.macroWeather && typeof data.macroWeather === 'object') {
+        this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
+        localStorage.setItem(LS_MACRO_WEATHER, JSON.stringify(this.macroWeather));
+      }
+      if (Array.isArray(data.macroIndicators)) {
+        this.macroIndicators = data.macroIndicators;
+        localStorage.setItem(LS_MACRO_INDICATORS, JSON.stringify(this.macroIndicators));
+      }
+      if (Array.isArray(data.macroBriefs)) {
+        this.macroBriefs = data.macroBriefs;
+        localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
       }
 
       // 触发最新行情更新
