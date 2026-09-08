@@ -11,7 +11,7 @@ export default [
     name: 'dashboard',
     redirect: '/dashboard/index',
     meta: {
-      title: { zh_CN: '投资驾驶舱', en_US: 'Cockpit' },
+      title: { zh_CN: '仓位总览', en_US: 'Overview' },
       icon: shallowRef(PreciseMonitorIcon),
       orderNo: 0,
       single: true,
@@ -21,7 +21,7 @@ export default [
         path: 'index',
         name: 'DashboardIndex',
         component: () => import('@/pages/dashboard/index.vue'),
-        meta: { title: { zh_CN: '投资驾驶舱', en_US: 'Cockpit' } },
+        meta: { title: { zh_CN: '仓位总览', en_US: 'Overview' } },
       },
     ],
   },

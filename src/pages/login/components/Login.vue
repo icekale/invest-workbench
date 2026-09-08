@@ -49,7 +49,7 @@
 
       <div class="btn-container">
         <t-button block size="large" theme="primary" type="submit" :loading="loading" class="login-submit-btn">
-          <span>开启投资驾驶舱</span>
+          <span>进入工作台</span>
         </t-button>
       </div>
     </t-form>

@@ -64,7 +64,7 @@
             <span class="status-label">终端就绪 · 通道正常</span>
           </div>
           <h2 class="card-title">开启工作台</h2>
-          <p class="card-desc">输入账号凭证解锁今日双账户驾驶舱</p>
+          <p class="card-desc">输入账号，查看今日双账户仓位</p>
         </div>
 
         <div class="card-form">

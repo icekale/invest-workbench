@@ -19,7 +19,7 @@ import { useRoute } from 'vue-router';
 const route = useRoute();
 
 const tabs = [
-  { path: '/dashboard/index', match: '/dashboard', label: '驾驶舱', icon: PreciseMonitorIcon },
+  { path: '/dashboard/index', match: '/dashboard', label: '仓位', icon: PreciseMonitorIcon },
   { path: '/funds/index', match: '/funds', label: '研究', icon: SearchIcon },
   { path: '/review/index', match: '/review', label: '复盘', icon: ChartIcon },
   { path: '/plan/index', match: '/plan', label: '账户', icon: EditIcon },
