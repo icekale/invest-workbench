@@ -297,7 +297,7 @@ function renderLine() {
           return `${p.axisValue}<br/>净值 ${Number(v).toFixed(4)}`;
         },
       },
-      grid: { left: 40, right: narrow ? 10 : 24, top: 24, bottom: 28 },
+      grid: { left: 8, right: narrow ? 12 : 56, top: 12, bottom: 8, containLabel: true },
       xAxis: {
         type: 'category',
         boundaryGap: false,
@@ -318,25 +318,24 @@ function renderLine() {
       series: [
         {
           type: 'line',
+          clip: false,
           showSymbol: true,
           symbol: 'circle',
           lineStyle: { width: 2, color: lineGreen },
           emphasis: { scale: false },
+          endLabel: narrow
+            ? { show: false }
+            : {
+                show: true,
+                formatter: () => Number(ys[last]).toFixed(4),
+                color: chartInk,
+                fontSize: 12,
+                distance: 8,
+              },
           data: ys.map((v, i) => ({
             value: v,
-            symbolSize: i === last ? 12 : 0,
-            itemStyle: { color: lineGreen, borderColor: chartDotBorder, borderWidth: 3 },
-            label:
-              i === last && !narrow
-                ? {
-                    show: true,
-                    formatter: () => Number(ys[last]).toFixed(4),
-                    position: 'left',
-                    distance: 10,
-                    color: chartInk,
-                    fontSize: 12,
-                  }
-                : { show: false },
+            symbolSize: i === last ? 10 : 0,
+            itemStyle: { color: lineGreen, borderColor: chartDotBorder, borderWidth: 2 },
           })),
         },
       ],
