@@ -3,6 +3,8 @@
     <!-- Top Tabs Header -->
     <t-tabs v-model="activeTab" theme="card" size="medium" class="plan-main-tabs">
       <t-tab-panel value="overview" label="账户设定与调仓目标" />
+      <t-tab-panel value="rebalance" label="⚖️ 智能再平衡计算器" />
+      <t-tab-panel value="penetration" label="🔍 底层穿透与重合透视" />
       <t-tab-panel value="ledger" :label="`持仓与交易台账 (${invest.transactions.length})`" />
       <t-tab-panel value="alerts">
         <template #label>
@@ -153,6 +155,15 @@
               <span class="chip-item">目标资产覆盖：<b>93.0%</b></span>
               <span class="chip-item">留存现金：<b>7.0%</b></span>
               <span class="chip-item">阈值：<b>±3.0%</b></span>
+              <t-button
+                size="small"
+                theme="primary"
+                variant="outline"
+                style="margin-left: 8px"
+                @click="activeTab = 'rebalance'"
+              >
+                打开再平衡计算器 →
+              </t-button>
             </div>
           </template>
 
@@ -311,12 +322,22 @@
       </t-space>
     </div>
 
-    <!-- Tab 2: 持仓与交易台账 -->
+    <!-- Tab 2: 智能再平衡计算器 -->
+    <div v-show="activeTab === 'rebalance'" class="tab-pane-content">
+      <rebalance-calculator />
+    </div>
+
+    <!-- Tab 3: 底层穿透与重合透视 -->
+    <div v-show="activeTab === 'penetration'" class="tab-pane-content">
+      <holdings-penetration />
+    </div>
+
+    <!-- Tab 4: 持仓与交易台账 -->
     <div v-show="activeTab === 'ledger'" class="tab-pane-content">
       <transaction-ledger />
     </div>
 
-    <!-- Tab 3: 买卖点建议 -->
+    <!-- Tab 5: 买卖点建议 -->
     <div v-show="activeTab === 'alerts'" class="tab-pane-content">
       <trade-alerts />
     </div>
@@ -324,24 +345,43 @@
 </template>
 <script setup lang="ts">
 import type { PrimaryTableCol } from 'tdesign-vue-next';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { disciplineRules, planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import type { TodoStatus } from '@/types/invest';
 import { summarize } from '@/utils/book';
 
+import HoldingsPenetration from './components/HoldingsPenetration.vue';
+import RebalanceCalculator from './components/RebalanceCalculator.vue';
 import TradeAlerts from './components/TradeAlerts.vue';
 import TransactionLedger from './components/TransactionLedger.vue';
 
 defineOptions({ name: 'PlanIndex' });
 
+const route = useRoute();
 const invest = useInvestStore();
-const activeTab = ref<'overview' | 'ledger' | 'alerts'>('overview');
+const activeTab = ref<'overview' | 'rebalance' | 'penetration' | 'ledger' | 'alerts'>('overview');
 
 onMounted(() => {
   invest.refreshQuotes();
+  if (
+    route.query.tab &&
+    ['overview', 'rebalance', 'penetration', 'ledger', 'alerts'].includes(String(route.query.tab))
+  ) {
+    activeTab.value = route.query.tab as any;
+  }
 });
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (newTab && ['overview', 'rebalance', 'penetration', 'ledger', 'alerts'].includes(String(newTab))) {
+      activeTab.value = newTab as any;
+    }
+  },
+);
 
 const stock = computed(() => summarize(invest.stockRows, invest.cash.stock));
 const etf = computed(() => summarize(invest.etfRows, invest.cash.etf));

@@ -284,14 +284,18 @@
 
           <div class="val-data-row">
             <div class="val-price-box">
-              <span class="val-price">{{ item.price }}</span>
+              <span class="val-price">{{ Number(item.price).toFixed(2) }}</span>
               <span class="val-change" :class="item.changePct >= 0 ? 'is-up' : 'is-down'">
-                {{ item.changePct >= 0 ? `+${item.changePct}%` : `${item.changePct}%` }}
+                {{
+                  item.changePct >= 0
+                    ? `+${Number(item.changePct).toFixed(2)}%`
+                    : `${Number(item.changePct).toFixed(2)}%`
+                }}
               </span>
             </div>
             <div class="val-pe-box">
               <span class="pe-label">PE(TTM)</span>
-              <strong class="pe-val">{{ item.pe }}</strong>
+              <strong class="pe-val">{{ Number(item.pe).toFixed(2) }}</strong>
             </div>
           </div>
 
@@ -376,16 +380,18 @@
 
         <template #priceInfo="{ row }">
           <div class="table-price-cell">
-            <strong class="idx-price">{{ row.price }}</strong>
+            <strong class="idx-price">{{ Number(row.price).toFixed(2) }}</strong>
             <span class="idx-chg" :class="row.changePct >= 0 ? 'is-up' : 'is-down'">
-              {{ row.changePct >= 0 ? `+${row.changePct}%` : `${row.changePct}%` }}
+              {{
+                row.changePct >= 0 ? `+${Number(row.changePct).toFixed(2)}%` : `${Number(row.changePct).toFixed(2)}%`
+              }}
             </span>
           </div>
         </template>
 
         <template #peInfo="{ row }">
           <div class="table-pe-cell">
-            <span class="pe-val">{{ row.pe }}</span>
+            <span class="pe-val">{{ Number(row.pe).toFixed(2) }}</span>
             <small class="pe-sub">10年中位 {{ row.peStats.p50 }}</small>
           </div>
         </template>

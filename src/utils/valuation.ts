@@ -248,7 +248,7 @@ export function calcPercentile(val: number, stats: IndexValuationConfig['peStats
   }
   if (val < stats.p80) {
     // [p50, p80] -> [50, 80]
-    return Math.round(50 + ((val - stats.p80) / (stats.p80 - stats.p50)) * 30);
+    return Math.round(50 + ((val - stats.p50) / (stats.p80 - stats.p50)) * 30);
   }
   // [p80, max] -> [80, 99]
   return Math.round(80 + ((val - stats.p80) / (stats.max - stats.p80)) * 19);
@@ -337,8 +337,10 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
       const key = m[1].toLowerCase();
       const vals = m[2].split('~');
       const price = Number(vals[3]) || 0;
-      const changePct = Number(vals[30] || vals[32]) || 0;
-      const pe = Number(vals[37] || vals[39]) || 0;
+      // vals[32] 为涨跌幅百分比（如 -0.36），vals[30] 为时间戳（如 20260908161415）不可作为涨跌幅
+      const changePct = Number(vals[32]) || 0;
+      // vals[39] 为动态市盈率 PE(TTM)，vals[37] 为成交额（万元，如 49208662）不可作为市盈率
+      const pe = Number(vals[39]) > 0 ? Number(vals[39]) : 0;
       const pb = Number(vals[46]) > 0 ? Number(vals[46]) : 0;
       quoteMap.set(key, { price, changePct, pe, pb });
     }
@@ -346,9 +348,9 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
     return INDEX_VALUATION_CONFIGS.map((cfg) => {
       const q = quoteMap.get(cfg.code.toLowerCase());
       const rawPe = q?.pe && q.pe > 0 ? q.pe : cfg.peStats.p50;
-      const price = q?.price && q.price > 0 ? q.price : cfg.peStats.p50 * 100;
-      const changePct = q?.changePct ?? 0;
-      const pb = q?.pb && q.pb > 0 ? q.pb : (cfg.pbStats?.p50 ?? 1.5);
+      const price = q?.price && q.price > 0 ? Number(q.price.toFixed(2)) : Number((cfg.peStats.p50 * 100).toFixed(2));
+      const changePct = q ? Number(q.changePct.toFixed(2)) : 0;
+      const pb = q?.pb && q.pb > 0 ? Number(q.pb.toFixed(2)) : (cfg.pbStats?.p50 ?? 1.5);
 
       const pePercentile = calcPercentile(rawPe, cfg.peStats);
       const pbPercentile = cfg.pbStats
