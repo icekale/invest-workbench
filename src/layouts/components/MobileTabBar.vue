@@ -13,15 +13,16 @@
   </nav>
 </template>
 <script setup lang="ts">
-import { ChartIcon, EditIcon, PreciseMonitorIcon, SearchIcon } from 'tdesign-icons-vue-next';
+import { ChartIcon, EditIcon, LayersIcon, PreciseMonitorIcon, SearchIcon } from 'tdesign-icons-vue-next';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
 
 const tabs = [
   { path: '/dashboard/index', match: '/dashboard', label: '仓位', icon: PreciseMonitorIcon },
-  { path: '/funds/index', match: '/funds', label: '研究', icon: SearchIcon },
+  { path: '/research/index', match: '/research', label: '研判', icon: SearchIcon },
   { path: '/review/index', match: '/review', label: '复盘', icon: ChartIcon },
   { path: '/plan/index', match: '/plan', label: '账户', icon: EditIcon },
+  { path: '/funds/recommend', match: '/funds', label: '公募', icon: LayersIcon },
 ];
 </script>
