@@ -75,10 +75,8 @@
                 <span class="ind-name">{{ ind.name }}</span>
                 <t-tag size="small" :theme="ind.theme" variant="light">{{ ind.status }}</t-tag>
               </div>
-              <div class="ind-bottom">
-                <span class="ind-val">{{ ind.value }}</span>
-                <span class="ind-hint">{{ ind.hint }}</span>
-              </div>
+              <div class="ind-val">{{ ind.value }}</div>
+              <div class="ind-hint">{{ ind.hint }}</div>
             </div>
           </div>
 
@@ -1011,12 +1009,12 @@ function convertOppToTodo(o: Opportunity) {
 
 .macro-indicators-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
 
-  @media (width <= 900px) {
-    grid-template-columns: repeat(2, 1fr);
+  @media (width <= 1024px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   @media (width <= 480px) {
@@ -1024,49 +1022,52 @@ function convertOppToTodo(o: Opportunity) {
   }
 
   .ind-pill {
-    padding: 8px 10px;
-    background: var(--td-bg-color-secondarycontainer, #f1f5f9);
+    min-width: 0;
+    padding: 10px 12px;
+    background: var(--td-bg-color-secondarycontainer, #f8fafc);
     border: 1px solid var(--td-component-stroke, #e2e8f0);
     border-radius: 6px;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: var(--td-brand-color, #0d706d);
+    }
   }
 
   .ind-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 
     .ind-name {
       font-size: 11px;
       color: var(--td-text-color-secondary);
       white-space: nowrap;
-    }
-  }
-
-  .ind-bottom {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    overflow: hidden;
-
-    .ind-val {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--td-text-color-primary);
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-
-    .ind-hint {
-      font-size: 11px;
-      color: var(--td-text-color-placeholder);
-      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+  }
+
+  .ind-val {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--td-text-color-primary);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    margin-top: 2px;
+  }
+
+  .ind-hint {
+    font-size: 11px;
+    color: var(--td-text-color-placeholder);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
   }
 }
 
