@@ -633,6 +633,7 @@ export const industryFocusSeed: IndustryFocus[] = [
     cycleStage: '爆发期',
     heat: 94,
     trend: 'up',
+    category: '科技制造',
     catalyst: '全球云厂商 AI 资本开支继续调高；800G/1.6T 光模块与先进封装进入批量供货兑现期。',
     keyTargets: [
       { code: 'sz300308', name: '中际旭创', type: '个股' },
@@ -642,6 +643,9 @@ export const industryFocusSeed: IndustryFocus[] = [
     tactic: '保持趋势主仓位，以 20 日均线为动态防守位；遇大盘情绪恐慌错杀时果断增配。',
     account: 'all',
     updatedAt: '今日更新',
+    source: '深度研报',
+    limitUpCount: 3,
+    changeRate: 2.15,
   },
   {
     id: 'ind-2',
@@ -649,6 +653,7 @@ export const industryFocusSeed: IndustryFocus[] = [
     cycleStage: '底部反转',
     heat: 82,
     trend: 'up',
+    category: '医药消费',
     catalyst: '全链条支持创新药政策深化落实；多项自主创新药出海对外 BD 授权谈判进入收获期。',
     keyTargets: [
       { code: 'sh600276', name: '恒瑞医药', type: '个股' },
@@ -658,6 +663,9 @@ export const industryFocusSeed: IndustryFocus[] = [
     tactic: '整体处于历史估值中低位，适合左侧逢低吸纳优质品种，耐心等待临床与海外授权催化。',
     account: 'all',
     updatedAt: '本周更新',
+    source: '深度研报',
+    limitUpCount: 1,
+    changeRate: 1.42,
   },
   {
     id: 'ind-3',
@@ -665,6 +673,7 @@ export const industryFocusSeed: IndustryFocus[] = [
     cycleStage: '稳健底仓',
     heat: 88,
     trend: 'stable',
+    category: '周期资源',
     catalyst: '新国九条强化分红监管与考核；长线社保与保险资金持续入市增配确定性高股息标的。',
     keyTargets: [
       { code: 'sh512890', name: '红利低波ETF', type: 'ETF' },
@@ -674,6 +683,9 @@ export const industryFocusSeed: IndustryFocus[] = [
     tactic: '作为全天候压舱石底仓配置，不盲目追高，注重长期分红再投资的复合收益。',
     account: 'etf',
     updatedAt: '本周更新',
+    source: '深度研报',
+    limitUpCount: 0,
+    changeRate: 0.35,
   },
   {
     id: 'ind-4',
@@ -681,6 +693,7 @@ export const industryFocusSeed: IndustryFocus[] = [
     cycleStage: '政策催化',
     heat: 76,
     trend: 'up',
+    category: '科技制造',
     catalyst: '地方低空空域协同管理改革推进，基础设施配套与整机试验试飞订单逐步明朗。',
     keyTargets: [
       { code: 'sh600038', name: '中直股份', type: '个股' },
@@ -688,6 +701,9 @@ export const industryFocusSeed: IndustryFocus[] = [
     ],
     tactic: '主题弹性大、波段属性明显，宜采取事件催化前的波段配置，关注实际招标与适航认证。',
     account: 'stock',
-    updatedAt: '昨日更新',
+    updatedAt: '本周更新',
+    source: '深度研报',
+    limitUpCount: 2,
+    changeRate: 1.88,
   },
 ];

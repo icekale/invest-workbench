@@ -72,14 +72,22 @@ export interface IndustryFocus {
   heat: number;
   trend: 'up' | 'stable' | 'down';
   catalyst: string;
+  category?: '科技制造' | '医药消费' | '周期资源' | '金融地产' | '综合主题' | string;
   keyTargets: Array<{
     code: string;
     name: string;
     type: 'ETF' | '个股';
+    changePercent?: number;
   }>;
   tactic: string;
   account?: AccountId | 'all';
   updatedAt: string;
+  source?: string;
+  changeRate?: number;
+  limitUpCount?: number;
+  riseCount?: number;
+  fallCount?: number;
+  fundFlow?: number;
 }
 
 export interface SmartPortfolioFund {

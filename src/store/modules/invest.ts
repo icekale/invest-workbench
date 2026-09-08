@@ -42,6 +42,7 @@ import type {
 } from '@/types/invest';
 import { fetchSinaQuotes } from '@/utils/backup';
 import { fetchLiveMacroEvents } from '@/utils/calendar';
+import { fetchLiveIndustryCatalysts } from '@/utils/industry';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
@@ -124,6 +125,8 @@ export const useInvestStore = defineStore('invest', {
     })(),
     macroEventsLoading: false,
     macroEventsLastUpdated: null as string | null,
+    industryFocusLoading: false,
+    industryFocusLastUpdated: null as string | null,
     industryFocus: readLS<IndustryFocus[]>(LS_INDUSTRY_FOCUS, industryFocusSeed),
     tradeModal: {
       visible: false,
@@ -525,6 +528,46 @@ export const useInvestStore = defineStore('invest', {
       this.industryFocus = [row, ...this.industryFocus];
       localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
       return row;
+    },
+    async refreshIndustryFocus() {
+      this.industryFocusLoading = true;
+      try {
+        const liveItems = await fetchLiveIndustryCatalysts();
+        if (liveItems.length > 0) {
+          const customUserItems = this.industryFocus.filter((i) => i.id.startsWith('ind_'));
+          const seen = new Set<string>();
+          const merged: IndustryFocus[] = [];
+
+          // 1. 用户自定义研判优先
+          for (const item of customUserItems) {
+            seen.add(item.name);
+            merged.push(item);
+          }
+          // 2. 真实采集的实时产业风口与催化
+          for (const item of liveItems) {
+            if (!seen.has(item.name)) {
+              seen.add(item.name);
+              merged.push(item);
+            }
+          }
+          // 3. 补充静态种子中尚未被覆盖的长线优质主题
+          for (const item of industryFocusSeed) {
+            if (!seen.has(item.name)) {
+              seen.add(item.name);
+              merged.push(item);
+            }
+          }
+
+          this.industryFocus = merged;
+          const now = new Date();
+          this.industryFocusLastUpdated = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+        }
+      } catch (err) {
+        console.warn('Failed to refresh industry focus:', err);
+      } finally {
+        this.industryFocusLoading = false;
+      }
     },
     removeIndustryFocus(id: string) {
       this.industryFocus = this.industryFocus.filter((i) => i.id !== id);

@@ -298,17 +298,65 @@
 
           <!-- 视图 3: 产业重点与催化 -->
           <div v-else-if="macroSectionTab === 'industries'" class="industry-focus-panel">
-            <div class="macro-filter-row">
-              <span class="macro-section-sub">聚焦高景气爆发、产业周期反转与强政策催化的核心主线赛道</span>
-              <span class="macro-count-hint">共 {{ invest.industryFocus.length }} 条主线</span>
+            <div class="macro-filter-row industry-filter-row">
+              <div class="industry-filter-left">
+                <t-radio-group v-model="industryFilter" variant="default-filled" size="small">
+                  <t-radio-button value="all">全部 ({{ invest.industryFocus.length }})</t-radio-button>
+                  <t-radio-button value="hot">🔥 强势风口</t-radio-button>
+                  <t-radio-button value="tech">科技制造</t-radio-button>
+                  <t-radio-button value="consumer">医药消费</t-radio-button>
+                  <t-radio-button value="cyclical">周期资源</t-radio-button>
+                  <t-radio-button value="custom">自主研判</t-radio-button>
+                </t-radio-group>
+                <span class="macro-section-sub ind-sub-desc"> 实时采集全市场核心风口题材、涨停龙头与重大产业驱动 </span>
+              </div>
+              <div class="industry-filter-right">
+                <t-space :size="8" align="center">
+                  <span class="macro-count-hint">共 {{ filteredIndustries.length }} 条主线</span>
+                  <t-button
+                    size="small"
+                    variant="outline"
+                    theme="default"
+                    :loading="invest.industryFocusLoading"
+                    @click="handleRefreshIndustries"
+                  >
+                    <template #icon><t-icon name="refresh" /></template>
+                    同步实时风口
+                  </t-button>
+                  <t-button size="small" variant="outline" theme="primary" @click="openAddIndustryModal">
+                    <template #icon><t-icon name="add" /></template>
+                    记产业研判
+                  </t-button>
+                </t-space>
+              </div>
             </div>
-            <div v-if="invest.industryFocus.length" class="industry-cards-grid">
-              <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card">
+
+            <div v-if="filteredIndustries.length" class="industry-cards-grid">
+              <div v-for="ind in filteredIndustries" :key="ind.id" class="ind-card">
                 <div class="ind-card-header">
                   <div class="ind-title-wrap">
                     <strong class="ind-name">{{ ind.name }}</strong>
+                    <span
+                      v-if="ind.changeRate != null"
+                      class="ind-chg-pill tabular-nums"
+                      :class="ind.changeRate >= 0 ? 'is-up' : 'is-down'"
+                    >
+                      {{ ind.changeRate >= 0 ? '+' : '' }}{{ ind.changeRate }}%
+                    </span>
+                    <t-tag
+                      v-if="ind.limitUpCount && ind.limitUpCount > 0"
+                      size="small"
+                      theme="danger"
+                      variant="dark"
+                      class="ind-limit-tag"
+                    >
+                      {{ ind.limitUpCount }}股涨停
+                    </t-tag>
                     <t-tag size="small" :theme="getCycleTheme(ind.cycleStage)" variant="light">
                       {{ ind.cycleStage }}
+                    </t-tag>
+                    <t-tag v-if="ind.source" size="small" variant="outline" class="ind-source-tag">
+                      {{ ind.source }}
                     </t-tag>
                     <t-tag size="small" variant="outline">{{
                       ind.account === 'stock' ? '股票' : ind.account === 'etf' ? 'ETF' : '全市场'
@@ -320,31 +368,32 @@
                       {{ ind.heat }}
                     </strong>
                     <span class="heat-trend" :class="`trend-${ind.trend}`">
-                      {{ ind.trend === 'up' ? '↑ 上行' : ind.trend === 'down' ? '↓ 回调' : '→ 稳健' }}
+                      {{ ind.trend === 'up' ? '↑ 动能走强' : ind.trend === 'down' ? '↓ 动能减弱' : '→ 震荡蓄势' }}
                     </span>
                   </div>
                 </div>
 
                 <!-- 核心催化 -->
                 <div class="ind-catalyst-block">
-                  <span class="ind-block-lbl">【核心催化】</span>
+                  <span class="ind-block-lbl">【重大催化】</span>
                   <span class="ind-block-text">{{ ind.catalyst }}</span>
                 </div>
 
                 <!-- 配置策略 -->
                 <div class="ind-tactic-block">
-                  <span class="ind-block-lbl">【策略配置】</span>
+                  <span class="ind-block-lbl">【操盘策略】</span>
                   <span class="ind-block-text">{{ ind.tactic }}</span>
                 </div>
 
                 <!-- 跟踪标的快捷条 -->
                 <div class="ind-targets-bar">
-                  <span class="targets-caption">重点跟踪标的：</span>
+                  <span class="targets-caption">领涨龙头与核心ETF：</span>
                   <div class="targets-chips">
                     <div
                       v-for="tgt in ind.keyTargets"
                       :key="tgt.code"
                       class="target-pill"
+                      :title="`点击开单交易【${tgt.name} (${tgt.code})】`"
                       @click="
                         invest.openTradeModal({
                           code: tgt.code,
@@ -355,6 +404,13 @@
                       "
                     >
                       <span class="tgt-name">{{ tgt.name }}</span>
+                      <span
+                        v-if="tgt.changePercent != null"
+                        class="tgt-chg tabular-nums"
+                        :class="tgt.changePercent >= 0 ? 'is-up' : 'is-down'"
+                      >
+                        {{ tgt.changePercent >= 0 ? '+' : '' }}{{ tgt.changePercent }}%
+                      </span>
                       <span class="tgt-type-badge">{{ tgt.type }}</span>
                       <t-icon name="swap" size="11px" class="tgt-trade-icon" />
                     </div>
@@ -363,7 +419,15 @@
 
                 <!-- 底部操作 -->
                 <div class="ind-card-footer">
-                  <span class="ind-update-time">{{ ind.updatedAt }}</span>
+                  <span class="ind-update-time">
+                    {{ ind.updatedAt }}
+                    <template v-if="ind.fundFlow">
+                      · 主力净流
+                      <span class="tabular-nums" :class="ind.fundFlow >= 0 ? 'color-gain' : 'color-loss'">
+                        {{ (ind.fundFlow / 1e8).toFixed(1) }}亿
+                      </span>
+                    </template>
+                  </span>
                   <t-space :size="8">
                     <t-button size="small" theme="primary" variant="outline" @click="onConvertIndustry(ind)">
                       + 加入机会池
@@ -379,7 +443,7 @@
                 </div>
               </div>
             </div>
-            <t-empty v-else description="暂无重点产业跟踪" style="padding: 24px 0" />
+            <t-empty v-else description="当前筛选条件下暂无产业风口" style="padding: 24px 0" />
           </div>
         </t-card>
       </t-col>
@@ -973,6 +1037,7 @@ const macroFilter = ref('all');
 const macroSectionTab = ref<'signals' | 'events' | 'industries'>('signals');
 const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
 const onlyMajorEvents = ref(localStorage.getItem('invest-only-major-events') === 'true');
+const industryFilter = ref<'all' | 'hot' | 'tech' | 'consumer' | 'cyclical' | 'custom'>('all');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
@@ -1040,6 +1105,47 @@ const sortedEvents = computed(() => {
   return sorted;
 });
 
+const filteredIndustries = computed(() => {
+  const list = invest.industryFocus;
+  if (industryFilter.value === 'hot') {
+    return list.filter(
+      (i) => (i.limitUpCount && i.limitUpCount >= 1) || (i.changeRate && i.changeRate >= 1.0) || i.heat >= 85,
+    );
+  }
+  if (industryFilter.value === 'tech') {
+    return list.filter(
+      (i) =>
+        i.category === '科技制造' || /光通信|液冷|芯片|半导体|AI|算力|机器人|6G|通信|服务器|电子|智能/.test(i.name),
+    );
+  }
+  if (industryFilter.value === 'consumer') {
+    return list.filter(
+      (i) => i.category === '医药消费' || /医药|生物|创新药|医疗|消费|食品|白酒|家电|传媒|短剧|影游/.test(i.name),
+    );
+  }
+  if (industryFilter.value === 'cyclical') {
+    return list.filter(
+      (i) =>
+        i.category === '周期资源' ||
+        /有色|金属|铜|铝|黄金|石油|化工|油服|煤炭|能源|农业|大农业|农牧|红利|电力|钢铁/.test(i.name),
+    );
+  }
+  if (industryFilter.value === 'custom') {
+    return list.filter((i) => i.id.startsWith('ind_'));
+  }
+  return list;
+});
+
+async function handleRefreshIndustries() {
+  await invest.refreshIndustryFocus();
+  MessagePlugin.success('已同步最新产业风口与催化动态');
+}
+
+function openAddIndustryModal() {
+  macroActiveTab.value = 'industry';
+  macroModalVisible.value = true;
+}
+
 async function handleRefreshEvents() {
   await invest.refreshMacroEvents();
   MessagePlugin.success('已同步最新财经日历与会议日程');
@@ -1064,8 +1170,8 @@ function onConvertIndustry(ind: IndustryFocus) {
 }
 
 function getCycleTheme(stage: string): 'danger' | 'warning' | 'primary' | 'success' | 'default' {
-  if (stage.includes('爆发')) return 'danger';
-  if (stage.includes('复苏') || stage.includes('反转')) return 'primary';
+  if (stage.includes('爆发') || stage.includes('主升')) return 'danger';
+  if (stage.includes('复苏') || stage.includes('反转') || stage.includes('上行')) return 'primary';
   if (stage.includes('稳健') || stage.includes('底仓')) return 'success';
   if (stage.includes('催化') || stage.includes('突破')) return 'warning';
   return 'default';
@@ -1289,6 +1395,7 @@ const screenCols = [
 
 onMounted(async () => {
   invest.refreshMacroEvents();
+  invest.refreshIndustryFocus();
   rankLoading.value = true;
   try {
     rank.value = await fetchFundRank();
@@ -1899,6 +2006,27 @@ function convertOppToTodo(o: Opportunity) {
 .industry-focus-panel {
   min-width: 0;
 
+  .industry-filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+
+    .industry-filter-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .ind-sub-desc {
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+    }
+  }
+
   .industry-cards-grid {
     display: flex;
     flex-direction: column;
@@ -1937,6 +2065,34 @@ function convertOppToTodo(o: Opportunity) {
       font-size: 15px;
       font-weight: 700;
       color: var(--td-text-color-primary);
+    }
+
+    .ind-chg-pill {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+
+      &.is-up {
+        background: rgb(184 67 62 / 10%);
+        color: var(--guanlan-gain, #b8433e);
+      }
+
+      &.is-down {
+        background: rgb(22 129 95 / 10%);
+        color: var(--guanlan-loss, #16815f);
+      }
+    }
+
+    .ind-limit-tag {
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .ind-source-tag {
+      font-size: 11px;
+      color: var(--td-text-color-placeholder);
+      border-color: var(--td-component-stroke);
     }
   }
 
@@ -2045,6 +2201,19 @@ function convertOppToTodo(o: Opportunity) {
         color: var(--td-text-color-primary);
       }
 
+      .tgt-chg {
+        font-size: 11px;
+        font-weight: 600;
+
+        &.is-up {
+          color: var(--guanlan-gain, #b8433e);
+        }
+
+        &.is-down {
+          color: var(--guanlan-loss, #16815f);
+        }
+      }
+
       .tgt-type-badge {
         font-size: 10px;
         padding: 0 4px;
@@ -2080,6 +2249,16 @@ function convertOppToTodo(o: Opportunity) {
     .ind-update-time {
       font-size: 11px;
       color: var(--td-text-color-placeholder);
+
+      .color-gain {
+        color: var(--guanlan-gain, #b8433e);
+        font-weight: 600;
+      }
+
+      .color-loss {
+        color: var(--guanlan-loss, #16815f);
+        font-weight: 600;
+      }
     }
   }
 }
