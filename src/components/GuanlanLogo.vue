@@ -69,12 +69,18 @@
     </div>
 
     <!-- Text typography -->
-    <div v-if="!compact" class="logo-text">
-      <div class="brand-title">
-        <span class="brand-name">观澜</span>
-        <span class="brand-sep">|</span>
-        <span class="brand-app">投资研究工作台</span>
-      </div>
+    <div v-if="!compact" class="logo-text" :class="`layout-${layout}`">
+      <template v-if="layout === 'stacked'">
+        <span class="brand-name-stacked">观澜</span>
+        <span class="brand-app-stacked">投资研究工作台</span>
+      </template>
+      <template v-else>
+        <div class="brand-title">
+          <span class="brand-name">观澜</span>
+          <span class="brand-sep">|</span>
+          <span class="brand-app">投资研究工作台</span>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -84,11 +90,13 @@ const _props = withDefaults(
     theme?: 'dark' | 'light';
     compact?: boolean;
     markSize?: number;
+    layout?: 'inline' | 'stacked';
   }>(),
   {
     theme: 'dark',
     compact: false,
     markSize: 34,
+    layout: 'inline',
   },
 );
 
@@ -141,11 +149,35 @@ const uid = Math.random().toString(36).substring(2, 8);
         letter-spacing: 0.2px;
       }
     }
+
+    &.layout-stacked {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      justify-content: center;
+
+      .brand-name-stacked {
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 20px;
+        letter-spacing: 0.8px;
+        font-family: var(--td-font-family);
+      }
+
+      .brand-app-stacked {
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 14px;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+      }
+    }
   }
 
   /* Dark Theme (e.g. for night sidebar, login left panel) */
   &.theme-dark {
-    .brand-name {
+    .brand-name,
+    .brand-name-stacked {
       color: #fff;
     }
 
@@ -156,11 +188,16 @@ const uid = Math.random().toString(36).substring(2, 8);
     .brand-app {
       color: #e2ebf0;
     }
+
+    .brand-app-stacked {
+      color: #9bb0be;
+    }
   }
 
   /* Light Theme (e.g. for light header, docs) */
   &.theme-light {
-    .brand-name {
+    .brand-name,
+    .brand-name-stacked {
       color: var(--guanlan-ink, #14212b);
     }
 
@@ -168,7 +205,8 @@ const uid = Math.random().toString(36).substring(2, 8);
       color: var(--guanlan-gold, #dfb56d);
     }
 
-    .brand-app {
+    .brand-app,
+    .brand-app-stacked {
       color: var(--guanlan-muted, #4f5d67);
     }
   }

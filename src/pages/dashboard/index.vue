@@ -146,7 +146,7 @@ function handleFileChange(e: Event) {
   reader.readAsText(file);
 }
 </script>
-<style scoped>
+<style scoped lang="less">
 .dash-action-bar {
   display: flex;
   align-items: center;
@@ -165,6 +165,15 @@ function handleFileChange(e: Event) {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+
+  :deep(.t-button) {
+    flex-shrink: 0;
+    white-space: nowrap;
+
+    .t-button__text {
+      white-space: nowrap;
+    }
+  }
 }
 
 @media (width <= 767px) {
@@ -172,17 +181,39 @@ function handleFileChange(e: Event) {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    margin-bottom: 2px;
+  }
+
+  .dash-slogan {
+    font-size: 12px;
+    line-height: 18px;
   }
 
   .dash-btn-group {
     width: 100%;
     flex-wrap: nowrap;
     overflow-x: auto;
-    padding-bottom: 4px;
+    gap: 8px;
+    padding: 2px 0 6px;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
 
     :deep(.t-button) {
       flex-shrink: 0;
+      white-space: nowrap;
+      height: 32px;
+      padding: 0 10px;
+      font-size: 13px;
+
+      .t-button__text {
+        white-space: nowrap;
+        font-size: 13px;
+        line-height: 32px;
+      }
     }
   }
 }
