@@ -1,79 +1,160 @@
 <template>
   <t-space class="page" direction="vertical" :size="16" style="width: 100%">
+    <!-- 基金导航栏 -->
     <funds-nav />
-    <span style="color: var(--td-text-color-secondary)"
-      >先看环境，再把值得跟踪的赔率放进机会池。全样本三轴见方法论 / 优质精选 / 智能组合。</span
-    >
+
+    <!-- 顶栏概览条 -->
+    <div class="overview-strip">
+      <div class="overview-strip__item">
+        <span class="overview-strip__label">每日宏观信号</span>
+        <span class="overview-strip__val">{{ macros.length }} <small>条简报</small></span>
+      </div>
+      <div class="overview-strip__divider" />
+      <div class="overview-strip__item">
+        <span class="overview-strip__label">机会池标的</span>
+        <span class="overview-strip__val">{{ invest.opportunities.length }} <small>只跟踪</small></span>
+      </div>
+      <div class="overview-strip__divider" />
+      <div class="overview-strip__item">
+        <span class="overview-strip__label">待办交易</span>
+        <span class="overview-strip__val">{{ openTodos.length }} <small>项待执行</small></span>
+      </div>
+      <div class="overview-strip__divider" />
+      <div class="overview-strip__item">
+        <span class="overview-strip__label">全市场扫描</span>
+        <span class="overview-strip__val">{{ rank.length || '80+' }} <small>只公募样本</small></span>
+      </div>
+    </div>
+
+    <!-- 宏观信号 + 决策待办 -->
     <t-row :gutter="[16, 16]">
       <t-col :xs="12" :xl="7">
-        <t-card title="每日宏观">
-          <t-radio-group v-model="macroFilter" variant="default-filled" style="margin-bottom: 12px">
+        <t-card title="每日宏观信号">
+          <template #actions>
+            <span class="sub-action-text">每日 08:30 投研晨会纪要</span>
+          </template>
+          <t-radio-group v-model="macroFilter" variant="default-filled" style="margin-bottom: 16px">
             <t-radio-button value="all">全部</t-radio-button>
             <t-radio-button value="增长">增长</t-radio-button>
             <t-radio-button value="流动性">流动性</t-radio-button>
             <t-radio-button value="政策">政策</t-radio-button>
           </t-radio-group>
-          <t-timeline mode="same">
-            <t-timeline-item v-for="m in macros" :key="m.id" :dot-color="toneColor[m.tone]">
+          <t-timeline v-if="macros.length" mode="same">
+            <t-timeline-item v-for="m in macros" :key="m.id" :dot-color="toneTimelineDot[m.tone]">
               <div class="macro">
                 <div class="macro-hd">
-                  <strong>{{ m.title }}</strong>
-                  <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
-                  <t-tag size="small" variant="outline">{{ m.account }}</t-tag>
+                  <strong class="macro-title">{{ m.title }}</strong>
+                  <t-space :size="6">
+                    <t-tag size="small" :theme="toneTagTheme(m.tone)" variant="light">{{ m.tone }}</t-tag>
+                    <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
+                    <t-tag size="small" variant="outline">{{ m.account === 'stock' ? '股票' : 'ETF' }}</t-tag>
+                  </t-space>
                 </div>
                 <p class="macro-bd">{{ m.body }}</p>
               </div>
             </t-timeline-item>
           </t-timeline>
+          <t-empty v-else description="暂无符合筛选条件的宏观信号" style="padding: 24px 0" />
         </t-card>
       </t-col>
+
       <t-col :xs="12" :xl="5">
-        <t-card title="决策清单">
-          <t-list split>
-            <t-list-item v-for="t in invest.todos.filter((x) => x.status === 'open')" :key="t.id">
-              <div class="todo-row">
-                <div class="todo-copy">{{ t.name }} · {{ t.reason }}</div>
-                <t-button size="small" variant="text" theme="primary" @click="invest.setTodoStatus(t.id, 'done')">
-                  完成
-                </t-button>
+        <t-card title="决策待办清单">
+          <template #actions>
+            <t-button size="small" variant="text" theme="primary" @click="router.push('/plan')"> 调仓计划 → </t-button>
+          </template>
+          <div v-if="openTodos.length" class="todo-list">
+            <div v-for="t in openTodos" :key="t.id" class="todo-item">
+              <div class="todo-left">
+                <div class="todo-headline">
+                  <t-tag size="small" :theme="t.side === 'buy' ? 'danger' : 'success'" variant="light">
+                    {{ t.side === 'buy' ? '买入' : '卖出' }}
+                  </t-tag>
+                  <span class="todo-target">{{ t.name }}</span>
+                  <span v-if="t.quantity" class="todo-qty">{{ t.quantity }} 股/份</span>
+                </div>
+                <div class="todo-reason">{{ t.reason }}</div>
               </div>
-            </t-list-item>
-          </t-list>
+              <t-button size="small" theme="primary" variant="outline" @click="markTodoDone(t.id)">完成</t-button>
+            </div>
+          </div>
+          <t-empty v-else description="当前无待执行买卖项，可在机会池中生成" style="padding: 24px 0">
+            <template #action>
+              <t-button size="small" theme="primary" variant="outline" @click="router.push('/plan')">
+                查看调仓计划
+              </t-button>
+            </template>
+          </t-empty>
         </t-card>
       </t-col>
     </t-row>
 
-    <t-card title="机会池">
+    <!-- 机会池 -->
+    <t-card title="机会池 · 赔率与论点跟踪">
       <template #actions>
-        <t-button class="card-action" size="small" theme="primary" @click="oppOpen = true">新增机会</t-button>
-      </template>
-      <t-list split>
-        <t-list-item v-for="o in invest.opportunities" :key="o.id">
-          <div class="opp-row">
-            <t-list-item-meta :title="`${o.name} · ${o.account === 'etf' ? 'ETF' : '股票'}`" :description="o.thesis" />
-            <div class="opp-score">
-              <span>评分 {{ o.score }}</span>
-              <t-progress :percentage="o.score" :label="false" />
-              <span class="opp-note">{{ o.note }}</span>
-            </div>
-          </div>
-        </t-list-item>
-      </t-list>
-    </t-card>
-
-    <t-card title="东财排行" subtitle="按近1年收益；点行看三轴（收益/波动/回撤）">
-      <template #actions>
-        <t-space class="card-action rank-tools" break-line>
-          <t-input v-model="q" placeholder="代码回车看详情" @enter="goDetail(q)" />
-          <t-button size="small" variant="outline" :loading="screenLoading" @click="screenTriple">三轴精选</t-button>
-          <t-button size="small" theme="primary" :disabled="picked.length < 2" @click="goCompare"
-            >对比 {{ picked.length }}</t-button
-          >
+        <t-space :size="8">
+          <span class="sub-action-text">跟踪中 {{ invest.opportunities.length }} 只</span>
+          <t-button size="small" theme="primary" @click="oppOpen = true">新增机会</t-button>
         </t-space>
       </template>
+
+      <div v-if="invest.opportunities.length" class="opp-grid">
+        <div v-for="o in invest.opportunities" :key="o.id" class="opp-card">
+          <div class="opp-card__header">
+            <div class="opp-card__title-row">
+              <t-tag size="small" variant="light" :theme="o.account === 'etf' ? 'primary' : 'warning'">
+                {{ o.account === 'etf' ? 'ETF' : '股票' }}
+              </t-tag>
+              <span class="opp-card__name">{{ o.name }}</span>
+            </div>
+            <div class="opp-card__score-badge">
+              <t-tag size="small" :theme="scoreBadgeTheme(o.score)" variant="light">
+                {{ scoreBadgeLabel(o.score) }} {{ o.score }}分
+              </t-tag>
+            </div>
+          </div>
+
+          <div class="opp-card__thesis">
+            <span class="thesis-quote-mark">“</span>
+            {{ o.thesis }}
+          </div>
+
+          <div class="opp-card__progress">
+            <t-progress :percentage="o.score" :color="o.score >= 80 ? '#b8433e' : '#1668dc'" :label="false" />
+          </div>
+
+          <div class="opp-card__footer">
+            <span class="opp-card__note">{{ o.note || '暂无跟踪备注' }}</span>
+            <t-space :size="8">
+              <t-popconfirm content="确定将该机会生成一条买入待办？" @confirm="convertOppToTodo(o)">
+                <t-link theme="primary" hover="color">转为待办</t-link>
+              </t-popconfirm>
+              <t-popconfirm content="确定从机会池移除？" @confirm="deleteOpp(o.id)">
+                <t-link theme="danger" hover="color">删除</t-link>
+              </t-popconfirm>
+            </t-space>
+          </div>
+        </div>
+      </div>
+      <t-empty v-else description="机会池暂无标的，点击右上角「新增机会」加入跟踪" style="padding: 32px 0" />
+    </t-card>
+
+    <!-- 全市场基金排行 -->
+    <t-card title="全市场基金排行" subtitle="基于东方财富接口实时排行 · 按近1年收益排序">
+      <template #actions>
+        <t-space class="card-action rank-tools" break-line :size="8">
+          <t-input v-model="q" placeholder="代码回车看详情" style="width: 170px" clearable @enter="goDetail(q)" />
+          <t-button size="small" variant="outline" :loading="screenLoading" @click="screenTriple">三轴精选</t-button>
+          <t-button size="small" theme="primary" :disabled="picked.length < 2" @click="goCompare">
+            对比 ({{ picked.length }})
+          </t-button>
+        </t-space>
+      </template>
+
       <t-radio-group v-model="typeFilter" variant="default-filled" style="margin-bottom: 12px">
         <t-radio-button v-for="t in typeFilters" :key="t" :value="t">{{ t }}</t-radio-button>
       </t-radio-group>
+
       <div class="table-wrap">
         <t-table
           :data="filteredRank"
@@ -81,20 +162,39 @@
           row-key="code"
           :loading="rankLoading"
           hover
-          max-height="360"
+          max-height="380"
           :on-row-click="({ row }) => goDetail(row.code)"
         >
           <template #pick="{ row }">
             <t-checkbox :checked="picked.includes(row.code)" @click.stop @change="togglePick(row.code)" />
           </template>
-          <template #year="{ row }">{{ fmtPct(row.year) }}</template>
-          <template #ytd="{ row }">{{ fmtPct(row.ytd) }}</template>
-          <template #week="{ row }">{{ fmtPct(row.week) }}</template>
+          <template #name="{ row }">
+            <span class="fund-link-name">{{ row.name }}</span>
+          </template>
+          <template #code="{ row }">
+            <span class="code-font">{{ row.code }}</span>
+          </template>
+          <template #type="{ row }">
+            <t-tag size="small" variant="light">{{ row.type }}</t-tag>
+          </template>
+          <template #year="{ row }">
+            <span :class="pctClass(row.year)">{{ fmtPctWithSign(row.year) }}</span>
+          </template>
+          <template #ytd="{ row }">
+            <span :class="pctClass(row.ytd)">{{ fmtPctWithSign(row.ytd) }}</span>
+          </template>
+          <template #week="{ row }">
+            <span :class="pctClass(row.week)">{{ fmtPctWithSign(row.week) }}</span>
+          </template>
+          <template #op="{ row }">
+            <t-link theme="primary" hover="color" @click.stop="goDetail(row.code)">详情</t-link>
+          </template>
         </t-table>
       </div>
     </t-card>
 
-    <t-card v-if="screened.length" title="三轴精选" subtitle="前12只补波动/回撤后按研选分重排，不单看收益">
+    <!-- 三轴精选结果 -->
+    <t-card v-if="screened.length" title="三轴精选" subtitle="前12只补齐波动与最大回撤后，按研选分重排，不单看绝对收益">
       <div class="table-wrap">
         <t-table
           :data="screened"
@@ -103,19 +203,41 @@
           hover
           :on-row-click="({ row }) => goDetail(row.code)"
         >
-          <template #year="{ row }">{{ fmtPct(row.year) }}</template>
-          <template #stddev="{ row }">{{ row.stddev == null ? '—' : row.stddev.toFixed(2) }}</template>
-          <template #drawdown="{ row }">{{ fmtPct(row.drawdown) }}</template>
-          <template #score="{ row }">{{ researchScore(row.year, row.stddev, row.drawdown) ?? '—' }}</template>
-          <template #note="{ row }">{{ riskNote(row.stddev, row.drawdown) }}</template>
+          <template #name="{ row }">
+            <span class="fund-link-name">{{ row.name }}</span>
+          </template>
+          <template #code="{ row }">
+            <span class="code-font">{{ row.code }}</span>
+          </template>
+          <template #year="{ row }">
+            <span :class="pctClass(row.year)">{{ fmtPctWithSign(row.year) }}</span>
+          </template>
+          <template #stddev="{ row }">
+            <span class="tabular-font">{{ row.stddev == null ? '—' : row.stddev.toFixed(2) }}</span>
+          </template>
+          <template #drawdown="{ row }">
+            <span class="loss-text tabular-font">{{ row.drawdown == null ? '—' : fmtPct(row.drawdown) }}</span>
+          </template>
+          <template #score="{ row }">
+            <t-tag size="small" theme="primary" variant="light" class="tabular-font">
+              {{ researchScore(row.year, row.stddev, row.drawdown) ?? '—' }}
+            </t-tag>
+          </template>
+          <template #note="{ row }">
+            <t-tag size="small" variant="outline">{{ riskNote(row.stddev, row.drawdown) }}</t-tag>
+          </template>
+          <template #op="{ row }">
+            <t-link theme="primary" hover="color" @click.stop="goDetail(row.code)">详情</t-link>
+          </template>
         </t-table>
       </div>
     </t-card>
 
+    <!-- 智能组合与配置策略 -->
     <t-row :gutter="[16, 16]">
       <t-col v-if="picks.length" :xs="12" :span="6">
-        <t-card title="研选组合" subtitle="精选前4只等权">
-          <p>高收益、控波动、回撤不失控。</p>
+        <t-card title="研选组合" subtitle="精选前 4 只等权配置 (各 25%)">
+          <p class="portfolio-blurb">兼顾高收益、控波动与回撤不失控，构建多资产平衡组合。</p>
           <t-list size="small">
             <t-list-item v-for="f in picks" :key="f.code">
               <div class="hold-row">
@@ -124,11 +246,20 @@
               </div>
             </t-list-item>
           </t-list>
+          <template #actions>
+            <t-button size="small" variant="text" theme="primary" @click="router.push('/funds/portfolios')">
+              智能微调 →
+            </t-button>
+          </template>
         </t-card>
       </t-col>
+
       <t-col v-for="p in smartPortfolios" :key="p.id" :xs="12" :span="6">
-        <t-card :title="p.name" :subtitle="`风险 ${p.risk}`">
-          <p>{{ p.blurb }}</p>
+        <t-card :title="p.name">
+          <template #actions>
+            <t-tag size="small" :theme="riskTheme(p.risk)" variant="light">{{ p.risk }}</t-tag>
+          </template>
+          <p class="portfolio-blurb">{{ p.blurb }}</p>
           <t-list size="small">
             <t-list-item v-for="f in p.funds" :key="f.code">
               <div class="hold-row">
@@ -137,29 +268,39 @@
               </div>
             </t-list-item>
           </t-list>
+          <div style="margin-top: 12px; text-align: right">
+            <t-button size="small" variant="text" theme="primary" @click="router.push('/funds/portfolios')">
+              配置微调 →
+            </t-button>
+          </div>
         </t-card>
       </t-col>
     </t-row>
 
-    <t-dialog v-model:visible="oppOpen" header="新增机会" :on-confirm="saveOpp">
-      <t-form>
-        <t-form-item label="名称">
-          <t-input v-model="opp.name" />
+    <!-- 新增机会弹窗 -->
+    <t-dialog v-model:visible="oppOpen" header="新增机会标的" :on-confirm="saveOpp">
+      <t-form label-align="top">
+        <t-form-item label="标的名称">
+          <t-input v-model="opp.name" placeholder="例如：中证红利低波 ETF / 腾讯控股" />
         </t-form-item>
-        <t-form-item label="账户">
+        <t-form-item label="所属账户">
           <t-radio-group v-model="opp.account">
-            <t-radio value="stock">股票</t-radio>
-            <t-radio value="etf">ETF</t-radio>
+            <t-radio value="etf">ETF 账户</t-radio>
+            <t-radio value="stock">股票账户</t-radio>
           </t-radio-group>
         </t-form-item>
-        <t-form-item label="论点">
-          <t-input v-model="opp.thesis" />
+        <t-form-item label="核心投资论点 (Thesis)">
+          <t-textarea
+            v-model="opp.thesis"
+            placeholder="为什么关注该标的？赔率与催化剂是什么？"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
         </t-form-item>
-        <t-form-item label="评分">
-          <t-input-number v-model="opp.score" :min="0" :max="100" />
+        <t-form-item label="研选评分 (0 - 100)">
+          <t-input-number v-model="opp.score" :min="0" :max="100" :step="5" style="width: 100%" />
         </t-form-item>
-        <t-form-item label="备注">
-          <t-input v-model="opp.note" />
+        <t-form-item label="跟踪备注">
+          <t-input v-model="opp.note" placeholder="例如：等回调至 20 日线再建仓" />
         </t-form-item>
       </t-form>
     </t-dialog>
@@ -172,7 +313,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { macroBriefs, smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
-import type { AccountId } from '@/types/invest';
+import type { AccountId, Opportunity } from '@/types/invest';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
 
@@ -183,6 +324,7 @@ defineOptions({ name: 'FundsIndex' });
 const router = useRouter();
 const route = useRoute();
 const invest = useInvestStore();
+
 const rank = ref<FundRank[]>([]);
 const rankLoading = ref(false);
 const screenLoading = ref(false);
@@ -195,11 +337,28 @@ const macroFilter = ref('all');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
-const toneColor: Record<string, string> = { 偏多: 'green', 中性: 'blue', 偏空: 'red' };
+// 宏观信号色彩
+const toneTimelineDot: Record<string, string> = {
+  偏多: '#b8433e', // Guanlan gain red
+  中性: '#1668dc', // Primary blue
+  偏空: '#16815f', // Guanlan loss green
+};
+
+function toneTagTheme(tone: string): 'danger' | 'primary' | 'success' | 'default' {
+  if (tone === '偏多') return 'danger';
+  if (tone === '偏空') return 'success';
+  if (tone === '中性') return 'primary';
+  return 'default';
+}
+
 const macros = computed(() =>
   macroFilter.value === 'all' ? macroBriefs : macroBriefs.filter((m) => m.topic === macroFilter.value),
 );
+
+const openTodos = computed(() => invest.todos.filter((x) => x.status === 'open'));
+
 const fundName = (code: string) => rank.value.find((f) => f.code === code)?.name || code;
+
 const filteredRank = computed(() => {
   const typeRows =
     typeFilter.value === '全部' ? rank.value : rank.value.filter((f) => typeBucket(f.type) === typeFilter.value);
@@ -207,25 +366,29 @@ const filteredRank = computed(() => {
   if (!k || /^\d{6}$/.test(k)) return typeRows;
   return typeRows.filter((f) => `${f.code}${f.name}`.includes(k));
 });
+
 const picks = computed(() => screened.value.slice(0, 4));
 
 const rankCols = [
-  { colKey: 'pick', title: '对比', width: 56 },
-  { colKey: 'name', title: '名称' },
-  { colKey: 'code', title: '代码', width: 88 },
-  { colKey: 'type', title: '类型', width: 120 },
-  { colKey: 'year', title: '近1年', width: 96 },
-  { colKey: 'ytd', title: '今年来', width: 96 },
-  { colKey: 'week', title: '近一周', width: 96 },
+  { colKey: 'pick', title: '对比', width: 50 },
+  { colKey: 'name', title: '基金名称', minWidth: 160 },
+  { colKey: 'code', title: '代码', width: 90 },
+  { colKey: 'type', title: '类型', width: 100 },
+  { colKey: 'year', title: '近1年', width: 90 },
+  { colKey: 'ytd', title: '今年来', width: 90 },
+  { colKey: 'week', title: '近一周', width: 90 },
+  { colKey: 'op', title: '操作', width: 70 },
 ];
+
 const screenCols = [
-  { colKey: 'name', title: '名称' },
-  { colKey: 'code', title: '代码', width: 88 },
-  { colKey: 'year', title: 'Yield', width: 88 },
-  { colKey: 'stddev', title: 'Vix', width: 80 },
-  { colKey: 'drawdown', title: 'Loss', width: 88 },
+  { colKey: 'name', title: '基金名称', minWidth: 150 },
+  { colKey: 'code', title: '代码', width: 90 },
+  { colKey: 'year', title: '年化收益', width: 95 },
+  { colKey: 'stddev', title: '年化波动', width: 90 },
+  { colKey: 'drawdown', title: '最大回撤', width: 95 },
   { colKey: 'score', title: '研选分', width: 80 },
-  { colKey: 'note', title: '回撤/波动' },
+  { colKey: 'note', title: '波动/回撤诊断', width: 120 },
+  { colKey: 'op', title: '操作', width: 70 },
 ];
 
 onMounted(async () => {
@@ -238,6 +401,36 @@ onMounted(async () => {
     rankLoading.value = false;
   }
 });
+
+function fmtPctWithSign(n: number | null): string {
+  if (n == null) return '—';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function pctClass(n: number | null): string {
+  if (n == null || n === 0) return 'text-muted';
+  return n > 0 ? 'gain-text' : 'loss-text';
+}
+
+function scoreBadgeTheme(score: number): 'danger' | 'primary' | 'default' {
+  if (score >= 80) return 'danger';
+  if (score >= 60) return 'primary';
+  return 'default';
+}
+
+function scoreBadgeLabel(score: number): string {
+  if (score >= 80) return '高景气';
+  if (score >= 60) return '重点关注';
+  return '中性跟踪';
+}
+
+function riskTheme(risk: string): 'danger' | 'warning' | 'success' | 'default' {
+  if (risk.includes('高')) return 'danger';
+  if (risk.includes('中')) return 'warning';
+  if (risk.includes('低')) return 'success';
+  return 'default';
+}
 
 function goDetail(code: string) {
   const c = code.trim();
@@ -275,18 +468,48 @@ async function screenTriple() {
   }
 }
 
+function markTodoDone(id: string) {
+  invest.setTodoStatus(id, 'done');
+  MessagePlugin.success('待办已标记完成');
+}
+
 function saveOpp() {
   if (!opp.name.trim() || !opp.thesis.trim()) {
     MessagePlugin.warning('名称和论点必填');
     return false;
   }
-  invest.addOpportunity({ ...opp, name: opp.name.trim(), thesis: opp.thesis.trim(), note: opp.note.trim() });
+  invest.addOpportunity({
+    name: opp.name.trim(),
+    account: opp.account,
+    thesis: opp.thesis.trim(),
+    score: opp.score,
+    note: opp.note.trim(),
+  });
   oppOpen.value = false;
   opp.name = '';
   opp.thesis = '';
   opp.note = '';
   MessagePlugin.success('已加入机会池');
   return true;
+}
+
+function deleteOpp(id: string) {
+  invest.removeOpportunity(id);
+  MessagePlugin.success('已从机会池移除');
+}
+
+function convertOppToTodo(o: Opportunity) {
+  const match = o.name.match(/\d{6}/);
+  const code = match ? match[0] : o.account === 'etf' ? '510300' : '600519';
+  invest.addTodo({
+    account: o.account,
+    code,
+    name: o.name,
+    side: 'buy',
+    quantity: o.account === 'etf' ? 1000 : 100,
+    reason: `[机会池导入] ${o.thesis}`,
+  });
+  MessagePlugin.success(`已将「${o.name}」转为买入待办`);
 }
 </script>
 <style scoped>
@@ -296,11 +519,97 @@ function saveOpp() {
   overflow-x: hidden;
 }
 
+/* 顶栏概览条 */
+.overview-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 18px;
+  background: var(--td-bg-color-container);
+  border-radius: 8px;
+  border: 1px solid var(--guanlan-line, #e2ebf0);
+}
+
+.overview-strip__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.overview-strip__label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.overview-strip__val {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  font-variant-numeric: tabular-nums;
+
+  small {
+    font-size: 12px;
+    font-weight: normal;
+    color: var(--td-text-color-placeholder);
+    margin-left: 2px;
+  }
+}
+
+.overview-strip__divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--td-component-stroke);
+}
+
+.sub-action-text {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
 .table-wrap {
+  width: 100%;
   max-width: 100%;
   overflow-x: auto;
 }
 
+.code-font {
+  font-family: var(--td-font-family-mono, monospace);
+  font-size: 13px;
+}
+
+.tabular-font {
+  font-variant-numeric: tabular-nums;
+}
+
+.fund-link-name {
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: var(--td-brand-color);
+  }
+}
+
+.gain-text {
+  color: var(--guanlan-gain, #b8433e);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.loss-text {
+  color: var(--guanlan-loss, #16815f);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.text-muted {
+  color: var(--td-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 宏观 */
 .macro {
   min-width: 0;
 }
@@ -312,96 +621,188 @@ function saveOpp() {
   gap: 8px;
 }
 
-.macro-hd strong {
-  flex: 1 1 12em;
-  min-width: 0;
-  font-size: 15px;
+.macro-title {
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.4;
+  color: var(--td-text-color-primary);
 }
 
 .macro-bd {
   margin: 6px 0 0;
   color: var(--td-text-color-secondary);
+  font-size: 13px;
   line-height: 1.6;
 }
 
-:deep(.t-timeline-item__content) {
-  min-width: 0;
-}
-
-:deep(.t-radio-group) {
-  flex-wrap: wrap;
-}
-
-.opp-row {
+/* 待办列表 */
+.todo-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-
-.opp-score {
-  width: 100%;
-  max-width: 220px;
-}
-
-.opp-note {
-  color: var(--td-text-color-secondary);
-}
-
-.rank-tools :deep(.t-input) {
-  width: 160px;
-  max-width: 100%;
-}
-
-.todo-row,
-.hold-row {
-  display: flex;
   gap: 12px;
+}
+
+.todo-item {
+  display: flex;
   align-items: flex-start;
-  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+
+  &:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
 }
 
-.todo-copy,
-.hold-name {
-  min-width: 0;
+.todo-left {
   flex: 1;
-  line-height: 22px;
-  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
-.hold-w {
-  flex: 0 0 auto;
+.todo-headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-target {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+}
+
+.todo-qty {
+  font-size: 12px;
   color: var(--td-text-color-secondary);
   font-variant-numeric: tabular-nums;
 }
 
+.todo-reason {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.4;
+}
+
+/* 机会池卡片网格 */
+.opp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.opp-card {
+  padding: 14px;
+  background: var(--td-bg-color-secondarycontainer);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
+  }
+}
+
+.opp-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.opp-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.opp-card__name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+}
+
+.opp-card__thesis {
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+  line-height: 1.5;
+  background: var(--td-bg-color-container);
+  padding: 8px 10px;
+  border-radius: 6px;
+  position: relative;
+}
+
+.thesis-quote-mark {
+  color: var(--guanlan-accent, #c99846);
+  font-weight: bold;
+  font-family: Georgia, serif;
+}
+
+.opp-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 6px;
+  font-size: 12px;
+}
+
+.opp-card__note {
+  color: var(--td-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+/* 组合 */
+.portfolio-blurb {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
+
+.hold-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.hold-name {
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+}
+
+.hold-w {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+}
+
 @media (width <= 767px) {
-  .todo-row {
-    flex-direction: column;
-    gap: 4px;
-  }
-}
-
-@media (width >= 768px) {
-  .opp-row {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
+  .overview-strip {
+    gap: 12px;
   }
 
-  .opp-score {
-    width: 160px;
-  }
-}
-
-@media (width <= 640px) {
-  .macro-hd strong {
-    flex: 1 1 100%;
+  .overview-strip__divider {
+    display: none;
   }
 
-  :deep(.t-list-item) {
-    flex-wrap: wrap;
+  .overview-strip__item {
+    flex: 1 1 40%;
+  }
+
+  .opp-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

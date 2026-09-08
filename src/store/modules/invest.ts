@@ -242,6 +242,10 @@ export const useInvestStore = defineStore('invest', {
       this.opportunities = [{ ...row, id: `o${Date.now()}` }, ...this.opportunities];
       localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
     },
+    removeOpportunity(id: string) {
+      this.opportunities = this.opportunities.filter((o) => o.id !== id);
+      localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
+    },
     saveCustomPortfolio(row: CustomPortfolio) {
       const i = this.customPortfolios.findIndex((p) => p.id === row.id);
       const next = this.customPortfolios.slice();
