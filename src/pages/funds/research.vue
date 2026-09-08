@@ -3,7 +3,6 @@
     <funds-nav />
     <div class="sgl-method">
       <div class="page-hero">
-        <span class="eyebrow">分析方法论 · Methodology</span>
         <h1>收益、波动、回撤的分析与建模</h1>
         <p class="lede">
           基于全市场基金数据，量化刻画收益、波动与回撤之间的内在关系，为基金筛选与组合构建提供可解释的模型依据。
@@ -321,18 +320,18 @@ defineOptions({ name: 'FundsResearch' });
 </script>
 <style scoped>
 .sgl-method {
-  --bg: #f7f8fa;
-  --card: #fff;
-  --ink: #111827;
-  --ink-2: #4b5563;
-  --ink-3: #6b7280;
-  --line: rgb(17 24 39 / 8%);
-  --brand: #3b82f6;
-  --brand-600: #2563eb;
-  --brand-700: #1d4ed8;
-  --brand-soft: #eff6ff;
-  --shadow: 0 1px 2px rgb(17 24 39 / 4%);
-  --radius: 16px;
+  --bg: var(--td-bg-color-page);
+  --card: var(--td-bg-color-container);
+  --ink: var(--td-text-color-primary);
+  --ink-2: var(--td-text-color-secondary);
+  --ink-3: var(--td-text-color-placeholder);
+  --line: var(--td-component-border);
+  --brand: var(--td-brand-color);
+  --brand-600: var(--td-brand-color);
+  --brand-700: var(--td-brand-color-hover);
+  --brand-soft: var(--td-brand-color-light);
+  --shadow: var(--td-shadow-1);
+  --radius: var(--td-radius-medium);
 
   max-width: 1080px;
   color: var(--ink);
@@ -344,21 +343,10 @@ defineOptions({ name: 'FundsResearch' });
   margin-bottom: 8px;
 }
 
-.eyebrow {
-  display: inline-block;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--brand-700);
-  background: var(--brand-soft);
-  padding: 4px 12px;
-  border-radius: 999px;
-  margin-bottom: 14px;
-}
-
 .page-hero h1 {
-  font-size: 30px;
-  line-height: 1.25;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
   margin: 0 0 12px;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -367,23 +355,21 @@ defineOptions({ name: 'FundsResearch' });
 .lede {
   margin: 0;
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .sgl-method h2 {
-  font-size: 21px;
-  font-weight: 700;
-  margin: 36px 0 14px;
-  padding-left: 13px;
-  border-left: 4px solid var(--brand);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  margin: 32px 0 12px;
   color: var(--ink);
-  letter-spacing: -0.01em;
 }
 
 .sgl-method h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--brand-700);
+  color: var(--ink);
   margin: 22px 0 8px;
 }
 
@@ -421,22 +407,21 @@ defineOptions({ name: 'FundsResearch' });
 .sgl-method td.lbl {
   text-align: left;
   font-weight: 600;
-  background: #fafafa;
+  background: var(--td-bg-color-secondarycontainer);
 }
 
 .sig {
-  color: #ef4444;
+  color: var(--td-error-color);
   font-weight: 700;
 }
 
 .note {
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 12px;
+  line-height: 20px;
   color: var(--ink-2);
   background: var(--brand-soft);
-  border-left: 3px solid var(--brand);
   padding: 11px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   margin: 12px 0;
 }
 
@@ -451,8 +436,8 @@ defineOptions({ name: 'FundsResearch' });
   flex: 1;
   min-width: 150px;
   background: var(--brand-soft);
-  border: 1px solid rgb(37 99 235 / 14%);
-  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   padding: 16px;
   text-align: center;
 }
@@ -478,19 +463,19 @@ defineOptions({ name: 'FundsResearch' });
 }
 
 .hl {
-  background: #fff7ed;
-  color: #c2410c;
+  background: var(--td-warning-color-1);
+  color: var(--td-warning-color);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--td-radius-small);
   font-weight: 600;
 }
 
 .sgl-method code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: #f3f4f6;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  background: var(--td-bg-color-secondarycontainer);
   padding: 2px 6px;
-  border-radius: 5px;
-  font-size: 13px;
+  border-radius: var(--td-radius-small);
+  font-size: 12px;
   color: var(--ink);
 }
 

@@ -5,25 +5,21 @@
     <t-card title="账户管理">
       <t-list split>
         <t-list-item>
-          股票账户
-          <template #action>
-            <t-space>
-              <span>{{ money(stock.mv) }}</span>
-              <t-tag theme="success" variant="light">已启用</t-tag>
-            </t-space>
-          </template>
+          <div class="acct-row">
+            <span class="acct-name">股票账户</span>
+            <span class="acct-mv">{{ money(stock.mv) }}</span>
+            <t-tag theme="success" variant="light">已启用</t-tag>
+          </div>
         </t-list-item>
         <t-list-item>
-          ETF 账户
-          <template #action>
-            <t-space>
-              <span>{{ money(etf.mv) }}</span>
-              <t-tag theme="success" variant="light">已启用</t-tag>
-            </t-space>
-          </template>
+          <div class="acct-row">
+            <span class="acct-name">ETF 账户</span>
+            <span class="acct-mv">{{ money(etf.mv) }}</span>
+            <t-tag theme="success" variant="light">已启用</t-tag>
+          </div>
         </t-list-item>
       </t-list>
-      <t-form style="margin-top: 16px">
+      <t-form class="acct-form" style="margin-top: 16px">
         <t-form-item label="账户隔离">
           <t-switch :value="invest.prefs.isolate" @change="(v) => invest.setPref('isolate', Boolean(v))" />
         </t-form-item>
@@ -54,24 +50,24 @@
     <t-card title="数据来源">
       <t-list split>
         <t-list-item>
-          行情数据
-          <template #action>
+          <div class="acct-row">
+            <span class="acct-name">行情数据</span>
             <t-tag :theme="invest.quoteAt ? 'success' : 'default'" variant="light">
               {{ invest.quoteAt ? `已连接腾讯 ${new Date(invest.quoteAt).toTimeString().slice(0, 5)}` : '未连接' }}
             </t-tag>
-          </template>
+          </div>
         </t-list-item>
         <t-list-item>
-          研究资料
-          <template #action>
+          <div class="acct-row">
+            <span class="acct-name">研究资料</span>
             <t-tag variant="light">本地</t-tag>
-          </template>
+          </div>
         </t-list-item>
         <t-list-item>
-          收盘提醒
-          <template #action>
+          <div class="acct-row">
+            <span class="acct-name">收盘提醒</span>
             <t-switch :value="invest.prefs.closeRemind" @change="(v) => invest.setPref('closeRemind', Boolean(v))" />
-          </template>
+          </div>
         </t-list-item>
       </t-list>
     </t-card>
@@ -85,44 +81,52 @@
     </t-card>
 
     <t-card title="调仓计划（ETF）">
-      <t-table :data="planRows" :columns="planCols" row-key="code">
-        <template #target="{ row }">{{ pct(row.target) }}</template>
-        <template #current="{ row }">{{ row.current == null ? '—' : pct(row.current) }}</template>
-        <template #diff="{ row }">
-          <t-tag v-if="row.diff != null" size="small" variant="light" :theme="row.diff > 0 ? 'danger' : 'success'">
-            {{ pct(row.diff) }}
-          </t-tag>
-          <span v-else>—</span>
-        </template>
-      </t-table>
+      <div class="table-wrap">
+        <t-table :data="planRows" :columns="planCols" row-key="code">
+          <template #target="{ row }">{{ pct(row.target) }}</template>
+          <template #current="{ row }">{{ row.current == null ? '—' : pct(row.current) }}</template>
+          <template #diff="{ row }">
+            <t-tag v-if="row.diff != null" size="small" variant="light" :theme="row.diff > 0 ? 'danger' : 'success'">
+              {{ pct(row.diff) }}
+            </t-tag>
+            <span v-else>—</span>
+          </template>
+        </t-table>
+      </div>
     </t-card>
 
     <t-card title="待办买卖">
-      <t-table :data="invest.todos" :columns="todoCols" row-key="id">
-        <template #side="{ row }">
-          <t-tag size="small" :theme="row.side === 'buy' ? 'danger' : 'success'" variant="light">
-            {{ row.side === 'buy' ? '买' : '卖' }}
-          </t-tag>
-        </template>
-        <template #status="{ row }">
-          <t-tag size="small" variant="outline" :theme="row.status === 'open' ? 'warning' : 'success'">
-            {{ row.status === 'open' ? '待执行' : '已完成' }}
-          </t-tag>
-        </template>
-        <template #op="{ row }">
-          <t-button size="small" variant="outline" @click="toggleTodo(row.id, row.status)">
-            {{ row.status === 'open' ? '勾成已完成' : '重新打开' }}
-          </t-button>
-        </template>
-      </t-table>
+      <div class="table-wrap">
+        <t-table :data="invest.todos" :columns="todoCols" row-key="id">
+          <template #side="{ row }">
+            <t-tag size="small" :theme="row.side === 'buy' ? 'danger' : 'success'" variant="light">
+              {{ row.side === 'buy' ? '买' : '卖' }}
+            </t-tag>
+          </template>
+          <template #status="{ row }">
+            <t-tag size="small" variant="outline" :theme="row.status === 'open' ? 'warning' : 'success'">
+              {{ row.status === 'open' ? '待执行' : '已完成' }}
+            </t-tag>
+          </template>
+          <template #op="{ row }">
+            <t-button size="small" variant="outline" @click="toggleTodo(row.id, row.status)">
+              {{ row.status === 'open' ? '勾成已完成' : '重新打开' }}
+            </t-button>
+          </template>
+        </t-table>
+      </div>
     </t-card>
 
     <t-card title="纪律检查">
       <t-list split>
         <t-list-item v-for="r in checks" :key="r.id">
-          <t-tag :theme="r.ok ? 'success' : 'danger'" variant="light">{{ r.ok ? '通过' : '失败' }}</t-tag>
-          {{ r.title }}
-          <template #action>{{ r.detail }}</template>
+          <div class="check-row">
+            <t-tag :theme="r.ok ? 'success' : 'danger'" variant="light">{{ r.ok ? '通过' : '失败' }}</t-tag>
+            <div class="check-copy">
+              <div class="check-title">{{ r.title }}</div>
+              <div class="check-detail">{{ r.detail }}</div>
+            </div>
+          </div>
         </t-list-item>
       </t-list>
     </t-card>
@@ -216,3 +220,81 @@ function toggleTodo(id: string, status: TodoStatus) {
   invest.setTodoStatus(id, status === 'open' ? 'done' : 'open');
 }
 </script>
+<style scoped>
+.check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.check-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.check-title {
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.check-detail {
+  margin-top: 4px;
+  color: var(--td-text-color-secondary);
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.acct-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  width: 100%;
+}
+
+.acct-name {
+  min-width: 5.5em;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.acct-mv {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.acct-form :deep(.t-input-number) {
+  width: 100%;
+  max-width: 280px;
+}
+
+@media (width <= 767px) {
+  .acct-row {
+    justify-content: space-between;
+  }
+
+  .acct-mv {
+    margin-left: 0;
+  }
+
+  .acct-form :deep(.t-form__item) {
+    display: block;
+  }
+
+  .acct-form :deep(.t-form__label),
+  .acct-form :deep(.t-form__controls) {
+    width: 100% !important;
+  }
+
+  .acct-form :deep(.t-input-number) {
+    max-width: none;
+  }
+}
+</style>

@@ -10,13 +10,13 @@ colors:
   container: "#ffffff"
   surface-soft: "#f8fafb"
   text-primary: "#14212b"
-  text-secondary: "#73808a"
-  text-placeholder: "#93a3ad"
+  text-secondary: "#4f5d67"
+  text-placeholder: "#5e6c76"
   border: "#e6eaed"
   stroke: "#e6eaed"
   sidebar: "#162a34"
   gold: "#dfb56d"
-  gain: "#d05b55"
+  gain: "#b8433e"
   loss: "#16815f"
   warning: "#b8782d"
   info: "#3569bb"
@@ -50,6 +50,11 @@ typography:
     lineHeight: "22px"
   label:
     fontFamily: "Microsoft YaHei, PingFang SC, Noto Sans SC, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: "20px"
+  code:
+    fontFamily: "ui-monospace, Menlo, Consolas, monospace"
     fontSize: "12px"
     fontWeight: 400
     lineHeight: "20px"
@@ -104,7 +109,7 @@ components:
 - 侧栏 220px 夜色，当前项 `#24434b` + 3px 金嵌线 `#dfb56d`
 - 品牌墨绿 `#0d706d` 只给可交互；金只给当前导航与品牌标
 - 数字主角：市值/盈亏走 24px `.num-hero`、`tabular-nums`
-- 涨红跌绿只出现在数字与 Tag（A 股习惯，红涨 `#d05b55` / 绿跌 `#16815f`）
+- 涨红跌绿只出现在数字与 Tag（A 股习惯，红涨 `#b8433e` / 绿跌 `#16815f`）
 - 卡片：10px 圆角 + `0 8px 30px rgba(24,40,51,.05)`，不是扁平发车板
 - 一次入场：内容区 240ms 微升淡入（`prefers-reduced-motion` 时关闭）
 
@@ -123,11 +128,11 @@ components:
 ### Neutral
 - **页面灰** (`{colors.page}` `#f6f7f9`)
 - **容器白** (`{colors.container}`) / **软底** (`{colors.surface-soft}` `#f8fafb`)
-- **主文** `#14212b` / **次文** `#73808a`
+- **主文** `#14212b` / **次文** `#4f5d67`（≥4.5:1）/ **占位** `#5e6c76`
 - **描边** `#e6eaed`
 
 ### Semantic
-- **涨 / 盈** (`{colors.gain}` `#d05b55`)
+- **涨 / 盈** (`{colors.gain}` `#b8433e`，白底约 5.4:1)
 - **跌 / 亏** (`{colors.loss}` `#16815f`)
 - **观察** (`{colors.warning}` `#b8782d`)
 
@@ -143,13 +148,13 @@ components:
 - **Hero** (600, 24/32, tabular): `.num-hero`
 - **Title** (600, 15/24): 卡片标题
 - **Body** (400, 14 / 1.55): 表格、列表
-- **Label** (400, 12/20): 表头、侧栏分组、辅助说明
+- **Label** (400, 12/20): 表头、侧栏分组、辅助说明；代码片段可用系统等宽（Menlo/Consolas），只用于公式与指标名
 
 **The Paired Scale Rule.** 字号必须带对应行高。
 
 ## Layout
 
-TDesign Starter 侧栏 + 顶栏。侧栏 220px，顶栏 64px。内容区内边距 22×24×28。桌面双栏（股票 | ETF），≤767px 单列：侧栏收成左抽屉，顶栏汉堡打开，内容全宽。
+TDesign Starter 侧栏 + 顶栏。侧栏 220px，顶栏 64px。内容区内边距 22×24×28。桌面双栏（股票 | ETF），≤767px 单列：底栏四入口，顶栏汉堡打开侧栏抽屉，内容全宽。粗指针按钮高度 44px。
 
 驾驶舱阅读顺序：动作行 → 双账户总览带 → 两块持仓板 → 指数行 → 公募研究入口。
 

@@ -8,7 +8,7 @@
         v-for="(lang, index) in languageList"
         :key="index"
         :value="lang.value"
-        @click="(options) => changeLang(options.value as string)"
+        @click="lang.value && changeLang(String(lang.value))"
         >{{ lang.content }}</t-dropdown-item
       ></t-dropdown-menu
     >

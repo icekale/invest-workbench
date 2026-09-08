@@ -176,15 +176,16 @@ export function risks(
   return [...pick, ...rest].slice(0, 3);
 }
 
+/** 组合净值：成本日 = 1，终点 = 1 + 浮动盈亏率。不是累计收益率。 */
 export function sparkSeries(endPct: number, n = 30) {
   const ys: number[] = [];
   for (let i = 0; i < n; i += 1) {
-    const t = i / (n - 1);
+    const t = n === 1 ? 1 : i / (n - 1);
     const smooth = t * t * (3 - 2 * t);
     const wiggle = Math.sin(i * 1.7) * 0.01 * (1 - t);
-    ys.push(+(100 * (1 + endPct * smooth + wiggle)).toFixed(2));
+    ys.push(+(1 + endPct * smooth + wiggle).toFixed(4));
   }
-  ys[n - 1] = +(100 * (1 + endPct)).toFixed(2);
+  ys[n - 1] = +(1 + endPct).toFixed(4);
   return ys;
 }
 

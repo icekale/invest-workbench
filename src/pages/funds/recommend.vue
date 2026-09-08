@@ -6,18 +6,20 @@
       <t-radio-group v-model="tab" variant="default-filled" style="margin-bottom: 12px">
         <t-radio-button v-for="t in tabs" :key="t" :value="t">{{ t }}</t-radio-button>
       </t-radio-group>
-      <t-table
-        :data="rows"
-        :columns="cols"
-        row-key="code"
-        hover
-        :loading="loading"
-        :on-row-click="({ row }) => router.push(`/funds/detail/${row.code}`)"
-      >
-        <template #yield="{ row }">{{ row.yield.toFixed(2) }}%</template>
-        <template #vix="{ row }">{{ row.vix.toFixed(2) }}</template>
-        <template #loss="{ row }">{{ row.loss.toFixed(2) }}%</template>
-      </t-table>
+      <div class="table-wrap">
+        <t-table
+          :data="rows"
+          :columns="cols"
+          row-key="code"
+          hover
+          :loading="loading"
+          :on-row-click="({ row }) => router.push(`/funds/detail/${row.code}`)"
+        >
+          <template #yield="{ row }">{{ row.yield.toFixed(2) }}%</template>
+          <template #vix="{ row }">{{ row.vix.toFixed(2) }}</template>
+          <template #loss="{ row }">{{ row.loss.toFixed(2) }}%</template>
+        </t-table>
+      </div>
     </t-card>
   </t-space>
 </template>
@@ -60,3 +62,10 @@ onMounted(async () => {
   }
 });
 </script>
+<style scoped>
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+</style>

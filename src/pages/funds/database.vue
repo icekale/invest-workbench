@@ -3,24 +3,26 @@
     <funds-nav />
     <t-alert v-if="error" theme="warning" :message="error" />
     <t-card title="基金数据" :subtitle="`全样本 ${funds.length} 只`">
-      <t-space style="margin-bottom: 12px">
-        <t-input v-model="q" placeholder="名称/代码" style="width: 200px" clearable />
-        <t-select v-model="tab" :options="typeOpts" style="width: 140px" />
+      <t-space class="db-tools" break-line style="margin-bottom: 12px">
+        <t-input v-model="q" placeholder="名称/代码" clearable />
+        <t-select v-model="tab" :options="typeOpts" />
       </t-space>
-      <t-table
-        :data="paged"
-        :columns="cols"
-        row-key="code"
-        hover
-        :loading="loading"
-        :pagination="pager"
-        :on-row-click="({ row }) => router.push(`/funds/detail/${row.code}`)"
-        @page-change="onPage"
-      >
-        <template #yield="{ row }">{{ row.yield.toFixed(2) }}%</template>
-        <template #vix="{ row }">{{ row.vix.toFixed(2) }}</template>
-        <template #loss="{ row }">{{ row.loss.toFixed(2) }}%</template>
-      </t-table>
+      <div class="table-wrap">
+        <t-table
+          :data="paged"
+          :columns="cols"
+          row-key="code"
+          hover
+          :loading="loading"
+          :pagination="pager"
+          :on-row-click="({ row }) => router.push(`/funds/detail/${row.code}`)"
+          @page-change="onPage"
+        >
+          <template #yield="{ row }">{{ row.yield.toFixed(2) }}%</template>
+          <template #vix="{ row }">{{ row.vix.toFixed(2) }}</template>
+          <template #loss="{ row }">{{ row.loss.toFixed(2) }}%</template>
+        </t-table>
+      </div>
     </t-card>
   </t-space>
 </template>
@@ -83,3 +85,16 @@ onMounted(async () => {
   }
 });
 </script>
+<style scoped>
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.db-tools :deep(.t-input),
+.db-tools :deep(.t-select) {
+  width: 100%;
+  max-width: 280px;
+}
+</style>

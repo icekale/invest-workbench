@@ -2,6 +2,8 @@ import path from 'node:path';
 
 import vue from '@vitejs/plugin-vue';
 import vueJsx from '@vitejs/plugin-vue-jsx';
+import { TDesignResolver } from 'unplugin-vue-components/resolvers';
+import Components from 'unplugin-vue-components/vite';
 import type { ConfigEnv, UserConfig } from 'vite';
 import { loadEnv } from 'vite';
 import { viteMockServe } from 'vite-plugin-mock';
@@ -40,6 +42,10 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         enable: true,
       }),
       svgLoader(),
+      Components({
+        dts: false,
+        resolvers: [TDesignResolver({ library: 'vue-next', esm: true })],
+      }),
     ],
 
     server: {

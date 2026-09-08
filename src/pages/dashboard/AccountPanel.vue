@@ -45,7 +45,7 @@
       <t-col :xs="12" :xl="8">
         <t-space direction="vertical" :size="16" style="width: 100%">
           <t-card class="gl-mod" title="组合净值">
-            <template #actions><span class="card-cap">近 30 个交易日</span></template>
+            <template #actions><span class="card-cap">单位净值 · 近 30 个交易日</span></template>
             <div ref="lineEl" class="nav-line" />
           </t-card>
           <t-card title="持仓与买卖点">
@@ -180,8 +180,11 @@ const actionRank: Record<string, number> = { exit: 0, reduce: 1, add: 2, hold: 3
 const ALLOC_COLORS = ['#0d706d', '#d4a054', '#3569bb', '#5b9a6a'];
 const CASH_COLOR = '#c5cdd3';
 const riskIcon = { warn: 'error-triangle-filled', info: 'calendar-filled', ok: 'secured-filled' };
-const axisMuted = '#93a3ad';
-const lineGreen = '#0d706d';
+function cssVar(name: string, fallback: string) {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
 
 function lastWeekdays(n = 30) {
   const out: string[] = [];
@@ -228,7 +231,7 @@ const donutBg = computed(() => {
     acc += a.pct;
     return `${a.color} ${from}% ${acc * 100}%`;
   });
-  if (acc < 0.999) stops.push(`#f6f7f9 ${acc * 100}% 100%`);
+  if (acc < 0.999) stops.push(`var(--td-bg-color-page) ${acc * 100}% 100%`);
   return `conic-gradient(${stops.join(', ')})`;
 });
 const health = computed(() => healthScore(props.rows, invest.theses, invest.journal, props.cash));
@@ -278,6 +281,11 @@ function renderLine() {
   const last = n - 1;
   const narrow = lineEl.value.clientWidth < 520;
   const ticks = new Set([0, Math.round((n - 1) / 3), Math.round((2 * (n - 1)) / 3), last]);
+  const lineGreen = cssVar('--guanlan-accent', '#0d706d');
+  const axisMuted = cssVar('--td-text-color-placeholder', '#5e6c76');
+  const gridLine = cssVar('--td-component-stroke', '#e6eaed');
+  const chartInk = cssVar('--td-text-color-secondary', '#4f5d67');
+  const chartDotBorder = cssVar('--td-bg-color-container', '#fff');
   chart.setOption(
     {
       color: [lineGreen],
@@ -286,7 +294,7 @@ function renderLine() {
         formatter: (ps: { axisValue: string; data: number | { value: number } }[]) => {
           const p = ps[0];
           const v = typeof p.data === 'object' ? p.data.value : p.data;
-          return `${p.axisValue}<br/>${Number(v).toFixed(2)}%`;
+          return `${p.axisValue}<br/>净值 ${Number(v).toFixed(4)}`;
         },
       },
       grid: { left: 40, right: narrow ? 10 : 24, top: 24, bottom: 28 },
@@ -304,8 +312,8 @@ function renderLine() {
         scale: true,
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#e6eaed' } },
-        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => `${Math.round(v)}%` },
+        splitLine: { lineStyle: { color: gridLine } },
+        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => v.toFixed(2) },
       },
       series: [
         {
@@ -317,15 +325,15 @@ function renderLine() {
           data: ys.map((v, i) => ({
             value: v,
             symbolSize: i === last ? 12 : 0,
-            itemStyle: { color: lineGreen, borderColor: '#fff', borderWidth: 3 },
+            itemStyle: { color: lineGreen, borderColor: chartDotBorder, borderWidth: 3 },
             label:
               i === last && !narrow
                 ? {
                     show: true,
-                    formatter: pct(stats.value.pnlPct),
+                    formatter: () => Number(ys[last]).toFixed(4),
                     position: 'left',
                     distance: 10,
-                    color: '#73808a',
+                    color: chartInk,
                     fontSize: 12,
                   }
                 : { show: false },

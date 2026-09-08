@@ -4,24 +4,24 @@
     class="item-container login-password"
     :data="formData"
     :rules="FORM_RULES"
-    label-width="0"
+    label-width="56px"
     @submit="onSubmit"
   >
-    <t-form-item name="account">
-      <t-input v-model="formData.account" size="large" placeholder="xiong">
+    <t-form-item name="account" label="账号">
+      <t-input v-model="formData.account" size="large" placeholder="输入账号">
         <template #prefix-icon>
           <t-icon name="user" />
         </template>
       </t-input>
     </t-form-item>
 
-    <t-form-item name="password">
+    <t-form-item name="password" label="密码">
       <t-input
         v-model="formData.password"
         size="large"
         :type="showPsw ? 'text' : 'password'"
         clearable
-        placeholder="demo"
+        placeholder="输入密码"
       >
         <template #prefix-icon>
           <t-icon name="lock-on" />

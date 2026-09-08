@@ -33,7 +33,9 @@ assert.ok(health.total >= 0 && health.total <= 100);
 
 const series = sparkSeries(0.1);
 assert.equal(series.length, 30);
-assert.equal(series.at(-1), 110);
+assert.equal(series[0], 1);
+assert.equal(series.at(-1), 1.1);
+assert.ok(series.every((v) => v > 0.5 && v < 2));
 
 const under = risks([row], [], [], 2000, [{ code: 'sz000001', targetWeight: 0.9 }]);
 assert.equal(under[0].hint, '调整');

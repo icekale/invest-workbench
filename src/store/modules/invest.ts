@@ -140,6 +140,10 @@ export const useInvestStore = defineStore('invest', {
       this.theses = this.theses.map((t) => (t.id === id ? { ...t, status } : t));
       localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
     },
+    removeThesis(id: string) {
+      this.theses = this.theses.filter((t) => t.id !== id);
+      localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
+    },
     addJournal(topic: string, conclusion = '', body = '') {
       const entry: JournalEntry = {
         id: `j${Date.now()}`,
@@ -149,6 +153,10 @@ export const useInvestStore = defineStore('invest', {
         body: body || topic,
       };
       this.journal = [entry, ...this.journal];
+      localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
+    },
+    removeJournal(id: string) {
+      this.journal = this.journal.filter((j) => j.id !== id);
       localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
     },
     addThesis(title: string, code: string, body: string) {

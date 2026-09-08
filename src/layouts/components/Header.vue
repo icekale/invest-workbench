@@ -2,7 +2,7 @@
   <div :class="layoutCls">
     <t-head-menu :class="menuCls" :theme="menuTheme" expand-type="popup" :value="active">
       <template #logo>
-        <t-button class="guanlan-menu-btn" variant="text" shape="square" @click="toggleMobileNav">
+        <t-button class="guanlan-menu-btn" variant="text" shape="square" aria-label="打开导航" @click="toggleMobileNav">
           <template #icon><t-icon name="view-list" /></template>
         </t-button>
         <h1 v-if="layout === 'side'" class="guanlan-topbar-title">{{ t('common.appName') }}</h1>

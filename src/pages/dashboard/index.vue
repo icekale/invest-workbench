@@ -5,7 +5,7 @@
       <t-space break-line>
         <t-button variant="outline" :loading="invest.quoteLoading" @click="refresh()">刷新行情</t-button>
         <t-button variant="outline" @click="exportSnap">导出快照</t-button>
-        <t-button variant="outline" @click="router.push('/funds')">记录一条</t-button>
+        <t-button variant="outline" @click="router.push('/review')">记录复盘</t-button>
         <t-button theme="primary" @click="editOpen = true">编辑持仓</t-button>
       </t-space>
     </t-space>
@@ -44,14 +44,16 @@ let timer = 0;
 onMounted(async () => {
   await refresh();
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);
   try {
     const days = await fetchTradeMonth(now.getFullYear(), now.getMonth() + 1);
     closed.value = days.length > 0 && !days.some((d) => d.date === today && d.open);
   } catch {
     closed.value = false;
   }
-  timer = window.setInterval(refresh, 60_000, true);
+  timer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') refresh(true);
+  }, 60_000);
 });
 onUnmounted(() => clearInterval(timer));
 

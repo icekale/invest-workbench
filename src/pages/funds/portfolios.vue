@@ -55,15 +55,15 @@
           <t-card title="我的组合" style="margin-top: 16px">
             <t-list v-if="invest.customPortfolios.length" split>
               <t-list-item v-for="p in invest.customPortfolios" :key="p.id">
-                {{ p.name }}
-                <template #action>
+                <div class="hold-row">
+                  <span class="hold-name">{{ p.name }}</span>
                   <t-space>
                     <t-button size="small" variant="text" theme="primary" @click="openSaved(p)">打开</t-button>
-                    <t-button size="small" variant="text" theme="danger" @click="invest.removeCustomPortfolio(p.id)"
-                      >删除</t-button
-                    >
+                    <t-button size="small" variant="text" theme="danger" @click="invest.removeCustomPortfolio(p.id)">
+                      删除
+                    </t-button>
                   </t-space>
-                </template>
+                </div>
               </t-list-item>
             </t-list>
             <span v-else class="muted">创建后保存在本机，刷新仍在。</span>
@@ -141,10 +141,10 @@
         <t-loading :loading="posLoading">
           <t-list v-if="positions.length" split>
             <t-list-item v-for="p in positions" :key="`${p.kind}-${p.code}-${p.name}`">
-              <t-list-item-meta :title="p.name" :description="`${p.kind} · ${p.code || '—'}`" />
-              <template #action>
-                <span class="num">{{ p.weight.toFixed(2) }}%</span>
-              </template>
+              <div class="hold-row">
+                <t-list-item-meta :title="p.name" :description="`${p.kind} · ${p.code || '—'}`" />
+                <span class="hold-w">{{ p.weight.toFixed(2) }}%</span>
+              </div>
             </t-list-item>
           </t-list>
           <span v-else class="muted">{{ posError || '暂无穿透持仓' }}</span>
@@ -155,11 +155,11 @@
           <t-card title="组合明细" :subtitle="`等权 ${holdings.length} 只`">
             <t-list split>
               <t-list-item v-for="f in holdings" :key="f.code">
-                <t-list-item-meta :title="f.name" :description="`${f.code} · ${f.type}`" />
-                <template #action>
-                  <t-space align="center">
+                <div class="hold-row">
+                  <t-list-item-meta :title="f.name" :description="`${f.code} · ${f.type}`" />
+                  <div class="hold-side">
                     <span class="num">{{ f.yield.toFixed(1) }}% / {{ f.loss.toFixed(1) }}%</span>
-                    <span class="num">{{ weight }}%</span>
+                    <span class="hold-w">{{ weight }}%</span>
                     <t-button size="small" variant="text" theme="danger" @click="removeHolding(f.code)">移除</t-button>
                     <t-button
                       size="small"
@@ -169,8 +169,8 @@
                     >
                       详情
                     </t-button>
-                  </t-space>
-                </template>
+                  </div>
+                </div>
               </t-list-item>
             </t-list>
             <span v-if="!holdings.length" class="muted">持仓已清空，从右侧备选加入。</span>
@@ -181,10 +181,10 @@
             <t-input v-model="q" placeholder="名称/代码搜索全样本" clearable style="margin-bottom: 12px" />
             <t-list split>
               <t-list-item v-for="f in alternates" :key="f.code">
-                <t-list-item-meta :title="f.name" :description="`${f.code} · 回撤 ${f.loss.toFixed(1)}%`" />
-                <template #action>
+                <div class="hold-row">
+                  <t-list-item-meta :title="f.name" :description="`${f.code} · 回撤 ${f.loss.toFixed(1)}%`" />
                   <t-button size="small" theme="primary" variant="outline" @click="addHolding(f)">加入</t-button>
-                </template>
+                </div>
               </t-list-item>
             </t-list>
             <span v-if="!alternates.length" class="muted">没有可加入的基金。</span>
@@ -584,5 +584,41 @@ onUnmounted(() => {
 .alloc-row b {
   text-align: right;
   font-weight: 600;
+}
+
+.hold-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.hold-name {
+  min-width: 0;
+  flex: 1;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.hold-w {
+  flex: 0 0 auto;
+  color: var(--td-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hold-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@media (width <= 767px) {
+  .hold-row,
+  .hold-side {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

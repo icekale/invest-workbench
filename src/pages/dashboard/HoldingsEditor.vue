@@ -1,6 +1,6 @@
 <template>
-  <t-dialog v-model:visible="visible" header="编辑持仓" width="960" :footer="false">
-    <t-form :data="form" layout="inline">
+  <t-dialog v-model:visible="visible" header="编辑持仓" width="min(960px, 94vw)" :footer="false">
+    <t-form :data="form" layout="inline" class="editor-form">
       <t-form-item name="account" label="账户">
         <t-select v-model="form.account" :options="accountOpts" style="width: 104px" />
       </t-form-item>
@@ -35,17 +35,19 @@
         <t-button theme="primary" :loading="saving" @click="onSubmit">保存</t-button>
       </t-form-item>
     </t-form>
-    <t-table :data="rows" :columns="cols" row-key="rowKey" size="small" style="margin-top: 16px">
-      <template #account="{ row }">{{ row.account === 'stock' ? '股票' : 'ETF' }}</template>
-      <template #op="{ row }">
-        <t-space>
-          <t-link theme="primary" @click="fill(row)">改</t-link>
-          <t-popconfirm content="删除这行？" @confirm="remove(row)">
-            <t-link theme="danger">删</t-link>
-          </t-popconfirm>
-        </t-space>
-      </template>
-    </t-table>
+    <div class="table-wrap">
+      <t-table :data="rows" :columns="cols" row-key="rowKey" size="small" style="margin-top: 16px">
+        <template #account="{ row }">{{ row.account === 'stock' ? '股票' : 'ETF' }}</template>
+        <template #op="{ row }">
+          <t-space>
+            <t-link theme="primary" @click="fill(row)">改</t-link>
+            <t-popconfirm content="删除这行？" @confirm="remove(row)">
+              <t-link theme="danger">删</t-link>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
+    </div>
   </t-dialog>
 </template>
 <script setup lang="ts">
@@ -132,3 +134,16 @@ async function onSubmit() {
   }
 }
 </script>
+<style scoped>
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.editor-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+</style>
