@@ -5,7 +5,15 @@
         <t-select v-model="form.account" :options="accountOpts" style="width: 104px" />
       </t-form-item>
       <t-form-item name="code" label="代码">
-        <t-input v-model="form.code" placeholder="510300 / sz000001" style="width: 170px" />
+        <t-input v-model="form.code" placeholder="510300 / 600519" style="width: 170px" clearable @blur="lookupCode" />
+        <div v-if="previewInfo.name" class="code-preview-tip">
+          <t-tag size="small" theme="primary" variant="light">
+            {{ previewInfo.name }} · ¥{{ previewInfo.price.toFixed(3) }}
+          </t-tag>
+        </div>
+        <div v-else-if="previewInfo.loading" class="code-preview-tip">
+          <t-tag size="small" theme="default" variant="light">查询中...</t-tag>
+        </div>
       </t-form-item>
       <t-form-item name="quantity" label="数量">
         <t-input-number v-model="form.quantity" :min="0" :decimal-places="0" style="width: 150px" />
@@ -52,7 +60,7 @@
 </template>
 <script setup lang="ts">
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, Holding } from '@/types/invest';
@@ -68,6 +76,50 @@ const form = reactive({
   quantity: 0,
   cost: 0,
 });
+
+const previewInfo = reactive({
+  name: '',
+  price: 0,
+  loading: false,
+});
+
+let lookupTimer: number | null = null;
+watch(
+  () => form.code,
+  (val) => {
+    if (lookupTimer) clearTimeout(lookupTimer);
+    const raw = val.trim();
+    if (raw.length >= 6) {
+      lookupTimer = window.setTimeout(lookupCode, 400);
+    } else {
+      previewInfo.name = '';
+      previewInfo.price = 0;
+    }
+  },
+);
+
+async function lookupCode() {
+  const code = normalizeCode(form.code);
+  if (!code) return;
+  previewInfo.loading = true;
+  try {
+    const map = await fetchQuotes([code]);
+    const q = map.get(code);
+    if (q) {
+      previewInfo.name = q.name;
+      previewInfo.price = q.price;
+      if (!form.cost) {
+        form.cost = q.price;
+      }
+    } else {
+      previewInfo.name = '';
+    }
+  } catch {
+    previewInfo.name = '';
+  } finally {
+    previewInfo.loading = false;
+  }
+}
 
 const accountOpts = [
   { label: '股票', value: 'stock' },
@@ -90,6 +142,9 @@ function fill(row: Holding) {
   form.code = row.code;
   form.quantity = row.quantity;
   form.cost = row.cost;
+  previewInfo.name = row.name;
+  const q = invest.quotes[row.code];
+  previewInfo.price = q?.price ?? row.cost;
 }
 
 function remove(row: Holding) {
@@ -125,6 +180,8 @@ async function onSubmit() {
     form.code = '';
     form.quantity = 0;
     form.cost = 0;
+    previewInfo.name = '';
+    previewInfo.price = 0;
     await invest.refreshQuotes();
     MessagePlugin.success(`已保存 ${q.name}`);
   } catch (e) {
@@ -145,5 +202,9 @@ async function onSubmit() {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 12px;
+}
+
+.code-preview-tip {
+  margin-top: 4px;
 }
 </style>

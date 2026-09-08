@@ -18,9 +18,17 @@
           :on-row-click="({ row }) => router.push(`/funds/detail/${row.code}`)"
           @page-change="onPage"
         >
-          <template #yield="{ row }">{{ row.yield.toFixed(2) }}%</template>
-          <template #vix="{ row }">{{ row.vix.toFixed(2) }}</template>
-          <template #loss="{ row }">{{ row.loss.toFixed(2) }}%</template>
+          <template #yield="{ row }">
+            <span class="tabular-nums" :class="row.yield > 0 ? 'gain-text' : row.yield < 0 ? 'loss-text' : ''">
+              {{ row.yield > 0 ? '+' : '' }}{{ row.yield.toFixed(2) }}%
+            </span>
+          </template>
+          <template #vix="{ row }">
+            <span class="tabular-nums">{{ row.vix.toFixed(2) }}</span>
+          </template>
+          <template #loss="{ row }">
+            <span class="tabular-nums loss-text">{{ row.loss.toFixed(2) }}%</span>
+          </template>
         </t-table>
       </div>
     </t-card>

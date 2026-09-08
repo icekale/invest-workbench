@@ -40,14 +40,44 @@
         <t-descriptions-item label="OLS残差">{{ residual == null ? '—' : residual.toFixed(2) }}</t-descriptions-item>
       </t-descriptions>
       <t-alert v-if="sampleNote" theme="info" :message="sampleNote" style="margin-top: 12px" />
-      <t-button style="margin-top: 16px" variant="outline" @click="invest.toggleWatch(fund.code)">
-        {{ invest.watchlist.includes(fund.code) ? '移出备选池' : '加入备选池' }}
-      </t-button>
+      <t-space style="margin-top: 16px" break-line>
+        <t-button variant="outline" @click="invest.toggleWatch(fund.code)">
+          {{ invest.watchlist.includes(fund.code) ? '移出备选池' : '加入备选池' }}
+        </t-button>
+        <t-button theme="primary" @click="openTodoDialog">生成买入待办</t-button>
+        <t-button theme="default" variant="outline" @click="handleAddToOpportunity">加入研究机会池</t-button>
+      </t-space>
       <div style="margin-top: 16px">单位净值 · 近1年</div>
       <t-alert v-if="navError" theme="warning" :message="navError" style="margin-top: 8px" />
       <div ref="chartEl" style="height: 280px; margin-top: 8px" />
     </t-card>
     <t-loading v-else-if="!error" text="加载基金..." />
+
+    <!-- 生成买入待办弹窗 -->
+    <t-dialog
+      v-model:visible="todoDialogVisible"
+      header="生成买入待办"
+      :confirm-btn="{ content: '确认添加', theme: 'primary' }"
+      @confirm="confirmBuyTodo"
+    >
+      <t-form :data="todoForm" label-align="left" :label-width="80">
+        <t-form-item label="标的">
+          <span>{{ fund?.name }} ({{ fund?.code }})</span>
+        </t-form-item>
+        <t-form-item label="归属账户">
+          <t-radio-group v-model="todoForm.account">
+            <t-radio-button value="etf">ETF 账户</t-radio-button>
+            <t-radio-button value="stock">股票账户</t-radio-button>
+          </t-radio-group>
+        </t-form-item>
+        <t-form-item label="拟买份数">
+          <t-input-number v-model="todoForm.quantity" :min="100" :step="1000" style="width: 180px" />
+        </t-form-item>
+        <t-form-item label="决策理由">
+          <t-input v-model="todoForm.reason" placeholder="如：拾光研选分高、回撤可控、估值低位" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
   </t-space>
 </template>
 <script setup lang="ts">
@@ -55,10 +85,12 @@ import { LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { MessagePlugin } from 'tdesign-vue-next';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
+import type { AccountId } from '@/types/invest';
 import type { FundDetail, NavPoint } from '@/utils/fund';
 import { fetchFundDetail, fetchFundNav, fetchFundRank, fmtPct, researchScore, riskNote } from '@/utils/fund';
 import type { FundModel, SampleFund } from '@/utils/fund-model';
@@ -90,6 +122,54 @@ const sampleNote = computed(() => {
   if (residual.value > 1) return '回撤浅于 OLS 预测';
   return '回撤与 OLS 预测接近';
 });
+
+const todoDialogVisible = ref(false);
+const todoForm = reactive({
+  account: 'etf' as AccountId,
+  quantity: 1000,
+  reason: '',
+});
+
+function openTodoDialog() {
+  if (!fund.value) return;
+  todoForm.reason = `拾光研选${score.value ?? '—'}分，近1年Yield ${fund.value.year ?? '—'}%`;
+  todoDialogVisible.value = true;
+}
+
+function confirmBuyTodo() {
+  if (!fund.value) return;
+  invest.addTodo({
+    account: todoForm.account,
+    code: fund.value.code,
+    name: fund.value.name,
+    side: 'buy',
+    quantity: todoForm.quantity,
+    reason: todoForm.reason || '拾光研选推荐',
+  });
+  todoDialogVisible.value = false;
+  MessagePlugin.success(`已为【${fund.value.name}】生成买入待办`);
+}
+
+function handleAddToOpportunity() {
+  if (!fund.value) return;
+  const existing = invest.opportunities.find((o) => o.name === fund.value?.name);
+  if (existing) {
+    MessagePlugin.info('该标的已在研究机会池中');
+    return;
+  }
+  invest.addOpportunity({
+    account: 'etf',
+    name: fund.value.name,
+    thesis: `${fund.value.type} · 拾光研选分 ${score.value ?? '—'} · ${sampleNote.value || '表现优异'}`,
+    score: score.value ?? 85,
+    note: `${fund.value.company} · 经理 ${fund.value.manager}`,
+  });
+  MessagePlugin.success(`已将【${fund.value.name}】加入研究机会池`);
+}
+
+function onResize() {
+  chart?.resize();
+}
 
 function renderChart() {
   if (!chartEl.value) return;
@@ -142,10 +222,16 @@ async function load(code: string) {
   renderChart();
 }
 
-onMounted(() => load(String(route.params.code)));
+onMounted(() => {
+  window.addEventListener('resize', onResize);
+  load(String(route.params.code));
+});
 watch(
   () => route.params.code,
   (c) => load(String(c)),
 );
-onUnmounted(() => chart?.dispose());
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize);
+  chart?.dispose();
+});
 </script>

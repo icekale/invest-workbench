@@ -276,6 +276,7 @@ export const useInvestStore = defineStore('invest', {
     snapshot() {
       return {
         at: new Date().toISOString(),
+        version: 2,
         holdings: this.holdings,
         cash: this.cash,
         quotes: this.quotes,
@@ -284,6 +285,90 @@ export const useInvestStore = defineStore('invest', {
         journal: this.journal,
         opportunities: this.opportunities,
         prefs: this.prefs,
+        transactions: this.transactions,
+        watchlist: this.watchlist,
+        customPortfolios: this.customPortfolios,
+      };
+    },
+    restoreSnapshot(data: any): { success: boolean; message: string; counts?: Record<string, number> } {
+      if (!data || typeof data !== 'object') {
+        return { success: false, message: '无效的快照文件格式' };
+      }
+      if (!Array.isArray(data.holdings) || !data.cash) {
+        return { success: false, message: '快照数据缺少核心持仓或资金字段' };
+      }
+
+      // 1. 持仓
+      this.holdings = data.holdings;
+      localStorage.setItem(LS_HOLD, JSON.stringify(this.holdings));
+
+      // 2. 现金
+      if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
+        this.cash = { stock: data.cash.stock, etf: data.cash.etf };
+        localStorage.setItem(LS_CASH, JSON.stringify(this.cash));
+      }
+
+      // 3. 交易流水台账
+      if (Array.isArray(data.transactions)) {
+        this.transactions = data.transactions;
+        localStorage.setItem(LS_TX, JSON.stringify(this.transactions));
+      }
+
+      // 4. 待办清单
+      if (Array.isArray(data.todos)) {
+        this.todos = data.todos;
+        localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+      }
+
+      // 5. 投资论点
+      if (Array.isArray(data.theses)) {
+        this.theses = data.theses;
+        localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
+      }
+
+      // 6. 复盘日记
+      if (Array.isArray(data.journal)) {
+        this.journal = data.journal;
+        localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
+      }
+
+      // 7. 机会池
+      if (Array.isArray(data.opportunities)) {
+        this.opportunities = data.opportunities;
+        localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
+      }
+
+      // 8. 偏好设定
+      if (data.prefs && typeof data.prefs === 'object') {
+        this.prefs = { ...this.prefs, ...data.prefs };
+        localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
+      }
+
+      // 9. 自选池
+      if (Array.isArray(data.watchlist)) {
+        this.watchlist = data.watchlist;
+        localStorage.setItem(LS_WATCH, JSON.stringify(this.watchlist));
+      }
+
+      // 10. 自定义智能组合
+      if (Array.isArray(data.customPortfolios)) {
+        this.customPortfolios = data.customPortfolios;
+        localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
+      }
+
+      // 触发最新行情更新
+      this.refreshQuotes();
+
+      return {
+        success: true,
+        message: '数据恢复成功',
+        counts: {
+          holdings: this.holdings.length,
+          transactions: this.transactions.length,
+          todos: this.todos.length,
+          theses: this.theses.length,
+          journal: this.journal.length,
+        },
       };
     },
   },

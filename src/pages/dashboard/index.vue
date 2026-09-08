@@ -5,6 +5,7 @@
       <t-space break-line>
         <t-button variant="outline" :loading="invest.quoteLoading" @click="refresh()">刷新行情</t-button>
         <t-button variant="outline" @click="exportSnap">导出快照</t-button>
+        <t-button variant="outline" @click="triggerImport">导入快照</t-button>
         <t-button variant="outline" @click="router.push('/review')">记录复盘</t-button>
         <t-button theme="primary" @click="editOpen = true">编辑持仓</t-button>
       </t-space>
@@ -19,10 +20,17 @@
       </t-tab-panel>
     </t-tabs>
     <holdings-editor v-model:visible="editOpen" />
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".json,application/json"
+      style="display: none"
+      @change="handleFileChange"
+    />
   </t-space>
 </template>
 <script setup lang="ts">
-import { MessagePlugin } from 'tdesign-vue-next';
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -77,5 +85,49 @@ function exportSnap() {
   a.click();
   URL.revokeObjectURL(a.href);
   MessagePlugin.success('快照已下载');
+}
+
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+function triggerImport() {
+  if (fileInputRef.value) {
+    fileInputRef.value.value = '';
+    fileInputRef.value.click();
+  }
+}
+
+function handleFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result));
+      if (!data || typeof data !== 'object' || !Array.isArray(data.holdings) || !data.cash) {
+        MessagePlugin.error('快照文件解析失败：缺少持仓或资金字段');
+        return;
+      }
+      const dialog = DialogPlugin.confirm({
+        header: '确认导入并恢复快照？',
+        body: `检测到快照包含 ${data.holdings.length} 条持仓、${data.transactions?.length || 0} 笔交易记录。导入将覆盖当前浏览器数据，确认执行？`,
+        confirmBtn: '确认恢复',
+        cancelBtn: '取消',
+        onConfirm: () => {
+          const res = invest.restoreSnapshot(data);
+          if (res.success) {
+            MessagePlugin.success(
+              `已成功恢复快照：${res.counts?.holdings ?? 0} 只持仓、${res.counts?.transactions ?? 0} 笔交易流水`,
+            );
+          } else {
+            MessagePlugin.error(res.message);
+          }
+          dialog.destroy();
+        },
+      });
+    } catch {
+      MessagePlugin.error('无法解析该快照文件，请确保其为有效的 JSON 格式');
+    }
+  };
+  reader.readAsText(file);
 }
 </script>
