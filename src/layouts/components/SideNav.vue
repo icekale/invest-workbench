@@ -11,7 +11,7 @@
     >
       <template #logo>
         <div v-if="showLogo" class="guanlan-brand" :class="{ 'guanlan-brand--compact': collapsed }" @click="goHome">
-          <guanlan-logo theme="dark" :compact="collapsed" :mark-size="collapsed ? 26 : 30" :show-sub="false" />
+          <guanlan-logo theme="dark" :compact="collapsed" :mark-size="collapsed ? 26 : 30" />
         </div>
       </template>
       <menu-content :nav-data="menu" />

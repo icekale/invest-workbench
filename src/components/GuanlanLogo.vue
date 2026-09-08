@@ -75,7 +75,6 @@
         <span class="brand-sep">|</span>
         <span class="brand-app">投资研究工作台</span>
       </div>
-      <div v-if="showSub" class="brand-subtitle">CAPITAL &amp; CYCLE WORKBENCH</div>
     </div>
   </div>
 </template>
@@ -85,13 +84,11 @@ const _props = withDefaults(
     theme?: 'dark' | 'light';
     compact?: boolean;
     markSize?: number;
-    showSub?: boolean;
   }>(),
   {
     theme: 'dark',
     compact: false,
     markSize: 34,
-    showSub: true,
   },
 );
 
@@ -144,15 +141,6 @@ const uid = Math.random().toString(36).substring(2, 8);
         letter-spacing: 0.2px;
       }
     }
-
-    .brand-subtitle {
-      margin-top: 1px;
-      font-size: 12px;
-      font-weight: 400;
-      letter-spacing: 1px;
-      line-height: 16px;
-      font-family: var(--td-font-family-mono);
-    }
   }
 
   /* Dark Theme (e.g. for night sidebar, login left panel) */
@@ -168,10 +156,6 @@ const uid = Math.random().toString(36).substring(2, 8);
     .brand-app {
       color: #e2ebf0;
     }
-
-    .brand-subtitle {
-      color: rgb(255 255 255 / 55%);
-    }
   }
 
   /* Light Theme (e.g. for light header, docs) */
@@ -186,10 +170,6 @@ const uid = Math.random().toString(36).substring(2, 8);
 
     .brand-app {
       color: var(--td-text-color-primary, #14212b);
-    }
-
-    .brand-subtitle {
-      color: var(--td-text-color-placeholder, #5e6c76);
     }
   }
 }
