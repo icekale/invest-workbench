@@ -674,62 +674,128 @@
                     </span>
                   </t-checkbox>
                 </div>
+                <span class="macro-section-sub events-sub-desc">
+                  实时同步央行议息、物价指数(CPI/PPI)、重大会议与核心产业峰会
+                </span>
               </div>
               <div class="events-filter-right">
-                <span class="macro-count-hint">共 {{ sortedEvents.length }} 场日程</span>
-              </div>
-            </div>
-
-            <div class="events-timeline">
-              <div
-                v-for="e in sortedEvents"
-                :key="e.id"
-                class="event-card"
-                :class="{ 'event-is-major': e.level === '重大', 'event-is-past': isPastEvent(e.date) }"
-              >
-                <div class="event-left">
-                  <div class="event-date-box">
-                    <span class="event-month">{{ formatEventMonth(e.date) }}</span>
-                    <span class="event-day">{{ formatEventDay(e.date) }}</span>
-                  </div>
-                  <div class="event-status-badge">
-                    <t-tag v-if="isTodayEvent(e.date)" size="small" theme="danger" variant="dark">今日</t-tag>
-                    <t-tag v-else-if="!isPastEvent(e.date)" size="small" theme="primary" variant="light">
-                      {{ getDaysDiffText(e.date) }}
-                    </t-tag>
-                    <span v-else class="past-tag">已闭门</span>
-                  </div>
-                </div>
-
-                <div class="event-main">
-                  <div class="event-header-line">
-                    <div class="event-title-wrap">
-                      <span v-if="e.level === '重大'" class="major-star" title="核心重大事件">🔥</span>
-                      <strong class="event-title">{{ e.title }}</strong>
-                    </div>
-                    <t-space :size="4" align="center">
-                      <t-tag size="small" :theme="e.level === '重大' ? 'danger' : 'primary'" variant="light">
-                        {{ e.level }}
-                      </t-tag>
-                      <t-tag size="small" variant="outline">
-                        {{ e.category }}
-                      </t-tag>
-                    </t-space>
-                  </div>
-                  <p class="event-desc">{{ e.impact }}</p>
-                  <div v-if="e.suggestedAction" class="event-focus-box">
-                    <span class="focus-title">关注对策：</span>
-                    <span class="focus-text">{{ e.suggestedAction }}</span>
-                  </div>
-                </div>
-
-                <div class="event-actions">
-                  <t-button size="small" theme="primary" variant="outline" @click="onConvertEvent(e)">
-                    + 待办
+                <t-space :size="8" align="center">
+                  <span class="macro-count-hint">
+                    {{ onlyMajorEvents ? '重大' : '' }}
+                    {{ eventsFilter === 'upcoming' ? '待召开' : eventsFilter === 'past' ? '已结束' : '共' }}
+                    {{ sortedEvents.length }} 场
+                  </span>
+                  <t-button
+                    size="small"
+                    variant="outline"
+                    theme="default"
+                    :loading="invest.macroEventsLoading"
+                    @click="handleRefreshEvents"
+                  >
+                    <template #icon><t-icon name="refresh" /></template>
+                    同步最新日历
                   </t-button>
+                </t-space>
+              </div>
+            </div>
+
+            <div v-if="sortedEvents.length" class="events-list">
+              <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
+                <div class="event-card-top">
+                  <div class="event-date-col">
+                    <span class="event-date-main">{{ ev.date }}</span>
+                    <span
+                      class="event-countdown-badge"
+                      :class="{
+                        'countdown-urgent': getEventCountdown(ev.date).urgent,
+                        'countdown-future': !getEventCountdown(ev.date).isPast && !getEventCountdown(ev.date).urgent,
+                        'countdown-past': getEventCountdown(ev.date).isPast,
+                      }"
+                    >
+                      {{ getEventCountdown(ev.date).label }}
+                    </span>
+                  </div>
+                  <div class="event-main-col">
+                    <div class="event-headline">
+                      <strong class="event-title">{{ ev.title }}</strong>
+                      <t-space :size="6" align="center" wrap>
+                        <t-tag
+                          size="small"
+                          :theme="ev.level === '重大' ? 'danger' : ev.level === '关键' ? 'warning' : 'default'"
+                          variant="light"
+                        >
+                          {{ ev.level }}
+                        </t-tag>
+                        <t-tag size="small" variant="outline">{{ ev.category }}</t-tag>
+                        <t-tag size="small" variant="light">{{
+                          ev.account === 'stock' ? '股票' : ev.account === 'etf' ? 'ETF' : '全市场'
+                        }}</t-tag>
+                      </t-space>
+                    </div>
+                    <div class="event-impact-text">{{ ev.impact }}</div>
+                  </div>
+                </div>
+
+                <!-- 催化受益标的与板块 -->
+                <div v-if="ev.beneficiaries?.length" class="event-beneficiaries-bar">
+                  <span class="bar-label">潜在催化标的/板块：</span>
+                  <div class="beneficiary-chips">
+                    <div
+                      v-for="b in ev.beneficiaries"
+                      :key="b"
+                      class="beneficiary-chip"
+                      @click="handleEventTargetClick(b, ev)"
+                    >
+                      <span>{{ b }}</span>
+                      <t-icon name="swap" size="11px" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 应对策略建议 -->
+                <div v-if="ev.suggestedAction" class="macro-action-box event-action-box">
+                  <span class="action-box-title">【应对策略】</span>
+                  <span class="action-box-text">{{ ev.suggestedAction }}</span>
+                </div>
+
+                <!-- 底部操作 -->
+                <div class="event-footer-bar">
+                  <t-space :size="8" wrap>
+                    <t-button size="small" theme="primary" variant="outline" @click="onConvertEventToTodo(ev)">
+                      + 生成重点跟踪待办
+                    </t-button>
+                    <t-button
+                      v-if="ev.beneficiaries?.[0]"
+                      size="small"
+                      theme="default"
+                      variant="text"
+                      @click="handleEventTargetClick(ev.beneficiaries[0], ev)"
+                    >
+                      模拟交易标的
+                    </t-button>
+                  </t-space>
+
+                  <t-popconfirm
+                    v-if="ev.id.startsWith('ev_')"
+                    content="确认删除此条重点会议？"
+                    @confirm="invest.removeMacroEvent(ev.id)"
+                  >
+                    <t-button size="small" theme="danger" variant="text">删除</t-button>
+                  </t-popconfirm>
                 </div>
               </div>
             </div>
+            <t-empty
+              v-else
+              :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无录入的重点会议日程'"
+              style="padding: 24px 0"
+            >
+              <template v-if="onlyMajorEvents" #action>
+                <t-button size="small" variant="outline" theme="primary" @click="onlyMajorEvents = false">
+                  查看全部日程
+                </t-button>
+              </template>
+            </t-empty>
           </div>
 
           <!-- 视图 3: 产业催化 -->
@@ -1043,6 +1109,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, MacroBrief, MacroEvent } from '@/types/invest';
+import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
 import { fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
 import type { WindMetric, WindNewsItem } from '@/utils/wind';
@@ -1104,7 +1171,7 @@ let chartInstance: echarts.ECharts | null = null;
 const macroSectionTab = ref('wind_news');
 const macroFilter = ref('all');
 const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
-const onlyMajorEvents = ref(true);
+const onlyMajorEvents = ref(localStorage.getItem('invest-only-major-events') === 'true');
 const todoFilter = ref<'open' | 'all' | 'done'>('open');
 
 // 晨会信号列表过滤
@@ -1125,18 +1192,16 @@ const filteredTodos = computed(() => {
 
 // 日历日程
 const sortedEvents = computed(() => {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  let list = invest.macroEvents.slice();
-  if (onlyMajorEvents.value) {
-    list = list.filter((e) => e.level === '重大');
-  }
+  let sorted = sortMacroEvents(invest.macroEvents);
   if (eventsFilter.value === 'upcoming') {
-    list = list.filter((e) => e.date >= todayStr);
+    sorted = sorted.filter((e) => !getEventCountdown(e.date).isPast);
   } else if (eventsFilter.value === 'past') {
-    list = list.filter((e) => e.date < todayStr);
+    sorted = sorted.filter((e) => getEventCountdown(e.date).isPast);
   }
-  return list.sort((a, b) => a.date.localeCompare(b.date));
+  if (onlyMajorEvents.value) {
+    sorted = sorted.filter((e) => e.level === '重大');
+  }
+  return sorted;
 });
 
 const toneTagTheme = (tone: MacroTone): 'danger' | 'success' | 'warning' | 'default' => {
@@ -1261,14 +1326,27 @@ function onConvertMacro(m: MacroBrief) {
   todoDialogVisible.value = true;
 }
 
-function onConvertEvent(e: MacroEvent) {
-  todoForm.code = '510300';
-  todoForm.name = '核心大盘宽基';
-  todoForm.account = 'etf';
-  todoForm.side = 'buy';
-  todoForm.quantity = 1000;
-  todoForm.reason = `宏观大事件防备/博弈: ${e.title} (${e.date})`;
-  todoDialogVisible.value = true;
+function onConvertEventToTodo(ev: MacroEvent) {
+  invest.convertEventToTodo(ev);
+  MessagePlugin.success(`已生成【${ev.title}】重点跟踪待办`);
+}
+
+function handleEventTargetClick(targetName: string, ev: MacroEvent) {
+  invest.openTradeModal({
+    name: targetName,
+    account: !ev.account || ev.account === 'all' ? 'stock' : ev.account,
+    note: `会议催化交易【${ev.title}】：${ev.suggestedAction || ev.impact}`,
+  });
+}
+
+function onToggleOnlyMajor(val: boolean) {
+  onlyMajorEvents.value = val;
+  localStorage.setItem('invest-only-major-events', String(val));
+}
+
+async function handleRefreshEvents() {
+  await invest.refreshMacroEvents();
+  MessagePlugin.success('已同步最新全球宏观与产业会议日历');
 }
 
 function openCreateTodoDialog() {
@@ -1308,38 +1386,8 @@ function openAddToOpportunityFromTodo(t: { name: string; reason: string }) {
   MessagePlugin.success(`已将【${t.name}】存入研究机会池`);
 }
 
-function isPastEvent(d: string) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  return d < todayStr;
-}
-
-function isTodayEvent(d: string) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  return d === todayStr;
-}
-
-function getDaysDiffText(d: string) {
-  const target = new Date(d).getTime();
-  const now = Date.now();
-  const days = Math.ceil((target - now) / (1000 * 3600 * 24));
-  if (days <= 0) return '今日';
-  return `${days}天后`;
-}
-
-function formatEventMonth(d: string) {
-  return `${Number(d.slice(5, 7))}月`;
-}
-
-function formatEventDay(d: string) {
-  return d.slice(8, 10);
-}
-
 function openIndDrawer(ind: { name: string; catalyst: string }) {
   MessagePlugin.info(`${ind.name} · 核心催化: ${ind.catalyst}`);
-}
-
-function onToggleOnlyMajor() {
-  // trigger reactivity
 }
 
 // 万得指标图表下钻
@@ -1638,6 +1686,8 @@ function quickAddValuationTodo(item: IndexValuationItem) {
 onMounted(() => {
   loadWindData();
   loadValuations();
+  invest.refreshMacroEvents();
+  invest.refreshIndustryFocus();
   window.addEventListener('resize', onResize);
 });
 
@@ -2126,75 +2176,218 @@ onUnmounted(() => {
 }
 
 /* 会议日程 */
-.events-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.macro-events-panel {
+  min-width: 0;
 
-  .event-card {
+  .events-filter-row {
     display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 12px;
-    padding: 10px 14px;
-    background: var(--td-bg-color-container);
-    border: 1px solid var(--td-border-level-1-color);
-    border-radius: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
 
-    &.event-is-major {
-      border-left: 3px solid #e34d59;
-    }
-
-    .event-left {
+    .events-filter-left {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      width: 52px;
-      flex-shrink: 0;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
-      .event-date-box {
-        display: flex;
-        flex-direction: column;
+    .major-filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 8px;
+      border-radius: 4px;
+      background: var(--td-bg-color-secondarycontainer, #f8fafc);
+      border: 1px solid var(--td-component-stroke, #e2e8f0);
+      transition: all 0.2s ease;
+
+      .major-toggle-text {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--td-text-color-secondary);
+        display: inline-flex;
         align-items: center;
+        gap: 3px;
+        user-select: none;
+      }
 
-        .event-month {
-          font-size: 10px;
-          color: var(--td-text-color-secondary);
-        }
+      .major-flame {
+        font-size: 12px;
+        filter: saturate(1.2);
+      }
 
-        .event-day {
-          font-size: 16px;
-          font-weight: 700;
-          font-family: var(--td-font-family-mono, monospace);
+      &.is-active {
+        background: rgb(184 67 62 / 8%);
+        border-color: rgb(184 67 62 / 30%);
+
+        .major-toggle-text {
+          color: var(--guanlan-gain, #b8433e);
+          font-weight: 600;
         }
       }
     }
 
-    .event-main {
-      flex: 1;
-      min-width: 0;
+    .events-sub-desc {
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+    }
+  }
 
-      .event-header-line {
-        display: flex;
-        align-items: center;
-        gap: 6px;
+  .events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-        .event-title {
-          font-size: 13px;
-          color: var(--td-text-color-primary);
-        }
+  .event-card {
+    padding: 12px 14px;
+    background: var(--td-bg-color-container);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--td-brand-color, #0d706d);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+    }
+  }
+
+  .event-card-top {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+
+    @media (width <= 640px) {
+      flex-direction: column;
+      gap: 8px;
+    }
+  }
+
+  .event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    padding: 6px 8px;
+    background: var(--td-bg-color-secondarycontainer, #f8fafc);
+    border: 1px solid var(--td-component-stroke, #e2e8f0);
+    border-radius: 6px;
+
+    @media (width <= 640px) {
+      flex-direction: row;
+      gap: 8px;
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .event-date-main {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--td-text-color-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-countdown-badge {
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 2px;
+      padding: 1px 6px;
+      border-radius: 3px;
+
+      &.countdown-urgent {
+        background: rgb(184 67 62 / 10%);
+        color: var(--guanlan-gain, #b8433e);
       }
 
-      .event-desc {
-        font-size: 11px;
-        color: var(--td-text-color-secondary);
-        margin: 2px 0;
+      &.countdown-future {
+        background: var(--td-brand-color-light, rgb(13 112 109 / 8%));
+        color: var(--td-brand-color, #0d706d);
       }
 
-      .event-focus-box {
-        font-size: 11px;
+      &.countdown-past {
+        background: var(--td-bg-color-component, #edf2f7);
         color: var(--td-text-color-placeholder);
       }
     }
+  }
+
+  .event-main-col {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-headline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .event-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--td-text-color-primary);
+  }
+
+  .event-impact-text {
+    font-size: 13px;
+    color: var(--td-text-color-secondary);
+    line-height: 1.55;
+  }
+
+  .event-beneficiaries-bar {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .bar-label {
+      font-size: 11px;
+      color: var(--td-text-color-placeholder);
+      white-space: nowrap;
+    }
+
+    .beneficiary-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .beneficiary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--td-brand-color-light, rgb(13 112 109 / 8%));
+      color: var(--td-brand-color, #0d706d);
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: var(--td-brand-color, #0d706d);
+        color: #fff;
+      }
+    }
+  }
+
+  .event-action-box {
+    margin-top: 8px;
+  }
+
+  .event-footer-bar {
+    margin-top: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 }
 
