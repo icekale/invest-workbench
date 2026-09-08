@@ -165,13 +165,22 @@
                   <t-radio-button value="all">全部日程</t-radio-button>
                   <t-radio-button value="past">已结束</t-radio-button>
                 </t-radio-group>
+                <div class="major-filter-toggle" :class="{ 'is-active': onlyMajorEvents }">
+                  <t-checkbox v-model="onlyMajorEvents" @change="onToggleOnlyMajor">
+                    <span class="major-toggle-text">
+                      <span class="major-flame">🔥</span>
+                      只看重大
+                    </span>
+                  </t-checkbox>
+                </div>
                 <span class="macro-section-sub events-sub-desc">
-                  实时同步央行议息、关键物价(CPI/PPI)、重大政策研判与核心产业大会
+                  实时同步央行议息、物价指数(CPI/PPI)、重大会议与核心产业峰会
                 </span>
               </div>
               <div class="events-filter-right">
                 <t-space :size="8" align="center">
                   <span class="macro-count-hint">
+                    {{ onlyMajorEvents ? '重大' : '' }}
                     {{ eventsFilter === 'upcoming' ? '待召开' : eventsFilter === 'past' ? '已结束' : '共' }}
                     {{ sortedEvents.length }} 场
                   </span>
@@ -274,7 +283,17 @@
                 </div>
               </div>
             </div>
-            <t-empty v-else description="暂无录入的重点会议日程" style="padding: 24px 0" />
+            <t-empty
+              v-else
+              :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无录入的重点会议日程'"
+              style="padding: 24px 0"
+            >
+              <template v-if="onlyMajorEvents" #action>
+                <t-button size="small" variant="outline" theme="primary" @click="onlyMajorEvents = false">
+                  查看全部日程
+                </t-button>
+              </template>
+            </t-empty>
           </div>
 
           <!-- 视图 3: 产业重点与催化 -->
@@ -953,6 +972,7 @@ const typeFilters = ['全部', '股票', '混合', '债券', '指数', 'QDII'];
 const macroFilter = ref('all');
 const macroSectionTab = ref<'signals' | 'events' | 'industries'>('signals');
 const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
+const onlyMajorEvents = ref(localStorage.getItem('invest-only-major-events') === 'true');
 const oppOpen = ref(false);
 const opp = reactive({ name: '', account: 'etf' as AccountId, thesis: '', score: 70, note: '' });
 
@@ -1003,13 +1023,19 @@ const weatherForm = reactive({
   suggestedEtfPos: '',
 });
 
+function onToggleOnlyMajor(val: boolean) {
+  localStorage.setItem('invest-only-major-events', String(val));
+}
+
 const sortedEvents = computed(() => {
-  const sorted = sortMacroEvents(invest.macroEvents);
+  let sorted = sortMacroEvents(invest.macroEvents);
   if (eventsFilter.value === 'upcoming') {
-    return sorted.filter((e) => !getEventCountdown(e.date).isPast);
+    sorted = sorted.filter((e) => !getEventCountdown(e.date).isPast);
+  } else if (eventsFilter.value === 'past') {
+    sorted = sorted.filter((e) => getEventCountdown(e.date).isPast);
   }
-  if (eventsFilter.value === 'past') {
-    return sorted.filter((e) => getEventCountdown(e.date).isPast);
+  if (onlyMajorEvents.value) {
+    sorted = sorted.filter((e) => e.level === '重大');
   }
   return sorted;
 });
@@ -1670,6 +1696,41 @@ function convertOppToTodo(o: Opportunity) {
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
+    }
+
+    .major-filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 8px;
+      border-radius: 4px;
+      background: var(--td-bg-color-secondarycontainer, #f8fafc);
+      border: 1px solid var(--td-component-stroke, #e2e8f0);
+      transition: all 0.2s ease;
+
+      .major-toggle-text {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--td-text-color-secondary);
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        user-select: none;
+      }
+
+      .major-flame {
+        font-size: 12px;
+        filter: saturate(1.2);
+      }
+
+      &.is-active {
+        background: rgb(184 67 62 / 8%);
+        border-color: rgb(184 67 62 / 30%);
+
+        .major-toggle-text {
+          color: var(--guanlan-gain, #b8433e);
+          font-weight: 600;
+        }
+      }
     }
 
     .events-sub-desc {

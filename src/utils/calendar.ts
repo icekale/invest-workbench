@@ -114,8 +114,19 @@ function inferCategory(title: string, country?: string): string {
 }
 
 function inferLevel(importance: number, title: string): '重大' | '关键' | '关注' {
-  if (importance >= 4 || /政治局|CPI|美联储|FOMC|LPR|降准|降息/.test(title)) return '重大';
-  if (importance >= 3 || /PPI|PMI|社融|非农|国债|峰会|大会|发布会|财报/.test(title)) return '关键';
+  if (
+    importance >= 4 ||
+    /政治局|国务院|中央经济工作|两会|全会|美联储|FOMC|利率决议|降准|降息|LPR|CPI|GDP|非农/.test(title) ||
+    /苹果.*发布会|英伟达.*GTC/.test(title)
+  ) {
+    return '重大';
+  }
+  if (
+    importance >= 3 ||
+    /PPI|PMI|社融|M2|贸易帐|进出口|国债|特别国债|外滩大会|服贸会|进博会|峰会|大会|发布会|财报|台积电/.test(title)
+  ) {
+    return '关键';
+  }
   return '关注';
 }
 
