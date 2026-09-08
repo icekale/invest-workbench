@@ -65,7 +65,7 @@ const closed = ref(false);
 let timer = 0;
 
 onMounted(async () => {
-  await refresh();
+  await refresh(true);
   const now = new Date();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);
   try {

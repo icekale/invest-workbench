@@ -370,7 +370,7 @@ body {
 }
 
 /* 侧栏模式下桌面端已有侧栏 Logo，顶栏内 Logo 默认隐藏 */
-.t-header-menu-fixed-side .t-menu__logo {
+.tdesign-starter-header-menu-fixed-side .t-menu__logo {
   display: none;
 }
 
@@ -513,7 +513,7 @@ body {
 
   /* 移动端侧栏隐藏，顶栏左侧常驻显示 Logo */
   .t-head-menu .t-menu__logo,
-  .t-header-menu-fixed-side .t-menu__logo {
+  .tdesign-starter-header-menu-fixed-side .t-menu__logo {
     display: flex !important;
     align-items: center;
     height: 100%;
@@ -539,7 +539,7 @@ body {
   }
 
   .tdesign-starter-content-layout {
-    padding: 12px;
+    padding: 12px 12px calc(64px + env(safe-area-inset-bottom));
   }
 
   .guanlan-tabbar {

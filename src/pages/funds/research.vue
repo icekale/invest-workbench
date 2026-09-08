@@ -14,9 +14,9 @@
         <table>
           <tr>
             <th>指标</th>
-            <th>Yield</th>
-            <th>Vix</th>
-            <th>Loss</th>
+            <th>收益</th>
+            <th>波动</th>
+            <th>回撤</th>
           </tr>
           <tr>
             <td class="lbl">均值</td>
@@ -97,9 +97,9 @@
         <table>
           <tr>
             <th>变量</th>
-            <th>Yield</th>
-            <th>Vix</th>
-            <th>Loss</th>
+            <th>收益</th>
+            <th>波动</th>
+            <th>回撤</th>
           </tr>
           <tr>
             <td class="lbl">Yield</td>

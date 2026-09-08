@@ -76,7 +76,6 @@ const onSubmit = async (ctx: SubmitContext) => {
     try {
       loading.value = true;
       await userStore.login(formData.value);
-      MessagePlugin.success('已登录');
       const redirect = route.query.redirect as string;
       router.push(redirect || '/dashboard');
     } catch (e: unknown) {

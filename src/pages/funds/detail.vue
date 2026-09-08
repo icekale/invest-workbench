@@ -49,7 +49,9 @@
       </t-space>
       <div style="margin-top: 16px">单位净值 · 近1年</div>
       <t-alert v-if="navError" theme="warning" :message="navError" style="margin-top: 8px" />
-      <div ref="chartEl" style="height: 280px; margin-top: 8px" />
+      <t-loading :loading="navLoading" text="加载净值曲线...">
+        <div ref="chartEl" style="height: 280px; margin-top: 8px" />
+      </t-loading>
     </t-card>
     <t-loading v-else-if="!error" text="加载基金..." />
 
@@ -107,6 +109,7 @@ const fund = ref<FundDetail | null>(null);
 const nav = ref<NavPoint[]>([]);
 const error = ref('');
 const navError = ref('');
+const navLoading = ref(false);
 const chartEl = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 const sample = ref<SampleFund | null>(null);
@@ -172,7 +175,7 @@ function onResize() {
 }
 
 function renderChart() {
-  if (!chartEl.value) return;
+  if (!chartEl.value || !nav.value.length) return;
   if (!chart) chart = echarts.init(chartEl.value);
   chart.setOption(
     {
@@ -184,6 +187,7 @@ function renderChart() {
     },
     true,
   );
+  requestAnimationFrame(() => chart?.resize());
 }
 
 async function load(code: string) {
@@ -212,11 +216,14 @@ async function load(code: string) {
   } catch {
     sample.value = null;
   }
+  navLoading.value = true;
   try {
     nav.value = await fetchFundNav(code);
     if (!nav.value.length) navError.value = '暂无净值曲线';
   } catch (e) {
     navError.value = e instanceof Error ? e.message : '净值曲线加载失败';
+  } finally {
+    navLoading.value = false;
   }
   await nextTick();
   renderChart();

@@ -51,7 +51,7 @@
     <!-- 投资组合全貌 -->
     <t-card title="投资组合持仓">
       <template #actions>
-        <span class="card-cap">按账户聚合 · tabular 记账</span>
+        <span class="card-cap">按账户聚合</span>
       </template>
       <t-empty v-if="!rows.length" description="暂无持仓数据" />
       <div v-else class="table-wrap">
