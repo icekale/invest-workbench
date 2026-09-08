@@ -6,10 +6,10 @@
       <t-tab-panel value="ledger" :label="`持仓与交易台账 (${invest.transactions.length})`" />
       <t-tab-panel value="alerts">
         <template #label>
-          <t-space align="center" :size="6">
+          <span class="alerts-tab-label">
             <span>买卖点提醒</span>
-            <t-badge v-if="invest.activeAlerts.length" :count="invest.activeAlerts.length" />
-          </t-space>
+            <span v-if="invest.activeAlerts.length" class="alerts-count-badge">{{ invest.activeAlerts.length }}</span>
+          </span>
         </template>
       </t-tab-panel>
     </t-tabs>
@@ -508,5 +508,27 @@ function toggleTodo(id: string, status: TodoStatus) {
 .acct-form :deep(.t-input-number) {
   width: 100%;
   max-width: 280px;
+}
+
+.alerts-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  .alerts-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: #fff;
+    background-color: var(--guanlan-gain, #b8433e);
+    box-shadow: 0 1px 3px rgb(184 67 62 / 30%);
+  }
 }
 </style>
