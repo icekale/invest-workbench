@@ -359,9 +359,8 @@ body {
   background: var(--guanlan-surface);
 }
 
-.t-head-menu .t-menu__logo:not(:empty) {
-  height: auto;
-  overflow: visible;
+.t-head-menu .t-menu__logo {
+  display: none;
 }
 
 .t-head-menu .t-head-menu__inner {
@@ -460,7 +459,6 @@ body {
   border-radius: 8px;
 }
 
-.guanlan-menu-btn,
 .guanlan-tabbar {
   display: none;
 }
@@ -489,22 +487,12 @@ body {
     flex-wrap: wrap;
   }
 
-  .guanlan-menu-btn {
-    display: inline-flex;
-  }
-
   .guanlan-nav-mask {
     display: block;
     position: fixed;
     inset: 0;
     z-index: 1050;
     background: rgb(20 33 43 / 45%);
-  }
-
-  .t-head-menu .t-menu__logo:not(:empty) {
-    display: flex;
-    align-items: center;
-    gap: 4px;
   }
 
   .t-head-menu .t-head-menu__inner {

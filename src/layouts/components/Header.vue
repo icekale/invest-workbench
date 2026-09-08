@@ -1,11 +1,6 @@
 <template>
   <div :class="layoutCls">
     <t-head-menu :class="menuCls" :theme="menuTheme" expand-type="popup" :value="active">
-      <template #logo>
-        <t-button class="guanlan-menu-btn" variant="text" shape="square" aria-label="打开导航" @click="toggleMobileNav">
-          <template #icon><t-icon name="view-list" /></template>
-        </t-button>
-      </template>
       <template v-if="layout !== 'side'" #default>
         <menu-content class="header-menu" :nav-data="menu" />
       </template>
@@ -41,7 +36,7 @@ import { useRouter } from 'vue-router';
 import { prefix } from '@/config/global';
 import { t } from '@/locales';
 import { getActive } from '@/router';
-import { useSettingStore, useUserStore } from '@/store';
+import { useUserStore } from '@/store';
 import type { MenuRoute, ModeType } from '@/types/interface';
 
 import MenuContent from './MenuContent.vue';
@@ -80,11 +75,6 @@ const { theme, layout, menu, isFixed, isCompact } = defineProps({
 
 const router = useRouter();
 const user = useUserStore();
-const settingStore = useSettingStore();
-
-const toggleMobileNav = () => {
-  settingStore.mobileNavOpen = !settingStore.mobileNavOpen;
-};
 
 const active = computed(() => getActive());
 
