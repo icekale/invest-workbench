@@ -54,21 +54,14 @@
 <script setup lang="ts">
 import './research.less';
 
+import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { BriefingTodoDraft } from '@/types/invest';
-import {
-  alreadyOpen,
-  buildFactPack,
-  ensureTodayBriefing,
-  QUOTE_WAIT_MS,
-  todoDraftKey,
-  type FactPackInput,
-  type HoldingSlice,
-} from '@/utils/briefing';
+import type { FactPackInput, HoldingSlice } from '@/utils/briefing';
+import { alreadyOpen, buildFactPack, ensureTodayBriefing, QUOTE_WAIT_MS, todoDraftKey } from '@/utils/briefing';
 import { todayCN } from '@/utils/date';
-import { MessagePlugin } from 'tdesign-vue-next';
 
 import BriefingCard from './BriefingCard.vue';
 import EtfRadar from './EtfRadar.vue';
@@ -87,7 +80,9 @@ const seen = reactive({ desk: false });
 const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
 const writtenKeys = computed(() => {
   const s = new Set<string>();
-  for (const t of invest.todos) if (t.status === 'open') s.add(todoDraftKey(t));
+  for (const t of invest.todos) {
+    if (t.status === 'open') s.add(todoDraftKey(t));
+  }
   return s;
 });
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import type { FactPackInput } from '../src/utils/briefing.ts';
 import {
   alreadyOpen,
   buildFactPack,
@@ -10,7 +11,6 @@ import {
   shouldSkipAutoFetch,
   writeCachedBriefing,
   writeFailAt,
-  type FactPackInput,
 } from '../src/utils/briefing.ts';
 
 const today = '2026-09-09';
@@ -54,8 +54,32 @@ const input: FactPackInput = {
     },
   ],
   cash: { stock: 10000, etf: 20000 },
-  todos: [{ id: 'td1', account: 'etf', code: 'sh510300', name: '沪深300ETF', side: 'sell', quantity: 0, reason: '旧', status: 'open' }],
-  alerts: [{ id: 'a1', code: 'sh510300', name: '沪深300ETF', account: 'etf', type: 'take_profit', level: 'info', title: '止盈', detail: '', suggestedAction: 'reduce', triggerTime: today }],
+  todos: [
+    {
+      id: 'td1',
+      account: 'etf',
+      code: 'sh510300',
+      name: '沪深300ETF',
+      side: 'sell',
+      quantity: 0,
+      reason: '旧',
+      status: 'open',
+    },
+  ],
+  alerts: [
+    {
+      id: 'a1',
+      code: 'sh510300',
+      name: '沪深300ETF',
+      account: 'etf',
+      type: 'take_profit',
+      level: 'info',
+      title: '止盈',
+      detail: '',
+      suggestedAction: 'reduce',
+      triggerTime: today,
+    },
+  ],
 };
 
 const pack = buildFactPack(input);
@@ -105,11 +129,7 @@ const emptyCode = parseBriefing(
 );
 assert.equal(emptyCode.todos[0].code, '');
 
-const fenced = parseModelContent(
-  '```json\n' + JSON.stringify(ok) + '\n```',
-  pack,
-  today,
-);
+const fenced = parseModelContent(`\`\`\`json\n${JSON.stringify(ok)}\n\`\`\``, pack, today);
 assert.equal(fenced.headline, ok.headline);
 
 assert.equal(cacheKey(today), 'invest-briefing-2026-09-09');

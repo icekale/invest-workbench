@@ -3,12 +3,7 @@
     <div class="briefing-card__head">
       <div>
         <span class="briefing-card__title">今日晨会研判</span>
-        <t-tag
-          v-if="briefing && briefingStatus === 'ready'"
-          size="small"
-          variant="light"
-          :theme="stanceTheme"
-        >
+        <t-tag v-if="briefing && briefingStatus === 'ready'" size="small" variant="light" :theme="stanceTheme">
           {{ briefing.stance }}
         </t-tag>
       </div>

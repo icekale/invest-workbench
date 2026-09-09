@@ -10,7 +10,6 @@ import type {
   TradeSide,
   TradeTodo,
 } from '../types/invest.ts';
-
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
 
@@ -32,9 +31,9 @@ export const SYSTEM_PROMPT = [
 ].join('');
 
 export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
 }
 
 export interface HoldingSlice {
@@ -116,10 +115,20 @@ export function cacheKey(date: string): string {
 
 export function allowedCodes(pack: BriefingFactPack): Set<string> {
   const s = new Set<string>();
-  for (const v of pack.valuation) if (v.code) s.add(v.code);
-  for (const a of pack.accounts) for (const h of a.holdings) if (h.code) s.add(h.code);
-  for (const t of pack.openTodos) if (t.code) s.add(t.code);
-  for (const a of pack.alerts) if (a.code) s.add(a.code);
+  for (const v of pack.valuation) {
+    if (v.code) s.add(v.code);
+  }
+  for (const a of pack.accounts) {
+    for (const h of a.holdings) {
+      if (h.code) s.add(h.code);
+    }
+  }
+  for (const t of pack.openTodos) {
+    if (t.code) s.add(t.code);
+  }
+  for (const a of pack.alerts) {
+    if (a.code) s.add(a.code);
+  }
   return s;
 }
 
