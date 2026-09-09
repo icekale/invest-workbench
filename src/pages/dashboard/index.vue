@@ -81,6 +81,7 @@ onMounted(async () => {
   await refresh(true);
   const sync = await bindCloudSync(invest);
   if (sync === 'pull') MessagePlugin.success('已从服务器恢复持仓');
+  else if (sync === 'merge') MessagePlugin.warning('云端与本地持仓已合并，冲突条目保留本地');
   remindBackupIfNeeded();
   const now = new Date();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);

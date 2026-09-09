@@ -9,9 +9,9 @@ import i18n from './locales';
 import 'tdesign-vue-next/es/style/index.css';
 import '@/style/index.less';
 import './permission';
-import { useInvestStore } from '@/store';
+import { useInvestStore, useUserStore } from '@/store';
 
-import { bindCloudSync } from './utils/cloud-sync';
+import { bindCloudSync, parseBasic, setSyncCreds } from './utils/cloud-sync';
 import { runStorageHygiene } from './utils/storage';
 
 document.documentElement.setAttribute('data-skin', 'guanlan');
@@ -24,4 +24,15 @@ app.use(router);
 app.use(i18n);
 
 app.mount('#app');
-void bindCloudSync(useInvestStore());
+const session = useUserStore();
+if (session.token === 'main_token') {
+  const u = import.meta.env.VITE_AUTH_USER || 'xiong';
+  const p = import.meta.env.VITE_AUTH_PASS || 'demo';
+  session.token = `Basic ${btoa(`${u}:${p}`)}`;
+}
+const creds = parseBasic(session.token);
+if (creds) {
+  setSyncCreds(creds.user, creds.pass);
+  useInvestStore().adoptUser(creds.user);
+  void bindCloudSync(useInvestStore());
+}

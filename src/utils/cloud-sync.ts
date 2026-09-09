@@ -1,28 +1,10 @@
 /** 同源 /sync → VPS SQLite。浏览器 localStorage 只是缓存。 */
 
-export type SyncAction = 'push' | 'pull' | 'noop';
+import type { BookSnap } from './sync-merge';
+import { emptySnap, same, slimSnap, threeWaySnapshot } from './sync-merge';
 
-const user = import.meta.env?.VITE_AUTH_USER || 'xiong';
-const pass = import.meta.env?.VITE_AUTH_PASS || 'demo';
-
-function authHeader(): string {
-  return `Basic ${btoa(`${user}:${pass}`)}`;
-}
-
-export function pickSyncAction(localAt: number, remoteAt: number | null): SyncAction {
-  if (remoteAt == null) return 'push';
-  if (remoteAt > localAt) return 'pull';
-  if (localAt > remoteAt) return 'push';
-  return 'noop';
-}
-
-export interface CloudSnapshot {
-  updatedAt?: number;
-  at?: string;
-  holdings?: unknown[];
-  cash?: unknown;
-  [k: string]: unknown;
-}
+export type SyncAction = 'push' | 'pull' | 'noop' | 'merge';
+export type CloudSnapshot = BookSnap;
 
 interface SyncStore {
   prefs: { updatedAt?: number; lastCloudSyncAt?: number; lastBackupAt?: number };
@@ -35,6 +17,51 @@ let hydrating = false;
 let timer = 0;
 let storeRef: SyncStore | null = null;
 let pending: Promise<SyncAction | 'offline'> | null = null;
+let creds = { user: '', pass: '' };
+
+export function parseBasic(token: string): { user: string; pass: string } | null {
+  if (!token || !token.startsWith('Basic ')) return null;
+  try {
+    const raw = atob(token.slice(6));
+    const i = raw.indexOf(':');
+    if (i < 0) return null;
+    return { user: raw.slice(0, i), pass: raw.slice(i + 1) };
+  } catch {
+    return null;
+  }
+}
+
+export function basicToken(user: string, pass: string): string {
+  return `Basic ${btoa(`${user}:${pass}`)}`;
+}
+
+export function setSyncCreds(user: string, pass: string) {
+  creds = { user, pass };
+  pending = null;
+}
+
+function authHeader(): string {
+  return basicToken(creds.user, creds.pass);
+}
+
+function baseKey(): string {
+  return `invest-v2-sync-base::${creds.user || 'anon'}`;
+}
+
+function readBase(): BookSnap | null {
+  if (typeof localStorage === 'undefined' || !creds.user) return null;
+  try {
+    const raw = localStorage.getItem(baseKey());
+    return raw ? (JSON.parse(raw) as BookSnap) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBase(data: BookSnap) {
+  if (typeof localStorage === 'undefined' || !creds.user) return;
+  localStorage.setItem(baseKey(), JSON.stringify(slimSnap(data)));
+}
 
 export function setHydrating(v: boolean) {
   hydrating = v;
@@ -48,17 +75,17 @@ export async function pullCloudSnapshot(): Promise<CloudSnapshot | null> {
 }
 
 export async function pushCloudSnapshot(data: CloudSnapshot): Promise<void> {
-  const { quotes: _q, ...rest } = data;
+  const slim = slimSnap(data);
   const res = await fetch('/sync', {
     method: 'PUT',
     headers: { Authorization: authHeader(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(rest),
+    body: JSON.stringify(slim),
   });
   if (!res.ok) throw new Error(`sync push ${res.status}`);
 }
 
 export function scheduleCloudPush() {
-  if (hydrating || !storeRef || typeof window === 'undefined') return;
+  if (hydrating || !storeRef || !creds.user || typeof window === 'undefined') return;
   window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     void flushPush();
@@ -66,12 +93,13 @@ export function scheduleCloudPush() {
 }
 
 async function flushPush() {
-  if (!storeRef || hydrating) return;
-  const snap = storeRef.snapshot();
+  if (!storeRef || hydrating || !creds.user) return;
+  const snap = slimSnap(storeRef.snapshot());
   const now = Date.now();
   snap.updatedAt = now;
   try {
     await pushCloudSnapshot(snap);
+    writeBase(snap);
     storeRef.setPref('updatedAt', now);
     storeRef.setPref('lastCloudSyncAt', now);
   } catch {
@@ -79,28 +107,45 @@ async function flushPush() {
   }
 }
 
+function comparable(s: BookSnap): BookSnap {
+  const slim = slimSnap(s);
+  const prefs = { ...(slim.prefs || {}) };
+  delete prefs.updatedAt;
+  delete prefs.lastCloudSyncAt;
+  delete prefs.lastBackupAt;
+  const { updatedAt: _u, at: _a, quotes: _q, version: _v, ...rest } = slim;
+  return { ...rest, prefs };
+}
+
 export async function hydrateFromCloud(store: SyncStore): Promise<SyncAction | 'offline'> {
+  if (!creds.user) return 'offline';
   setHydrating(true);
   try {
-    const remote = await pullCloudSnapshot();
-    const localAt = store.prefs.updatedAt || 0;
-    const remoteAt = remote ? Number(remote.updatedAt || Date.parse(String(remote.at || '')) || 0) : null;
-    const action = pickSyncAction(localAt, remoteAt && remoteAt > 0 ? remoteAt : remote ? 1 : null);
-    if (action === 'pull' && remote) {
-      store.restoreSnapshot(remote);
-      const ts = Number(remote.updatedAt || Date.now());
-      store.setPref('updatedAt', ts);
-      store.setPref('lastCloudSyncAt', Date.now());
-    } else if (action === 'push') {
-      const now = Date.now();
-      const snap = store.snapshot();
-      snap.updatedAt = now;
-      await pushCloudSnapshot(snap);
-      store.setPref('updatedAt', now);
-      store.setPref('lastCloudSyncAt', now);
-    } else if (action === 'noop') {
-      store.setPref('lastCloudSyncAt', Date.now());
+    const remoteRaw = await pullCloudSnapshot();
+    const local = slimSnap(store.snapshot());
+    const remote = remoteRaw ? slimSnap(remoteRaw) : emptySnap();
+    const ancestor = readBase() ? slimSnap(readBase() as BookSnap) : emptySnap();
+    const { merged } = threeWaySnapshot(ancestor, local, remote);
+    const now = Date.now();
+    merged.updatedAt = now;
+
+    const localSame = same(comparable(merged), comparable(local));
+    const remoteSame = remoteRaw ? same(comparable(merged), comparable(remote)) : false;
+
+    if (!localSame) store.restoreSnapshot(merged);
+    writeBase(merged);
+
+    let action: SyncAction = 'noop';
+    if (!remoteRaw) action = 'push';
+    else if (!localSame && !remoteSame) action = 'merge';
+    else if (!remoteSame) action = 'push';
+    else if (!localSame) action = 'pull';
+
+    if (!remoteRaw || !remoteSame) {
+      await pushCloudSnapshot(merged);
     }
+    store.setPref('updatedAt', now);
+    store.setPref('lastCloudSyncAt', now);
     return action;
   } catch {
     return 'offline';
@@ -113,4 +158,23 @@ export function bindCloudSync(store: SyncStore): Promise<SyncAction | 'offline'>
   storeRef = store;
   if (!pending) pending = hydrateFromCloud(store);
   return pending;
+}
+
+export async function loginAgainstSync(account: string, password: string): Promise<void> {
+  const header = basicToken(account, password);
+  let res: Response;
+  try {
+    res = await fetch('/sync', { headers: { Authorization: header } });
+  } catch {
+    const envUser = import.meta.env?.VITE_AUTH_USER || 'xiong';
+    const envPass = import.meta.env?.VITE_AUTH_PASS || 'demo';
+    if (account === envUser && password === envPass) {
+      setSyncCreds(account, password);
+      return;
+    }
+    throw new Error('无法连接同步服务');
+  }
+  if (res.status === 401) throw new Error('账号或密码错误');
+  if (res.status !== 200 && res.status !== 204) throw new Error(`登录失败 ${res.status}`);
+  setSyncCreds(account, password);
 }

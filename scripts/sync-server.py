@@ -1,63 +1,367 @@
 #!/usr/bin/env python3
-"""Single-user snapshot store. GET/PUT /sync, SQLite WAL.
+"""Per-user SQLite book. GET/PUT /sync, GET /sync/holdings|transactions.
 
-# ponytail: one-row blob, split tables if we need SQL queries over holdings.
+# ponytail: global db lock, per-user locks if concurrent writers matter.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
+import re
 import sqlite3
 import sys
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DB_PATH = os.environ.get("SYNC_DB", "/data/invest.db")
-USER = os.environ.get("SYNC_USER", "xiong")
-PASS = os.environ.get("SYNC_PASS", "demo")
 PORT = int(os.environ.get("PORT", "3003"))
 MAX_BODY = 8 * 1024 * 1024
+PBKDF2_ROUNDS = 120_000
+USER_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+LOCK = threading.Lock()
+
+KV_KEYS = (
+    "todos",
+    "theses",
+    "journal",
+    "opportunities",
+    "prefs",
+    "watchlist",
+    "customPortfolios",
+    "macroWeather",
+    "macroIndicators",
+    "macroBriefs",
+    "macroEvents",
+    "industryFocus",
+    "navSnapshots",
+)
+
+
+def hash_pass(password: str, salt: bytes | None = None) -> str:
+    salt = salt or os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ROUNDS)
+    return salt.hex() + ":" + dk.hex()
+
+
+def check_pass(password: str, stored: str) -> bool:
+    try:
+        salt_hex, dk_hex = stored.split(":", 1)
+        salt = bytes.fromhex(salt_hex)
+    except Exception:
+        return False
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ROUNDS)
+    return hmac.compare_digest(dk.hex(), dk_hex)
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(path or DB_PATH, timeout=10)
+    conn = sqlite3.connect(path or DB_PATH, timeout=10, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS snapshot (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            updated_at INTEGER NOT NULL,
-            body TEXT NOT NULL
-        )"""
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            pass_hash TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS meta (
+            user TEXT PRIMARY KEY,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS holdings (
+            user TEXT NOT NULL,
+            account TEXT NOT NULL,
+            code TEXT NOT NULL,
+            name TEXT,
+            quantity REAL,
+            cost REAL,
+            tag TEXT,
+            health TEXT,
+            action TEXT,
+            thesis_id TEXT,
+            PRIMARY KEY (user, account, code)
+        );
+        CREATE TABLE IF NOT EXISTS cash (
+            user TEXT NOT NULL,
+            account TEXT NOT NULL,
+            amount REAL NOT NULL,
+            PRIMARY KEY (user, account)
+        );
+        CREATE TABLE IF NOT EXISTS transactions (
+            user TEXT NOT NULL,
+            id TEXT NOT NULL,
+            date TEXT,
+            account TEXT,
+            code TEXT,
+            name TEXT,
+            side TEXT,
+            price REAL,
+            quantity REAL,
+            amount REAL,
+            fee REAL,
+            note TEXT,
+            PRIMARY KEY (user, id)
+        );
+        CREATE TABLE IF NOT EXISTS kv (
+            user TEXT NOT NULL,
+            key TEXT NOT NULL,
+            body TEXT NOT NULL,
+            PRIMARY KEY (user, key)
+        );
+        """
     )
     conn.commit()
     return conn
 
 
-def get_row(conn: sqlite3.Connection) -> tuple[int, str] | None:
-    row = conn.execute("SELECT updated_at, body FROM snapshot WHERE id = 1").fetchone()
-    return (int(row[0]), str(row[1])) if row else None
+def seed_users(conn: sqlite3.Connection) -> None:
+    raw = os.environ.get("SYNC_USERS")
+    if not raw:
+        raw = "%s:%s" % (
+            os.environ.get("SYNC_USER", "xiong"),
+            os.environ.get("SYNC_PASS", "demo"),
+        )
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        u, p = pair.split(":", 1)
+        u, p = u.strip(), p.strip()
+        if not USER_RE.match(u) or not p:
+            continue
+        row = conn.execute("SELECT username FROM users WHERE username=?", (u,)).fetchone()
+        if row:
+            continue
+        conn.execute("INSERT INTO users(username, pass_hash) VALUES (?, ?)", (u, hash_pass(p)))
+    conn.commit()
 
 
-def put_row(conn: sqlite3.Connection, updated_at: int, body: str) -> None:
+def migrate_legacy_blob(conn: sqlite3.Connection) -> None:
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "snapshot" not in names:
+        return
+    row = conn.execute("SELECT updated_at, body FROM snapshot WHERE id=1").fetchone()
+    if not row:
+        return
+    owned = conn.execute("SELECT 1 FROM meta WHERE user='xiong'").fetchone()
+    if owned:
+        return
+    try:
+        data = json.loads(row[1])
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    data.setdefault("updatedAt", int(row[0]))
+    put_snapshot(conn, "xiong", data)
+
+
+def upsert_user(conn: sqlite3.Connection, username: str, password: str) -> None:
+    if not USER_RE.match(username):
+        raise ValueError("bad username")
     conn.execute(
-        """INSERT INTO snapshot(id, updated_at, body) VALUES (1, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, body=excluded.body""",
-        (updated_at, body),
+        "INSERT INTO users(username, pass_hash) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET pass_hash=excluded.pass_hash",
+        (username, hash_pass(password)),
     )
     conn.commit()
 
 
-def check_basic(header: str | None) -> bool:
+def auth_user(conn: sqlite3.Connection, header: str | None) -> str | None:
     if not header or not header.startswith("Basic "):
-        return False
-    import base64
-
+        return None
     try:
         raw = base64.b64decode(header.split(" ", 1)[1]).decode()
         u, p = raw.split(":", 1)
     except Exception:
-        return False
-    return u == USER and p == PASS
+        return None
+    row = conn.execute("SELECT pass_hash FROM users WHERE username=?", (u,)).fetchone()
+    if not row or not check_pass(p, row[0]):
+        return None
+    return u
+
+
+def put_snapshot(conn: sqlite3.Connection, user: str, data: dict) -> int:
+    updated_at = int(data.get("updatedAt") or 0)
+    if updated_at <= 0:
+        updated_at = int(time.time() * 1000)
+        data["updatedAt"] = updated_at
+    holdings = data.get("holdings") if isinstance(data.get("holdings"), list) else []
+    cash = data.get("cash") if isinstance(data.get("cash"), dict) else {}
+    txs = data.get("transactions") if isinstance(data.get("transactions"), list) else []
+
+    conn.execute("DELETE FROM holdings WHERE user=?", (user,))
+    for h in holdings:
+        if not isinstance(h, dict) or not h.get("code"):
+            continue
+        conn.execute(
+            """INSERT INTO holdings(user, account, code, name, quantity, cost, tag, health, action, thesis_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user,
+                str(h.get("account") or ""),
+                str(h.get("code")),
+                str(h.get("name") or ""),
+                float(h.get("quantity") or 0),
+                float(h.get("cost") or 0),
+                h.get("tag"),
+                str(h.get("health") or ""),
+                str(h.get("action") or ""),
+                str(h.get("thesisId") or ""),
+            ),
+        )
+
+    conn.execute("DELETE FROM cash WHERE user=?", (user,))
+    for account in ("stock", "etf"):
+        conn.execute(
+            "INSERT INTO cash(user, account, amount) VALUES (?, ?, ?)",
+            (user, account, float(cash.get(account) or 0)),
+        )
+
+    conn.execute("DELETE FROM transactions WHERE user=?", (user,))
+    for t in txs:
+        if not isinstance(t, dict) or not t.get("id"):
+            continue
+        conn.execute(
+            """INSERT INTO transactions(user, id, date, account, code, name, side, price, quantity, amount, fee, note)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user,
+                str(t.get("id")),
+                t.get("date"),
+                t.get("account"),
+                t.get("code"),
+                t.get("name"),
+                t.get("side"),
+                t.get("price"),
+                t.get("quantity"),
+                t.get("amount"),
+                t.get("fee"),
+                t.get("note"),
+            ),
+        )
+
+    conn.execute("DELETE FROM kv WHERE user=?", (user,))
+    for key in KV_KEYS:
+        if key not in data:
+            continue
+        conn.execute(
+            "INSERT INTO kv(user, key, body) VALUES (?, ?, ?)",
+            (user, key, json.dumps(data[key], ensure_ascii=False, separators=(",", ":"))),
+        )
+
+    conn.execute(
+        "INSERT INTO meta(user, updated_at) VALUES (?, ?) ON CONFLICT(user) DO UPDATE SET updated_at=excluded.updated_at",
+        (user, updated_at),
+    )
+    conn.commit()
+    return updated_at
+
+
+def get_snapshot(conn: sqlite3.Connection, user: str) -> dict | None:
+    meta = conn.execute("SELECT updated_at FROM meta WHERE user=?", (user,)).fetchone()
+    holds = conn.execute(
+        "SELECT account, code, name, quantity, cost, tag, health, action, thesis_id FROM holdings WHERE user=?",
+        (user,),
+    ).fetchall()
+    cash_rows = conn.execute("SELECT account, amount FROM cash WHERE user=?", (user,)).fetchall()
+    txs = conn.execute(
+        "SELECT id, date, account, code, name, side, price, quantity, amount, fee, note FROM transactions WHERE user=?",
+        (user,),
+    ).fetchall()
+    kv_rows = conn.execute("SELECT key, body FROM kv WHERE user=?", (user,)).fetchall()
+    if not meta and not holds and not txs and not kv_rows:
+        return None
+    cash = {"stock": 0.0, "etf": 0.0}
+    for account, amount in cash_rows:
+        cash[str(account)] = float(amount)
+    data: dict = {
+        "updatedAt": int(meta[0]) if meta else 0,
+        "holdings": [
+            {
+                "account": a,
+                "code": c,
+                "name": n,
+                "quantity": q,
+                "cost": cost,
+                "tag": tag,
+                "health": health,
+                "action": action,
+                "thesisId": thesis,
+            }
+            for a, c, n, q, cost, tag, health, action, thesis in holds
+        ],
+        "cash": cash,
+        "transactions": [
+            {
+                "id": i,
+                "date": d,
+                "account": acc,
+                "code": code,
+                "name": name,
+                "side": side,
+                "price": price,
+                "quantity": qty,
+                "amount": amount,
+                "fee": fee,
+                "note": note,
+            }
+            for i, d, acc, code, name, side, price, qty, amount, fee, note in txs
+        ],
+    }
+    for key, body in kv_rows:
+        try:
+            data[key] = json.loads(body)
+        except Exception:
+            data[key] = body
+    return data
+
+
+def list_holdings(conn: sqlite3.Connection, user: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT account, code, name, quantity, cost, tag, health, action, thesis_id FROM holdings WHERE user=?",
+        (user,),
+    ).fetchall()
+    return [
+        {
+            "account": a,
+            "code": c,
+            "name": n,
+            "quantity": q,
+            "cost": cost,
+            "tag": tag,
+            "health": health,
+            "action": action,
+            "thesisId": thesis,
+        }
+        for a, c, n, q, cost, tag, health, action, thesis in rows
+    ]
+
+
+def list_transactions(conn: sqlite3.Connection, user: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, date, account, code, name, side, price, quantity, amount, fee, note FROM transactions WHERE user=?",
+        (user,),
+    ).fetchall()
+    return [
+        {
+            "id": i,
+            "date": d,
+            "account": acc,
+            "code": code,
+            "name": name,
+            "side": side,
+            "price": price,
+            "quantity": qty,
+            "amount": amount,
+            "fee": fee,
+            "note": note,
+        }
+        for i, d, acc, code, name, side, price, qty, amount, fee, note in rows
+    ]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -83,24 +387,42 @@ class Handler(BaseHTTPRequestHandler):
     def _path(self) -> str:
         return self.path.split("?", 1)[0].rstrip("/") or "/"
 
+    def _user(self) -> str | None:
+        with LOCK:
+            conn = connect()
+            try:
+                return auth_user(conn, self.headers.get("Authorization"))
+            finally:
+                conn.close()
+
     def do_GET(self) -> None:  # noqa: N802
-        if self._path() != "/sync":
+        path = self._path()
+        if path not in ("/sync", "/sync/holdings", "/sync/transactions"):
             return self._send(404, b'{"error":"not found"}')
-        if not check_basic(self.headers.get("Authorization")):
+        user = self._user()
+        if not user:
             return self._unauth()
-        conn = connect()
-        try:
-            row = get_row(conn)
-        finally:
-            conn.close()
-        if not row:
+        with LOCK:
+            conn = connect()
+            try:
+                if path == "/sync/holdings":
+                    body = json.dumps(list_holdings(conn, user), ensure_ascii=False, separators=(",", ":")).encode()
+                    return self._send(200, body)
+                if path == "/sync/transactions":
+                    body = json.dumps(list_transactions(conn, user), ensure_ascii=False, separators=(",", ":")).encode()
+                    return self._send(200, body)
+                data = get_snapshot(conn, user)
+            finally:
+                conn.close()
+        if not data:
             return self._send(204, b"")
-        return self._send(200, row[1].encode("utf-8"))
+        return self._send(200, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode())
 
     def do_PUT(self) -> None:  # noqa: N802
         if self._path() != "/sync":
             return self._send(404, b'{"error":"not found"}')
-        if not check_basic(self.headers.get("Authorization")):
+        user = self._user()
+        if not user:
             return self._unauth()
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
@@ -112,18 +434,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, b'{"error":"invalid json"}')
         if not isinstance(data, dict) or not isinstance(data.get("holdings"), list) or "cash" not in data:
             return self._send(400, b'{"error":"missing fields"}')
-        updated_at = int(data.get("updatedAt") or 0)
-        if updated_at <= 0:
-            import time
-
-            updated_at = int(time.time() * 1000)
-            data["updatedAt"] = updated_at
-        body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-        conn = connect()
-        try:
-            put_row(conn, updated_at, body)
-        finally:
-            conn.close()
+        with LOCK:
+            conn = connect()
+            try:
+                put_snapshot(conn, user, data)
+            finally:
+                conn.close()
         return self._send(200, b'{"ok":true}')
 
 
@@ -134,26 +450,92 @@ def selftest() -> None:
     fd, DB_PATH = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     os.unlink(DB_PATH)
+    os.environ["SYNC_USERS"] = "xiong:demo,bob:bobpass"
     conn = connect()
-    assert get_row(conn) is None
-    put_row(conn, 100, '{"holdings":[],"cash":{"stock":1,"etf":2}}')
-    ts, body = get_row(conn)
-    assert ts == 100
-    assert "etf" in body
-    put_row(conn, 200, '{"holdings":[{"code":"sh510300"}],"cash":{"stock":0,"etf":0}}')
-    ts, body = get_row(conn)
-    assert ts == 200
-    assert "510300" in body
+    seed_users(conn)
+    assert auth_user(conn, "Basic " + base64.b64encode(b"xiong:demo").decode()) == "xiong"
+    assert auth_user(conn, "Basic " + base64.b64encode(b"xiong:wrong").decode()) is None
+    assert auth_user(conn, "Basic " + base64.b64encode(b"bob:bobpass").decode()) == "bob"
+
+    put_snapshot(
+        conn,
+        "xiong",
+        {
+            "updatedAt": 10,
+            "holdings": [{"account": "etf", "code": "sh510300", "name": "沪深300", "quantity": 100, "cost": 4, "health": "healthy", "action": "hold", "thesisId": ""}],
+            "cash": {"stock": 1, "etf": 2},
+            "transactions": [{"id": "t1", "account": "etf", "code": "sh510300", "side": "buy", "quantity": 100, "price": 4, "amount": 400}],
+        },
+    )
+    put_snapshot(
+        conn,
+        "bob",
+        {
+            "updatedAt": 11,
+            "holdings": [{"account": "etf", "code": "sz159915", "name": "创业板", "quantity": 50, "cost": 2, "health": "healthy", "action": "hold", "thesisId": ""}],
+            "cash": {"stock": 9, "etf": 8},
+            "transactions": [],
+        },
+    )
+    a = get_snapshot(conn, "xiong")
+    b = get_snapshot(conn, "bob")
+    assert a and a["holdings"][0]["code"] == "sh510300"
+    assert b and b["holdings"][0]["code"] == "sz159915"
+    assert a["cash"]["etf"] == 2
+    assert b["cash"]["stock"] == 9
+    assert all(h["code"] != "sz159915" for h in list_holdings(conn, "xiong"))
+    assert list_holdings(conn, "bob")[0]["code"] == "sz159915"
+    n = conn.execute("SELECT COUNT(*) FROM holdings WHERE user='xiong'").fetchone()[0]
+    assert n == 1
+    conn.close()
+
+    # legacy blob → xiong
+    fd, DB_PATH = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    os.unlink(DB_PATH)
+    conn = connect()
+    seed_users(conn)
+    conn.execute(
+        """CREATE TABLE snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER NOT NULL, body TEXT NOT NULL)"""
+    )
+    conn.execute(
+        "INSERT INTO snapshot(id, updated_at, body) VALUES (1, 5, ?)",
+        ('{"holdings":[{"account":"etf","code":"sh510300","quantity":1,"cost":1}],"cash":{"stock":0,"etf":0}}',),
+    )
+    conn.commit()
+    migrate_legacy_blob(conn)
+    snap = get_snapshot(conn, "xiong")
+    assert snap and snap["holdings"][0]["code"] == "sh510300"
     conn.close()
     os.unlink(DB_PATH)
     print("sync-server selftest ok")
 
 
-if __name__ == "__main__":
-    if "--selftest" in sys.argv:
+def main() -> None:
+    global DB_PATH
+    args = sys.argv[1:]
+    if "--selftest" in args:
         selftest()
-        sys.exit(0)
+        return
+    if "--add-user" in args:
+        i = args.index("--add-user")
+        if i + 2 >= len(args):
+            raise SystemExit("usage: sync-server.py --add-user USER PASS")
+        os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+        conn = connect()
+        upsert_user(conn, args[i + 1], args[i + 2])
+        conn.close()
+        print("user upserted", args[i + 1])
+        return
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    conn = connect()
+    seed_users(conn)
+    migrate_legacy_blob(conn)
+    conn.close()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"sync-server sqlite={DB_PATH} port={PORT}", flush=True)
     httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

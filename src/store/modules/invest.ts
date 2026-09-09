@@ -66,19 +66,69 @@ const LS_MACRO_BRIEFS = 'invest-v2-macro-briefs';
 const LS_MACRO_EVENTS = 'invest-v2-macro-events';
 const LS_INDUSTRY_FOCUS = 'invest-v2-industry-focus';
 const LS_NAV = 'invest-v2-nav-snapshots';
+const LS_KEYS = [
+  LS_HOLD,
+  LS_TODO,
+  LS_WATCH,
+  LS_JOURNAL,
+  LS_THESIS,
+  LS_CASH,
+  LS_OPPS,
+  LS_PREFS,
+  LS_PORT,
+  LS_TX,
+  LS_MACRO_WEATHER,
+  LS_MACRO_INDICATORS,
+  LS_MACRO_BRIEFS,
+  LS_MACRO_EVENTS,
+  LS_INDUSTRY_FOCUS,
+  LS_NAV,
+];
+
+let lsUser = '';
+
+function scoped(key: string) {
+  return lsUser ? `${key}::${lsUser}` : key;
+}
+
+function migrateLegacyKeys(user: string) {
+  if (typeof localStorage === 'undefined') return;
+  for (const key of LS_KEYS) {
+    const dest = `${key}::${user}`;
+    if (localStorage.getItem(dest)) continue;
+    const src = localStorage.getItem(key);
+    if (src) localStorage.setItem(dest, src);
+  }
+}
 
 function writeUserLS(key: string, value: unknown) {
-  localStorage.setItem(key, JSON.stringify(value));
+  localStorage.setItem(scoped(key), JSON.stringify(value));
   scheduleCloudPush();
 }
 
 function readLS<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(scoped(key));
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
   }
+}
+
+function normalizePrefs(raw: Partial<Prefs>): Prefs {
+  return {
+    isolate: raw.isolate ?? prefsSeed.isolate,
+    closeRemind: raw.closeRemind ?? prefsSeed.closeRemind,
+    healthDate: { ...prefsSeed.healthDate, ...raw.healthDate },
+    health: { ...prefsSeed.health, ...raw.health },
+    healthDelta: { ...prefsSeed.healthDelta, ...raw.healthDelta },
+    stopLossPct: raw.stopLossPct ?? prefsSeed.stopLossPct ?? -0.08,
+    takeProfitPct: raw.takeProfitPct ?? prefsSeed.takeProfitPct ?? 0.25,
+    rebalanceThresholdPct: raw.rebalanceThresholdPct ?? prefsSeed.rebalanceThresholdPct ?? 0.03,
+    lastBackupAt: raw.lastBackupAt,
+    lastCloudSyncAt: raw.lastCloudSyncAt,
+    updatedAt: raw.updatedAt,
+  };
 }
 
 function enrich(holdings: Holding[], quotes: Record<string, Quote>) {
@@ -196,7 +246,7 @@ export const useInvestStore = defineStore('invest', {
       list.push(entry);
       // 只保留最近 400 个自然日
       this.navSnapshots = list.slice(-400);
-      localStorage.setItem(LS_NAV, JSON.stringify(this.navSnapshots));
+      writeUserLS(LS_NAV, this.navSnapshots);
     },
     openTradeModal(opts?: Partial<TradeModalOptions>) {
       this.tradeModal.options = {
@@ -657,7 +707,7 @@ export const useInvestStore = defineStore('invest', {
     setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
       this.prefs = { ...this.prefs, [key]: value };
       if (key === 'lastCloudSyncAt' || key === 'updatedAt') {
-        localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
+        localStorage.setItem(scoped(LS_PREFS), JSON.stringify(this.prefs));
         return;
       }
       writeUserLS(LS_PREFS, this.prefs);
@@ -672,6 +722,42 @@ export const useInvestStore = defineStore('invest', {
         writeUserLS(LS_PREFS, this.prefs);
       }
       return this.prefs.healthDelta[account];
+    },
+    adoptUser(username: string) {
+      if (!username) return;
+      setHydrating(true);
+      try {
+        if (username === 'xiong') migrateLegacyKeys(username);
+        lsUser = username;
+        const keep = username === 'xiong';
+        this.holdings = readLS(LS_HOLD, keep ? this.holdings : []);
+        this.todos = readLS(LS_TODO, keep ? this.todos : []);
+        this.watchlist = readLS(LS_WATCH, keep ? this.watchlist : []);
+        this.journal = readLS(LS_JOURNAL, keep ? this.journal : []).map((j) => ({
+          ...j,
+          topic: j.topic || j.body,
+          conclusion: j.conclusion || '',
+        }));
+        this.theses = readLS(LS_THESIS, keep ? this.theses : []);
+        this.cash = readLS(LS_CASH, keep ? this.cash : { stock: 0, etf: 0 });
+        this.opportunities = readLS(LS_OPPS, keep ? this.opportunities : []);
+        this.transactions = readLS(LS_TX, keep ? this.transactions : []);
+        this.prefs = normalizePrefs(readLS(LS_PREFS, keep ? this.prefs : {}));
+        this.customPortfolios = readLS(LS_PORT, keep ? this.customPortfolios : []);
+        this.macroWeather = readLS(
+          LS_MACRO_WEATHER,
+          keep
+            ? this.macroWeather
+            : { cycle: '', sentiment: '中性', suggestedStockPos: '', suggestedEtfPos: '', updatedAt: '' },
+        );
+        this.macroIndicators = readLS(LS_MACRO_INDICATORS, keep ? this.macroIndicators : []);
+        this.macroBriefs = readLS(LS_MACRO_BRIEFS, keep ? this.macroBriefs : []);
+        this.macroEvents = readLS(LS_MACRO_EVENTS, keep ? this.macroEvents : []);
+        this.industryFocus = readLS(LS_INDUSTRY_FOCUS, keep ? this.industryFocus : []);
+        this.navSnapshots = readLS(LS_NAV, keep ? this.navSnapshots : []);
+      } finally {
+        setHydrating(false);
+      }
     },
     snapshot() {
       return {
@@ -705,108 +791,103 @@ export const useInvestStore = defineStore('invest', {
         return { success: false, message: '快照数据缺少核心持仓或资金字段' };
       }
 
-      setHydrating(true);
-      try {
-        // 1. 持仓
-        this.holdings = data.holdings;
-        writeUserLS(LS_HOLD, this.holdings);
+      // 1. 持仓
+      this.holdings = data.holdings;
+      writeUserLS(LS_HOLD, this.holdings);
 
-        // 2. 现金
-        if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
-          this.cash = { stock: data.cash.stock, etf: data.cash.etf };
-          writeUserLS(LS_CASH, this.cash);
-        }
-
-        // 3. 交易流水台账
-        if (Array.isArray(data.transactions)) {
-          this.transactions = data.transactions;
-          writeUserLS(LS_TX, this.transactions);
-        }
-
-        // 4. 待办清单
-        if (Array.isArray(data.todos)) {
-          this.todos = data.todos;
-          writeUserLS(LS_TODO, this.todos);
-        }
-
-        // 5. 投资论点
-        if (Array.isArray(data.theses)) {
-          this.theses = data.theses;
-          writeUserLS(LS_THESIS, this.theses);
-        }
-
-        // 6. 复盘日记
-        if (Array.isArray(data.journal)) {
-          this.journal = data.journal;
-          writeUserLS(LS_JOURNAL, this.journal);
-        }
-
-        // 7. 机会池
-        if (Array.isArray(data.opportunities)) {
-          this.opportunities = data.opportunities;
-          writeUserLS(LS_OPPS, this.opportunities);
-        }
-
-        // 8. 偏好设定
-        if (data.prefs && typeof data.prefs === 'object') {
-          this.prefs = { ...this.prefs, ...data.prefs };
-          writeUserLS(LS_PREFS, this.prefs);
-        }
-
-        // 9. 自选池
-        if (Array.isArray(data.watchlist)) {
-          this.watchlist = data.watchlist;
-          writeUserLS(LS_WATCH, this.watchlist);
-        }
-
-        // 10. 自定义策略组合
-        if (Array.isArray(data.customPortfolios)) {
-          this.customPortfolios = data.customPortfolios;
-          writeUserLS(LS_PORT, this.customPortfolios);
-        }
-
-        // 11. 宏观天气与指标
-        if (data.macroWeather && typeof data.macroWeather === 'object') {
-          this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
-          writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
-        }
-        if (Array.isArray(data.macroIndicators)) {
-          this.macroIndicators = data.macroIndicators;
-          writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
-        }
-        if (Array.isArray(data.macroBriefs)) {
-          this.macroBriefs = data.macroBriefs;
-          writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
-        }
-        if (Array.isArray(data.macroEvents)) {
-          this.macroEvents = data.macroEvents;
-          writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
-        }
-        if (Array.isArray(data.industryFocus)) {
-          this.industryFocus = data.industryFocus;
-          writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
-        }
-        if (Array.isArray(data.navSnapshots)) {
-          this.navSnapshots = data.navSnapshots;
-          localStorage.setItem(LS_NAV, JSON.stringify(this.navSnapshots));
-        }
-
-        this.refreshQuotes();
-
-        return {
-          success: true,
-          message: '数据恢复成功',
-          counts: {
-            holdings: this.holdings.length,
-            transactions: this.transactions.length,
-            todos: this.todos.length,
-            theses: this.theses.length,
-            journal: this.journal.length,
-          },
-        };
-      } finally {
-        setHydrating(false);
+      // 2. 现金
+      if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
+        this.cash = { stock: data.cash.stock, etf: data.cash.etf };
+        writeUserLS(LS_CASH, this.cash);
       }
+
+      // 3. 交易流水台账
+      if (Array.isArray(data.transactions)) {
+        this.transactions = data.transactions;
+        writeUserLS(LS_TX, this.transactions);
+      }
+
+      // 4. 待办清单
+      if (Array.isArray(data.todos)) {
+        this.todos = data.todos;
+        writeUserLS(LS_TODO, this.todos);
+      }
+
+      // 5. 投资论点
+      if (Array.isArray(data.theses)) {
+        this.theses = data.theses;
+        writeUserLS(LS_THESIS, this.theses);
+      }
+
+      // 6. 复盘日记
+      if (Array.isArray(data.journal)) {
+        this.journal = data.journal;
+        writeUserLS(LS_JOURNAL, this.journal);
+      }
+
+      // 7. 机会池
+      if (Array.isArray(data.opportunities)) {
+        this.opportunities = data.opportunities;
+        writeUserLS(LS_OPPS, this.opportunities);
+      }
+
+      // 8. 偏好设定
+      if (data.prefs && typeof data.prefs === 'object') {
+        this.prefs = { ...this.prefs, ...data.prefs };
+        writeUserLS(LS_PREFS, this.prefs);
+      }
+
+      // 9. 自选池
+      if (Array.isArray(data.watchlist)) {
+        this.watchlist = data.watchlist;
+        writeUserLS(LS_WATCH, this.watchlist);
+      }
+
+      // 10. 自定义策略组合
+      if (Array.isArray(data.customPortfolios)) {
+        this.customPortfolios = data.customPortfolios;
+        writeUserLS(LS_PORT, this.customPortfolios);
+      }
+
+      // 11. 宏观天气与指标
+      if (data.macroWeather && typeof data.macroWeather === 'object') {
+        this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
+        writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
+      }
+      if (Array.isArray(data.macroIndicators)) {
+        this.macroIndicators = data.macroIndicators;
+        writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
+      }
+      if (Array.isArray(data.macroBriefs)) {
+        this.macroBriefs = data.macroBriefs;
+        writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
+      }
+      if (Array.isArray(data.macroEvents)) {
+        this.macroEvents = data.macroEvents;
+        writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
+      }
+      if (Array.isArray(data.industryFocus)) {
+        this.industryFocus = data.industryFocus;
+        writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
+      }
+      if (Array.isArray(data.navSnapshots)) {
+        this.navSnapshots = data.navSnapshots;
+        writeUserLS(LS_NAV, this.navSnapshots);
+      }
+
+      this.refreshQuotes();
+
+      return {
+        success: true,
+        message: '数据恢复成功',
+        counts: {
+          holdings: this.holdings.length,
+          transactions: this.transactions.length,
+          todos: this.todos.length,
+          theses: this.theses.length,
+          journal: this.journal.length,
+        },
+      };
     },
   },
 });

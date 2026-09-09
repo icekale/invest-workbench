@@ -25,11 +25,14 @@ export function runStorageHygiene() {
     expired.forEach((k) => localStorage.removeItem(k));
 
     // 2. 交易流水上限（保留最新的 TX_MAX 条）
-    const txRaw = localStorage.getItem('invest-v2-transactions');
-    if (txRaw) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith('invest-v2-transactions')) continue;
+      const txRaw = localStorage.getItem(k);
+      if (!txRaw) continue;
       const tx = JSON.parse(txRaw) as unknown[];
       if (Array.isArray(tx) && tx.length > TX_MAX) {
-        localStorage.setItem('invest-v2-transactions', JSON.stringify(tx.slice(0, TX_MAX)));
+        localStorage.setItem(k, JSON.stringify(tx.slice(0, TX_MAX)));
       }
     }
   } catch {

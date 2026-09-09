@@ -49,7 +49,8 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { useUserStore } from '@/store';
+import { useInvestStore, useUserStore } from '@/store';
+import { bindCloudSync } from '@/utils/cloud-sync';
 
 const userStore = useUserStore();
 
@@ -76,6 +77,9 @@ const onSubmit = async (ctx: SubmitContext) => {
     try {
       loading.value = true;
       await userStore.login(formData.value);
+      const account = String(formData.value.account || '').trim();
+      useInvestStore().adoptUser(account);
+      await bindCloudSync(useInvestStore());
       const redirect = route.query.redirect as string;
       router.push(redirect || '/dashboard');
     } catch (e: unknown) {

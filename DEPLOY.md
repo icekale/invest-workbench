@@ -23,7 +23,7 @@
     | `/szse/*` | `https://www.szse.cn` | 深交所交易日历（备用数据源） |
     | `/em-dc/*` | `https://datacenter-web.eastmoney.com` | 东财数据中心宏观报表（PMI/CPI/PPI/GDP） |
     | `/csindex/*` | `https://www.csindex.com.cn` | 中证指数 PE 历史真实曲线 |
-    | `/sync` | `invest-sync:3003` | 持仓快照 SQLite（`/opt/invest-workbench/data/invest.db`），Basic 认证 |
+    | `/sync` | `invest-sync:3003` | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
 - Cloudflare：`stock.053727.xyz` **必须保持橙云代理 + zone SSL 模式 Flexible**（2026-09-08 设定，https 全通）。⚠️ 两勿：勿把 SSL 模式改回 Full（回源撞 xray 443 → 525）；勿关橙云加速（灰云后浏览器 https 直连 xray 握手失败 → 无法访问，且灰云久了 Universal SSL 证书会被停用，重开橙云后要等边缘重新部署，期间 https 间歇 403/TLS 错误）。
 
 ## 更新流程
@@ -39,7 +39,15 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 
 ## 持仓 SQLite 同步
 
-容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`，Basic 认证与登录账号相同。浏览器 localStorage 为缓存，登录后 LWW 拉取/回写。
+容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；每个用户独立 `holdings`/`cash`/`transactions`/`kv`。浏览器 localStorage 键为 `invest-v2-*::用户名`，同步用三方合并（冲突留本地）。
+
+加用户（VPS）：
+
+```sh
+docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --add-user NAME PASS
+```
+
+查持仓：`sqlite3 /opt/invest-workbench/data/invest.db "SELECT user, account, code, quantity FROM holdings;"`
 
 ## 排障
 
