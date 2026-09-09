@@ -114,6 +114,73 @@
   }
 }
 
+.briefing-card {
+  .briefing-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .briefing-card__title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+
+  .briefing-card__headline {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+
+  .briefing-card__muted {
+    font-size: 13px;
+    color: var(--td-text-color-secondary);
+  }
+
+  .briefing-card__notes {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+
+    div {
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    span {
+      display: inline-block;
+      min-width: 36px;
+      margin-right: 8px;
+      color: var(--td-text-color-secondary);
+      font-size: 12px;
+    }
+  }
+
+  .briefing-card__risks {
+    margin: 0 0 10px;
+    padding-left: 18px;
+    color: var(--td-text-color-secondary);
+    font-size: 12px;
+  }
+
+  .briefing-card__todo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--td-border-level-1-color, #e6eaed);
+
+    p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--td-text-color-secondary);
+    }
+  }
+}
+
 /* 宏观周期卡片 */
 .macro-weather-card {
   .macro-weather-header {
