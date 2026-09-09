@@ -24,6 +24,7 @@
     "check:book": "node --experimental-strip-types scripts/check-book.ts",
     "check:sync": "node --experimental-strip-types scripts/check-sync.ts && python3 scripts/sync-server.py --selftest",
     "check:macro": "node --experimental-strip-types scripts/check-macro.ts",
+    "check:briefing": "node --experimental-strip-types scripts/check-briefing.ts",
     "test": "echo \"no test specified,work in process\"",
     "test:coverage": "echo \"no test:coverage specified,work in process\""
   },

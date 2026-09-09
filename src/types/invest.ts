@@ -253,3 +253,24 @@ export interface Prefs {
   updatedAt?: number; // 账本修订时间
   onlyMajorEvents?: boolean;
 }
+
+export type BriefingStance = '偏多' | '中性' | '谨慎' | '防守';
+
+export interface BriefingTodoDraft {
+  account: AccountId;
+  code: string;
+  name: string;
+  side: TradeSide;
+  quantity: number;
+  reason: string;
+}
+
+export interface DailyBriefing {
+  date: string;
+  headline: string;
+  stance: BriefingStance;
+  stockNote: string;
+  etfNote: string;
+  risks: string[];
+  todos: BriefingTodoDraft[];
+}
