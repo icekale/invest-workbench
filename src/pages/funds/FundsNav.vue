@@ -23,6 +23,7 @@ const route = useRoute();
 
 const navItems = [
   { path: '/funds/recommend', title: '优质精选' },
+  { path: '/funds/index', title: '机会池' },
   { path: '/funds/database', title: '基金数据' },
   { path: '/funds/portfolios', title: '策略组合' },
   { path: '/funds/research', title: '方法论' },
@@ -30,7 +31,7 @@ const navItems = [
 
 function isItemActive(path: string) {
   if (route.path === path) return true;
-  if (path === '/funds/recommend' && (route.path === '/funds' || route.path === '/funds/index')) return true;
+  if (path === '/funds/recommend' && route.path === '/funds') return true;
   return false;
 }
 </script>

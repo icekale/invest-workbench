@@ -6,12 +6,12 @@
         <span class="overview-strip__val highlight">{{ invest.macroWeather?.sentiment }} <small>偏好</small></span>
       </button>
       <div class="overview-strip__divider" />
-      <button type="button" class="overview-strip__item" @click="openTab('desk')">
+      <button type="button" class="overview-strip__item" @click="router.push('/review/index')">
         <span class="overview-strip__label">待执行交易</span>
         <span class="overview-strip__val">{{ openTodos.length }} <small>项计划</small></span>
       </button>
       <div class="overview-strip__divider" />
-      <button type="button" class="overview-strip__item" @click="openTab('desk')">
+      <button type="button" class="overview-strip__item" @click="router.push('/funds/index')">
         <span class="overview-strip__label">机会池标的</span>
         <span class="overview-strip__val">{{ invest.opportunities.length }} <small>只跟踪</small></span>
       </button>
@@ -36,7 +36,6 @@
       <t-radio-button value="macro">宏观定调</t-radio-button>
       <t-radio-button value="catalyst">事件催化</t-radio-button>
       <t-radio-button value="valuation">估值信号</t-radio-button>
-      <t-radio-button value="desk">交易计划</t-radio-button>
     </t-radio-group>
 
     <div v-show="tab === 'macro'" class="research-pane">
@@ -44,8 +43,8 @@
       <macro-compass />
       <etf-radar />
     </div>
-    <div v-show="tab === 'catalyst' || tab === 'desk'" class="research-pane">
-      <research-desk :pane="tab === 'desk' ? 'plan' : 'catalyst'" />
+    <div v-show="tab === 'catalyst'" class="research-pane">
+      <research-desk />
     </div>
     <div v-show="tab === 'valuation'" class="research-pane">
       <valuation-radar />
@@ -57,6 +56,7 @@ import './research.less';
 
 import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
 import type { BriefingTodoDraft } from '@/types/invest';
@@ -80,8 +80,9 @@ import ValuationRadar from './ValuationRadar.vue';
 
 defineOptions({ name: 'ResearchIndex' });
 
-type Tab = 'macro' | 'catalyst' | 'valuation' | 'desk';
+type Tab = 'macro' | 'catalyst' | 'valuation';
 
+const router = useRouter();
 const invest = useInvestStore();
 const tab = ref<Tab>('macro');
 const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));

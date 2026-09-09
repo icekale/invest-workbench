@@ -1,6 +1,6 @@
 <template>
   <div>
-    <t-card v-if="pane !== 'plan'" title="宏观研判与事件催化">
+    <t-card title="宏观研判与事件催化">
       <!-- 四级标签切换 -->
       <div class="macro-subtabs-nav">
         <t-tabs v-model="macroSectionTab" theme="normal">
@@ -336,69 +336,6 @@
       </div>
     </t-card>
 
-    <t-card v-if="pane !== 'catalyst'" title="交易计划">
-      <template #actions>
-        <t-button size="small" theme="primary" @click="openCreateTodoDialog">+ 新建</t-button>
-      </template>
-
-      <div class="todo-filter-bar">
-        <t-radio-group v-model="todoFilter" variant="default-filled" size="small">
-          <t-radio-button value="open">待执行 ({{ openTodos.length }})</t-radio-button>
-          <t-radio-button value="all">全部 ({{ invest.todos.length }})</t-radio-button>
-          <t-radio-button value="done">已完成 ({{ doneTodos.length }})</t-radio-button>
-        </t-radio-group>
-      </div>
-
-      <div v-if="filteredTodos.length" class="plan-table-wrap">
-        <table class="plan-table">
-          <thead>
-            <tr>
-              <th>标的</th>
-              <th>方向</th>
-              <th>数量</th>
-              <th>预计金额</th>
-              <th>执行方式</th>
-              <th>状态</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="t in filteredTodos" :key="t.id">
-              <td>
-                <button type="button" class="plan-symbol" @click="openPlanTrade(t)">
-                  {{ t.name }} <span class="plan-code">{{ t.code }}</span>
-                </button>
-              </td>
-              <td>
-                <span class="plan-side" :class="t.side === 'buy' ? 'is-buy' : 'is-sell'">
-                  {{ t.side === 'buy' ? '买' : '卖' }}
-                </span>
-              </td>
-              <td class="tabular-nums">{{ qtyText(t) }}</td>
-              <td class="tabular-nums">{{ amountText(t) }}</td>
-              <td>{{ execText(t) }}</td>
-              <td>{{ statusText(t) }}</td>
-              <td class="plan-ops">
-                <t-button
-                  v-if="t.status === 'open'"
-                  size="small"
-                  variant="text"
-                  theme="primary"
-                  @click="invest.setTodoStatus(t.id, 'done')"
-                >
-                  完成
-                </t-button>
-                <t-popconfirm content="确认删除此条计划？" @confirm="invest.removeTodo(t.id)">
-                  <t-button size="small" theme="danger" variant="text">删除</t-button>
-                </t-popconfirm>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <t-empty v-else description="暂无交易计划" style="padding: 40px 0" />
-    </t-card>
-
     <!-- 新增决策待办弹窗 -->
     <t-dialog
       v-model:visible="todoDialogVisible"
@@ -443,15 +380,12 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
-import type { IndustryFocus, MacroBrief, MacroEvent, TradeTodo } from '@/types/invest';
+import type { IndustryFocus, MacroBrief, MacroEvent } from '@/types/invest';
 import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
-import { normalizeCode } from '@/utils/quote';
 
-import { confirmCreateTodo, openCreateTodoDialog, todoDialogVisible, todoForm } from './todo';
+import { confirmCreateTodo, todoDialogVisible, todoForm } from './todo';
 
 type MacroTone = '利多' | '中性' | '警惕' | '待定';
-
-withDefaults(defineProps<{ pane?: 'catalyst' | 'plan' }>(), { pane: 'catalyst' });
 
 const invest = useInvestStore();
 const macroSectionTab = ref('signals');
@@ -461,54 +395,11 @@ const onlyMajorEvents = computed({
   get: () => !!invest.prefs.onlyMajorEvents,
   set: (val: boolean) => invest.setPref('onlyMajorEvents', val),
 });
-const todoFilter = ref<'open' | 'all' | 'done'>('open');
-
 const macros = computed(() => {
   const list = invest.macroBriefs;
   if (macroFilter.value === 'all') return list;
   return list.filter((m) => m.topic === macroFilter.value);
 });
-
-const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
-const doneTodos = computed(() => invest.todos.filter((t) => t.status === 'done'));
-const filteredTodos = computed(() => {
-  if (todoFilter.value === 'open') return openTodos.value;
-  if (todoFilter.value === 'done') return doneTodos.value;
-  return invest.todos;
-});
-
-function qtyText(t: TradeTodo) {
-  if (!t.quantity) return '—';
-  return `${t.quantity.toLocaleString('zh-CN')} ${t.account === 'etf' ? '份' : '股'}`;
-}
-
-function amountText(t: TradeTodo) {
-  const px = invest.quotes[normalizeCode(t.code)]?.price;
-  if (!px || !t.quantity) return '—';
-  return `≈ ¥${Math.round(px * t.quantity).toLocaleString('zh-CN')}`;
-}
-
-function execText(t: TradeTodo) {
-  return t.exec?.trim() || '即期';
-}
-
-function statusText(t: TradeTodo) {
-  if (t.status === 'done') return '已完成';
-  if (execText(t).includes('条件')) return '待触发';
-  return '可执行';
-}
-
-function openPlanTrade(t: TradeTodo) {
-  invest.openTradeModal({
-    account: t.account,
-    side: t.side,
-    code: t.code === '—' ? '' : t.code,
-    name: t.name,
-    quantity: t.quantity || 100,
-    todoId: t.id,
-    note: t.reason,
-  });
-}
 
 const sortedEvents = computed(() => {
   let sorted = sortMacroEvents(invest.macroEvents);

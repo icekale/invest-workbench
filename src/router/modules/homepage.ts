@@ -123,8 +123,9 @@ export default [
       },
       {
         path: 'index',
-        redirect: '/funds/recommend',
-        meta: { hidden: true },
+        name: 'FundsIndex',
+        component: () => import('@/pages/funds/index.vue'),
+        meta: { title: { zh_CN: '机会池', en_US: 'Pipeline' }, hidden: true },
       },
     ],
   },
