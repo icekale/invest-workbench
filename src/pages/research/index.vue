@@ -34,20 +34,18 @@
 
     <t-radio-group v-model="tab" variant="default-filled" class="research-nav">
       <t-radio-button value="macro">宏观定调</t-radio-button>
+      <t-radio-button value="catalyst">事件催化</t-radio-button>
       <t-radio-button value="valuation">估值信号</t-radio-button>
       <t-radio-button value="desk">交易计划</t-radio-button>
     </t-radio-group>
 
-    <div v-show="tab === 'macro' || tab === 'desk'" class="research-pane">
-      <briefing-card
-        v-show="tab === 'macro'"
-        :written="writtenKeys"
-        @retry="bootBriefing(true)"
-        @commit="commitBriefingTodo"
-      />
-      <macro-compass v-show="tab === 'macro'" />
+    <div v-show="tab === 'macro'" class="research-pane">
+      <briefing-card :written="writtenKeys" @retry="bootBriefing(true)" @commit="commitBriefingTodo" />
+      <macro-compass />
+      <etf-radar />
+    </div>
+    <div v-show="tab === 'catalyst' || tab === 'desk'" class="research-pane">
       <research-desk :pane="tab === 'desk' ? 'plan' : 'catalyst'" />
-      <etf-radar v-show="tab === 'macro'" />
     </div>
     <div v-show="tab === 'valuation'" class="research-pane">
       <valuation-radar />
@@ -82,7 +80,7 @@ import ValuationRadar from './ValuationRadar.vue';
 
 defineOptions({ name: 'ResearchIndex' });
 
-type Tab = 'macro' | 'valuation' | 'desk';
+type Tab = 'macro' | 'catalyst' | 'valuation' | 'desk';
 
 const invest = useInvestStore();
 const tab = ref<Tab>('macro');
