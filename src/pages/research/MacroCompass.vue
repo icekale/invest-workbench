@@ -1,39 +1,5 @@
 <template>
   <div>
-    <!-- 顶栏概览条 -->
-    <div class="overview-strip">
-      <div class="overview-strip__item">
-        <span class="overview-strip__label">宏观周期定调</span>
-        <span class="overview-strip__val highlight">{{ invest.macroWeather?.sentiment }} <small>偏好</small></span>
-      </div>
-      <div class="overview-strip__divider" />
-      <div class="overview-strip__item">
-        <span class="overview-strip__label">待执行交易</span>
-        <span class="overview-strip__val">{{ openTodos.length }} <small>项待办</small></span>
-      </div>
-      <div class="overview-strip__divider" />
-      <div class="overview-strip__item">
-        <span class="overview-strip__label">机会池标的</span>
-        <span class="overview-strip__val">{{ invest.opportunities.length }} <small>只跟踪</small></span>
-      </div>
-      <div class="overview-strip__divider" />
-      <div class="overview-strip__item">
-        <span class="overview-strip__label">估值低估机会</span>
-        <span class="overview-strip__val" style="color: var(--guanlan-gain, #16815f)">
-          {{ bargainCount }} <small>只极低/偏低</small>
-        </span>
-      </div>
-      <div class="overview-strip__divider" />
-      <div class="overview-strip__item">
-        <span class="overview-strip__label">宏观源状态</span>
-        <span class="overview-strip__val edb-status">
-          <span class="edb-dot" :class="{ 'is-down': macroState !== 'ok' }" />
-          {{ macroState === 'ok' ? '已接入' : macroState === 'loading' ? '同步中' : '未接通' }}
-        </span>
-      </div>
-    </div>
-
-    <!-- 宏观周期罗盘 + 建议基准仓位 -->
     <t-card class="macro-weather-card">
       <div class="macro-weather-header">
         <div class="weather-header-left">
@@ -339,14 +305,14 @@
 <script setup lang="ts">
 import type { ECharts } from 'echarts/core';
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import { loadEcharts } from '@/utils/load-echarts';
 import type { MacroSeries } from '@/utils/macro-cn';
 import { fetchMacroBundle, peekMacroBundle } from '@/utils/macro-cn';
 
-import { bargainCount } from './state';
+import { macroState } from './state';
 
 type MacroTone = '利多' | '中性' | '警惕' | '待定';
 type MacroTopic = '增长' | '流动性' | '政策' | '海外';
@@ -355,7 +321,6 @@ const invest = useInvestStore();
 const macroLoading = ref(false);
 const macroSyncTime = ref('');
 const macroErrorMsg = ref('');
-const macroState = ref<'never' | 'loading' | 'ok' | 'error'>('never');
 const growthPmi = ref<MacroSeries | null>(null);
 const cpiMetric = ref<MacroSeries | null>(null);
 const ppiMetric = ref<MacroSeries | null>(null);
@@ -365,8 +330,6 @@ const chartModalVisible = ref(false);
 const activeMetric = ref<MacroSeries | null>(null);
 const metricChartEl = ref<HTMLDivElement | null>(null);
 let chartInstance: ECharts | null = null;
-
-const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
 
 const macroModalVisible = ref(false);
 const macroManageTab = ref('weather');
