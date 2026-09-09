@@ -1,5 +1,12 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
+    <div class="hold-toolbar">
+      <t-radio-group v-model="accountView" variant="default-filled" size="small">
+        <t-radio-button value="stock">股票账户</t-radio-button>
+        <t-radio-button value="etf">ETF 账户</t-radio-button>
+      </t-radio-group>
+    </div>
+
     <!-- 顶部台账统计 KPI -->
     <t-row :gutter="[16, 16]">
       <t-col :xs="6" :sm="6" :xl="3">
@@ -37,15 +44,44 @@
       </t-col>
     </t-row>
 
+    <!-- 当前持仓 -->
+    <t-card :title="`${accountLabel}持仓`">
+      <template #actions>
+        <span class="card-cap">现金 {{ money(activeCash) }} · 仓位 {{ posLabel }}</span>
+      </template>
+      <t-empty v-if="!activeRows.length" description="该账户暂无持仓，可用模拟下单或补录流水建仓" />
+      <div v-else class="table-wrap">
+        <t-table :data="activeRows" :columns="holdingCols" row-key="code" size="small" hover>
+          <template #name="{ row }">
+            <span class="symbol-name">{{ row.name }}</span>
+            <span class="symbol-code">{{ shortCode(row.code) }}</span>
+          </template>
+          <template #quantity="{ row }">{{ Number(row.quantity).toLocaleString('zh-CN') }}</template>
+          <template #cost="{ row }">¥{{ Number(row.cost).toFixed(2) }}</template>
+          <template #last="{ row }">{{ row.last == null ? '—' : `¥${Number(row.last).toFixed(2)}` }}</template>
+          <template #mv="{ row }">{{ money(row.marketValue) }}</template>
+          <template #weight="{ row }">{{ weightOf(row.marketValue) }}</template>
+          <template #pnl="{ row }">
+            <div class="pnl-cell" :style="{ color: pnlColor(row.pnl) }">
+              <span>{{ signed(row.pnl) }}</span>
+              <span v-if="row.pnlPct != null" class="pnl-pct">({{ pct(row.pnlPct) }})</span>
+            </div>
+          </template>
+          <template #op="{ row }">
+            <t-space :size="4">
+              <t-link theme="danger" hover="color" @click="tradeRow(row, 'buy')">买</t-link>
+              <t-link theme="success" hover="color" @click="tradeRow(row, 'sell')">卖</t-link>
+            </t-space>
+          </template>
+        </t-table>
+      </div>
+    </t-card>
+
     <!-- 台账管理与操作卡片 -->
     <t-card title="成交明细与台账管理">
       <template #actions>
         <t-space :size="8">
-          <t-button
-            size="small"
-            theme="primary"
-            @click="invest.openTradeModal({ account: accountFilter === 'all' ? 'stock' : accountFilter })"
-          >
+          <t-button size="small" theme="primary" @click="invest.openTradeModal({ account: accountView })">
             <template #icon><t-icon name="swap" /></template>
             模拟下单交易
           </t-button>
@@ -72,11 +108,6 @@
       <!-- 筛选栏 -->
       <div class="filter-bar">
         <t-space :size="12" align="center" style="flex-wrap: wrap">
-          <t-radio-group v-model="accountFilter" variant="default-filled" size="small">
-            <t-radio-button value="all">全部账户</t-radio-button>
-            <t-radio-button value="stock">股票账户</t-radio-button>
-            <t-radio-button value="etf">ETF 账户</t-radio-button>
-          </t-radio-group>
           <t-radio-group v-model="sideFilter" variant="default-filled" size="small">
             <t-radio-button value="all">全部方向</t-radio-button>
             <t-radio-button value="buy">买入</t-radio-button>
@@ -98,11 +129,6 @@
           hover
           :pagination="{ pageSize: 10, total: filteredTransactions.length }"
         >
-          <template #account="{ row }">
-            <t-tag size="small" variant="outline" :theme="row.account === 'stock' ? 'primary' : 'default'">
-              {{ row.account === 'stock' ? '股票' : 'ETF' }}
-            </t-tag>
-          </template>
           <template #side="{ row }">
             <t-tag size="small" :theme="row.side === 'buy' ? 'danger' : 'success'" variant="light">
               {{ row.side === 'buy' ? '买入' : '卖出' }}
@@ -208,13 +234,15 @@ import { computed, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
-import { parseTransactionsCsv } from '@/utils/ledger';
+import { summarize } from '@/utils/book';
+import { todayCN } from '@/utils/date';
+import { calculateLedger, parseTransactionsCsv } from '@/utils/ledger';
 
 defineOptions({ name: 'TransactionLedger' });
 
 const invest = useInvestStore();
 
-const accountFilter = ref<'all' | AccountId>('all');
+const accountView = ref<AccountId>('stock');
 const sideFilter = ref<'all' | TradeSide>('all');
 const keyword = ref('');
 
@@ -226,7 +254,7 @@ const syncHoldingsOnImport = ref(true);
 const parseResult = reactive<{ errors: string[] }>({ errors: [] });
 
 const formData = reactive({
-  date: new Date().toISOString().slice(0, 10),
+  date: todayCN(),
   account: 'stock' as AccountId,
   code: '',
   name: '',
@@ -237,7 +265,20 @@ const formData = reactive({
   note: '',
 });
 
-const summary = computed(() => invest.ledgerSummary);
+const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
+const activeCash = computed(() => (accountView.value === 'etf' ? invest.cash.etf : invest.cash.stock));
+const accountLabel = computed(() => (accountView.value === 'etf' ? 'ETF 账户' : '股票账户'));
+const book = computed(() => summarize(activeRows.value, activeCash.value));
+const posLabel = computed(() => (book.value.pos == null ? '—' : `${(book.value.pos * 100).toFixed(1)}%`));
+const bookTotal = computed(() => {
+  const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
+  return mv + Math.max(0, activeCash.value);
+});
+const accountTx = computed(() => invest.transactions.filter((tx) => tx.account === accountView.value));
+const summary = computed(() => {
+  const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? r.cost * r.quantity), 0);
+  return calculateLedger(accountTx.value, mv);
+});
 
 const turnoverTag = computed(() => {
   const rate = summary.value.turnoverRate;
@@ -247,8 +288,7 @@ const turnoverTag = computed(() => {
 });
 
 const filteredTransactions = computed(() => {
-  return invest.transactions.filter((tx) => {
-    if (accountFilter.value !== 'all' && tx.account !== accountFilter.value) return false;
+  return accountTx.value.filter((tx) => {
     if (sideFilter.value !== 'all' && tx.side !== sideFilter.value) return false;
     if (keyword.value.trim()) {
       const q = keyword.value.trim().toLowerCase();
@@ -258,9 +298,19 @@ const filteredTransactions = computed(() => {
   });
 });
 
+const holdingCols = [
+  { colKey: 'name', title: '名称 / 代码' },
+  { colKey: 'quantity', title: '持仓量', width: 90 },
+  { colKey: 'cost', title: '成本', width: 90 },
+  { colKey: 'last', title: '现价', width: 90 },
+  { colKey: 'mv', title: '市值', width: 110 },
+  { colKey: 'weight', title: '占比', width: 72 },
+  { colKey: 'pnl', title: '浮动盈亏', width: 130 },
+  { colKey: 'op', title: '交易', width: 72 },
+];
+
 const columns = [
   { colKey: 'date', title: '成交日期', width: 105 },
-  { colKey: 'account', title: '账户', width: 75 },
   { colKey: 'side', title: '方向', width: 70 },
   { colKey: 'name', title: '标的', minWidth: 120 },
   { colKey: 'price', title: '单价', width: 95 },
@@ -274,14 +324,31 @@ const columns = [
 const money = (n: number | null) => (n == null ? '—' : `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
 const signed = (n: number | null) =>
   n == null ? '—' : `${n >= 0 ? '+' : '-'}¥${Math.abs(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
+const pct = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${(n * 100).toFixed(2)}%`);
 const pnlColor = (n: number | null) => {
   if (n == null || n === 0) return 'var(--guanlan-muted)';
   return n > 0 ? 'var(--guanlan-red)' : 'var(--guanlan-green)';
 };
 const shortCode = (c: string) => c.replace(/^(sh|sz|bj)/i, '');
+function weightOf(mv: number | null) {
+  if (mv == null || !bookTotal.value) return '—';
+  return `${((mv / bookTotal.value) * 100).toFixed(1)}%`;
+}
+
+function tradeRow(row: { code: string; name: string; last: number | null; quantity: number }, side: TradeSide) {
+  invest.openTradeModal({
+    account: accountView.value,
+    side,
+    code: row.code,
+    name: row.name,
+    price: row.last || 0,
+    quantity: side === 'sell' ? Math.min(100, row.quantity) : 100,
+  });
+}
 
 function openAddDialog() {
-  formData.date = new Date().toISOString().slice(0, 10);
+  formData.date = todayCN();
+  formData.account = accountView.value;
   formData.code = '';
   formData.name = '';
   formData.price = 10;
@@ -389,6 +456,29 @@ function handleApplyHoldings() {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.hold-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-cap {
+  font-size: 12px;
+  color: var(--guanlan-muted);
+}
+
+.pnl-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-pct {
+  font-size: 12px;
+  opacity: 0.85;
 }
 
 .filter-bar {
