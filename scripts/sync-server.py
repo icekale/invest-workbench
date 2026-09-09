@@ -390,6 +390,15 @@ def cache_key_of(path: str) -> str | None:
     return k
 
 
+def cache_ttl_of(path: str) -> int:
+    raw = (parse_qs(urlparse(path).query).get("ttl") or [""])[0]
+    try:
+        n = int(raw)
+    except ValueError:
+        n = CACHE_TTL
+    return max(60, min(n, 24 * 3600))
+
+
 def get_market_cache(conn: sqlite3.Connection, k: str) -> str | None:
     row = conn.execute("SELECT v, exp FROM market_cache WHERE k=?", (k,)).fetchone()
     if not row:
@@ -402,11 +411,12 @@ def get_market_cache(conn: sqlite3.Connection, k: str) -> str | None:
     return str(v)
 
 
-def put_market_cache(conn: sqlite3.Connection, k: str, v: str) -> None:
+def put_market_cache(conn: sqlite3.Connection, k: str, v: str, ttl: int | None = None) -> None:
     now = int(time.time())
+    ttl_s = CACHE_TTL if ttl is None else max(60, min(int(ttl), 24 * 3600))
     conn.execute(
         "INSERT INTO market_cache(k, v, exp) VALUES(?,?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, exp=excluded.exp",
-        (k, v, now + CACHE_TTL),
+        (k, v, now + ttl_s),
     )
     conn.execute("DELETE FROM market_cache WHERE exp < ?", (now,))
     conn.commit()
@@ -501,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 conn = connect()
                 try:
-                    put_market_cache(conn, k, raw.decode())
+                    put_market_cache(conn, k, raw.decode(), cache_ttl_of(self.path))
                 finally:
                     conn.close()
             return self._send(200, b'{"ok":true}')
@@ -603,6 +613,9 @@ def selftest() -> None:
     conn.execute("UPDATE market_cache SET exp=1 WHERE k='wind:pmi'")
     conn.commit()
     assert get_market_cache(conn, "wind:pmi") is None
+    put_market_cache(conn, "short", "[]", 60)
+    exp = conn.execute("SELECT exp FROM market_cache WHERE k='short'").fetchone()[0]
+    assert 50 <= int(exp) - int(time.time()) <= 60
     conn.close()
 
     # legacy blob → xiong

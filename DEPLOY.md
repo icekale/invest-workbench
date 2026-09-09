@@ -41,7 +41,7 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 
 ## 持仓 SQLite 同步
 
-容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。账本只信 SQLite。慢数据（宏观）走 `/sync/cache`（6h）。
+容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。账本只信 SQLite。慢数据走 `/sync/cache`（宏观 6h，催化 15min）。
 
 加用户（VPS）：
 

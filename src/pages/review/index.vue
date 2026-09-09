@@ -10,7 +10,9 @@
             </span>
           </div>
           <div class="cash-row">
-            <span>现金</span>
+            <span class="cash-label"
+              >现金 <b class="cash-amt">{{ money(invest.cash.stock) }}</b></span
+            >
             <t-input-number
               :value="invest.cash.stock"
               :min="0"
@@ -33,7 +35,9 @@
             </span>
           </div>
           <div class="cash-row">
-            <span>现金</span>
+            <span class="cash-label"
+              >现金 <b class="cash-amt">{{ money(invest.cash.etf) }}</b></span
+            >
             <t-input-number
               :value="invest.cash.etf"
               :min="0"
@@ -431,14 +435,30 @@ function saveThesis() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   margin-top: 12px;
   font-size: 13px;
   color: var(--guanlan-muted);
 }
 
+.cash-label {
+  min-width: 0;
+  flex: 1;
+}
+
+.cash-amt {
+  color: var(--guanlan-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .cash-stepper {
-  width: 140px;
+  width: 176px;
+  flex: 0 0 176px;
+}
+
+.cash-stepper :deep(.t-input__inner) {
+  text-overflow: clip;
 }
 
 .todo-name {

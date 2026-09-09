@@ -15,7 +15,9 @@
       <t-col :xs="6" :sm="6" :xl="3">
         <t-card class="stat-card">
           <t-statistic title="持仓成本" :value="stats.cost" :precision="2">
-            <template #extra>仓位 {{ pctInt(stats.pos) }} · 现金 {{ pctInt(stats.cashPct) }}</template>
+            <template #extra>
+              仓位 {{ pctInt(stats.pos) }} · 现金 ¥{{ money(props.cash) }}（{{ pctInt(stats.cashPct) }}）
+            </template>
           </t-statistic>
         </t-card>
       </t-col>

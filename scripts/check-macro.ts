@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { inferBriefTone, inferBriefTopic, parseLiveBriefs } from '../src/utils/briefs.ts';
-import { parseCpi, parseGdp, parsePmi, parsePpi } from '../src/utils/macro-cn.ts';
+import { parseCpi, parseGdp, parsePmi, parsePpi, parseRmbLoan } from '../src/utils/macro-cn.ts';
 
 const pmiRows = [
   { REPORT_DATE: '2026-08-01 00:00:00', MAKE_INDEX: 49.8 },
@@ -28,6 +28,11 @@ const gdp = parseGdp([{ REPORT_DATE: '2026-06-30 00:00:00', SUM_SAME: 5.2 }]);
 assert.ok(gdp);
 assert.equal(gdp.latestValue, 5.2);
 assert.equal(gdp.freq, '季');
+
+const loan = parseRmbLoan([{ REPORT_DATE: '2026-07-01 00:00:00', RMB_LOAN: -5896 }]);
+assert.ok(loan);
+assert.equal(loan.latestValue, -5896);
+assert.equal(loan.unit, '亿元');
 
 // 空数据 / 缺字段 → null，不造数据
 assert.equal(parsePmi([]), null);

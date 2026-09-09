@@ -1,6 +1,7 @@
 import type { MacroBrief } from '@/types/invest';
 
 import { fetchOk, withRetry } from './http.ts';
+import { CATALYST_TTL_MS, marketGet, marketPut } from './market-cache';
 
 const LIVE_URL = '/wscn/apiv1/content/lives/pc?channel=global-channel&limit=30';
 const STRONG = /央行|CPI|PPI|PMI|社融|LPR|降准|降息|MLF|逆回购|政治局|国务院|FOMC|非农|GDP|M2|社零|SHIBOR|国债|财政/;
@@ -77,11 +78,15 @@ export function parseLiveBriefs(payload: unknown): MacroBrief[] {
 }
 
 export async function fetchLiveMacroBriefs(): Promise<MacroBrief[]> {
+  const hit = await marketGet<MacroBrief[]>('invest-wscn:lives', CATALYST_TTL_MS);
+  if (hit?.length) return hit;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await withRetry(() => fetchOk(LIVE_URL, { signal: controller.signal }));
-    return parseLiveBriefs(await res.json());
+    const rows = parseLiveBriefs(await res.json());
+    if (rows.length) marketPut('invest-wscn:lives', rows, CATALYST_TTL_MS);
+    return rows;
   } finally {
     clearTimeout(timer);
   }

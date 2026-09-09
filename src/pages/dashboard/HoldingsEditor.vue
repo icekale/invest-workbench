@@ -21,21 +21,21 @@
       <t-form-item name="cost" label="成本">
         <t-input-number v-model="form.cost" :min="0" :decimal-places="4" style="width: 150px" />
       </t-form-item>
-      <t-form-item label="股票现金">
+      <t-form-item :label="`股票现金 ¥${invest.cash.stock.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`">
         <t-input-number
           :value="invest.cash.stock"
           :min="0"
           :decimal-places="0"
-          style="width: 150px"
+          style="width: 220px"
           @change="(v) => invest.setCash('stock', Number(v) || 0)"
         />
       </t-form-item>
-      <t-form-item label="ETF 现金">
+      <t-form-item :label="`ETF 现金 ¥${invest.cash.etf.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`">
         <t-input-number
           :value="invest.cash.etf"
           :min="0"
           :decimal-places="0"
-          style="width: 150px"
+          style="width: 220px"
           @change="(v) => invest.setCash('etf', Number(v) || 0)"
         />
       </t-form-item>

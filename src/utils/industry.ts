@@ -1,5 +1,7 @@
 import type { IndustryFocus } from '@/types/invest';
 
+import { CATALYST_TTL_MS, marketGet, marketPut } from './market-cache';
+
 /**
  * 题材板块到对应场内主流 ETF 的映射字典
  */
@@ -72,6 +74,8 @@ interface XuangubaoPlateDetail {
  * 实时从选股宝 / 核心题材库采集产业风口与重大催化信息
  */
 export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
+  const hit = await marketGet<IndustryFocus[]>('invest-xgb:plates', CATALYST_TTL_MS);
+  if (hit?.length) return hit;
   try {
     const res = await fetch('/xgb/api/surge_stock/plates', {
       headers: { Accept: 'application/json' },
@@ -178,6 +182,7 @@ export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
       };
     });
 
+    if (list.length) marketPut('invest-xgb:plates', list, CATALYST_TTL_MS);
     return list;
   } catch (err) {
     throw err instanceof Error ? err : new Error('选股宝板块异动拉取失败');

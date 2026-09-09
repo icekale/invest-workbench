@@ -1,5 +1,7 @@
 import type { MacroEvent } from '@/types/invest';
 
+import { CATALYST_TTL_MS, marketGet, marketPut } from './market-cache';
+
 /**
  * 解析会议或日程的准确时间戳（毫秒）
  * 兼容 "YYYY-MM-DD" 与 "MM-DD" 格式，自动处理跨年逻辑
@@ -150,6 +152,9 @@ function inferBeneficiaries(title: string): string[] {
  * 实时从华尔街见闻公共财经日历与大事接口抓取近期重点会议与宏观事件
  */
 export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
+  const cacheKey = `invest-wscn:events:${days}`;
+  const hit = await marketGet<MacroEvent[]>(cacheKey, CATALYST_TTL_MS);
+  if (hit?.length) return hit;
   const now = Math.floor(Date.now() / 1000);
   const end = now + 86400 * Math.max(7, days);
 
@@ -208,8 +213,9 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
       }
     }
 
-    // 仅保留最核心的高信号前瞻日程（前25条），避免噪声刷屏
-    return results.slice(0, 25);
+    const rows = results.slice(0, 25);
+    if (rows.length) marketPut(cacheKey, rows, CATALYST_TTL_MS);
+    return rows;
   } catch (err) {
     clearTimeout(timeoutId);
     throw err instanceof Error ? err : new Error('华尔街见闻宏观日历拉取失败');

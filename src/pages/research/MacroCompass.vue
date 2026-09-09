@@ -165,24 +165,38 @@
           </div>
         </t-col>
 
-        <!-- 支柱 4: 利率估值与资产荒 (10Y国债 / 股债利差) · 静态参考值 -->
+        <!-- 支柱 4: 流动性 · 新增人民币贷款（社融主项） -->
         <t-col :xs="12" :sm="6" :xl="3">
-          <div class="edb-pillar-card" @click="openMetricChart('bond')">
+          <div class="edb-pillar-card" @click="openMetricChart('loan')">
             <div class="pillar-top">
-              <span class="pillar-label">利率中枢 · 资产荒</span>
-              <t-tag size="small" variant="light">静态参考</t-tag>
+              <span class="pillar-label">流动性 · 社融主项</span>
+              <t-tag v-if="!loanMetric" size="small" variant="light">未同步</t-tag>
+              <t-tag
+                v-else
+                size="small"
+                :theme="(loanMetric.latestValue ?? 0) >= 0 ? 'danger' : 'warning'"
+                variant="light"
+              >
+                {{ (loanMetric.latestValue ?? 0) >= 0 ? '信用扩张' : '信贷回落' }}
+              </t-tag>
             </div>
             <div class="pillar-main">
-              <span class="pillar-name">10Y国债收益率 / ERP</span>
+              <span class="pillar-name">{{ loanMetric?.name || '新增人民币贷款' }}</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">≈1.82</span>
-                <span class="pillar-unit">%</span>
-                <span class="pillar-tag-sub">非实时</span>
+                <span class="pillar-val">{{ loanMetric?.latestValue ?? '—' }}</span>
+                <span v-if="loanMetric" class="pillar-unit">{{ loanMetric.unit }}</span>
+                <span
+                  v-if="loanMetric?.change != null"
+                  class="pillar-change"
+                  :class="loanMetric.change >= 0 ? 'is-up' : 'is-down'"
+                >
+                  {{ loanMetric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(loanMetric.change) }}
+                </span>
               </div>
             </div>
             <div class="pillar-sub">
-              <span>静态参考值 · 以万得同步为准</span>
-              <span class="chart-link">示意 →</span>
+              <span>{{ loanMetric?.source || '数据未同步' }}</span>
+              <span v-if="loanMetric" class="chart-link">趋势图 →</span>
             </div>
           </div>
         </t-col>
@@ -325,6 +339,7 @@ const growthPmi = ref<MacroSeries | null>(null);
 const cpiMetric = ref<MacroSeries | null>(null);
 const ppiMetric = ref<MacroSeries | null>(null);
 const gdpMetric = ref<MacroSeries | null>(null);
+const loanMetric = ref<MacroSeries | null>(null);
 
 const chartModalVisible = ref(false);
 const activeMetric = ref<MacroSeries | null>(null);
@@ -389,7 +404,7 @@ function submitMacroModal() {
   macroModalVisible.value = false;
 }
 
-function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'bond') {
+function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'loan') {
   if (type === 'pmi') {
     activeMetric.value = growthPmi.value;
   } else if (type === 'cpi') {
@@ -399,20 +414,9 @@ function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'bond') {
   } else if (type === 'gdp') {
     activeMetric.value = gdpMetric.value;
   } else {
-    activeMetric.value = {
-      code: 'CN10Y',
-      name: '中债国债10年到期收益率（静态示意）',
-      unit: '%',
-      source: '静态示例 · 非实时',
-      freq: '日',
-      updateDate: '示例',
-      dates: ['2025-09', '2025-11', '2026-01', '2026-03', '2026-05', '2026-07', '2026-09'],
-      values: [2.05, 1.98, 1.92, 1.86, 1.84, 1.83, 1.82],
-      latestValue: 1.82,
-      previousValue: 1.83,
-      change: -0.01,
-    };
+    activeMetric.value = loanMetric.value;
   }
+  if (!activeMetric.value) return;
   chartModalVisible.value = true;
 }
 
@@ -478,12 +482,14 @@ function applyMacroBundle(bundle: {
   cpi: MacroSeries | null;
   ppi: MacroSeries | null;
   gdp: MacroSeries | null;
+  loan?: MacroSeries | null;
 }) {
   if (bundle.pmi) growthPmi.value = bundle.pmi;
   if (bundle.cpi) cpiMetric.value = bundle.cpi;
   if (bundle.ppi) ppiMetric.value = bundle.ppi;
   if (bundle.gdp) gdpMetric.value = bundle.gdp;
-  return [bundle.pmi, bundle.cpi, bundle.ppi, bundle.gdp].filter(Boolean).length;
+  if (bundle.loan) loanMetric.value = bundle.loan;
+  return [bundle.pmi, bundle.cpi, bundle.ppi, bundle.gdp, bundle.loan].filter(Boolean).length;
 }
 
 async function fetchAndApplyMacro(force: boolean) {
@@ -493,14 +499,14 @@ async function fetchAndApplyMacro(force: boolean) {
     if (okCount > 0) {
       macroState.value = 'ok';
       macroSyncTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      macroErrorMsg.value = okCount < 4 ? '部分指标未同步' : '';
+      macroErrorMsg.value = okCount < 5 ? '部分指标未同步' : '';
     } else {
       macroState.value = 'error';
       macroErrorMsg.value = '宏观数据未同步';
       macroSyncTime.value = '';
     }
   } catch (e) {
-    if (!growthPmi.value && !cpiMetric.value && !ppiMetric.value && !gdpMetric.value) {
+    if (!growthPmi.value && !cpiMetric.value && !ppiMetric.value && !gdpMetric.value && !loanMetric.value) {
       macroState.value = 'error';
       macroErrorMsg.value = e instanceof Error ? e.message : '东财数据中心不可用';
     }
