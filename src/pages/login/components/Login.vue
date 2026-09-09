@@ -40,6 +40,7 @@
           登录
         </t-button>
       </div>
+      <p class="auth-switch">没有账号？<a @click="emit('go-register')">注册</a></p>
     </t-form>
   </div>
 </template>
@@ -51,7 +52,9 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { useInvestStore, useUserStore } from '@/store';
 import { bindCloudSync } from '@/utils/cloud-sync';
+import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
+const emit = defineEmits<{ 'go-register': [] }>();
 const userStore = useUserStore();
 
 const INITIAL_DATA = {
@@ -80,6 +83,7 @@ const onSubmit = async (ctx: SubmitContext) => {
       const account = String(formData.value.account || '').trim();
       useInvestStore().adoptUser(account);
       await bindCloudSync(useInvestStore());
+      await settleConflictsIfNeeded();
       const redirect = route.query.redirect as string;
       router.push(redirect || '/dashboard');
     } catch (e: unknown) {
@@ -154,6 +158,18 @@ const onSubmit = async (ctx: SubmitContext) => {
     &:hover {
       background-color: #0b5f5c;
     }
+  }
+}
+
+.auth-switch {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--td-text-color-secondary, #73808a);
+
+  a {
+    color: var(--td-brand-color, #0d706d);
+    cursor: pointer;
   }
 }
 </style>

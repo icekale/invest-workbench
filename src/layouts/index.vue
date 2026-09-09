@@ -32,7 +32,9 @@ import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { prefix } from '@/config/global';
-import { useSettingStore, useTabsRouterStore } from '@/store';
+import { useInvestStore, useSettingStore, useTabsRouterStore } from '@/store';
+import { bindCloudSync } from '@/utils/cloud-sync';
+import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
 import LayoutContent from './components/LayoutContent.vue';
 import LayoutHeader from './components/LayoutHeader.vue';
@@ -69,6 +71,7 @@ const onEsc = (e: KeyboardEvent) => {
 onMounted(() => {
   appendNewRoute();
   window.addEventListener('keydown', onEsc);
+  void bindCloudSync(useInvestStore()).then(() => settleConflictsIfNeeded());
 });
 
 onUnmounted(() => {

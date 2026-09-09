@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 
-import { emptySnap, mergeByKey, mergeScalar, same, threeWaySnapshot } from '../src/utils/sync-merge.ts';
+import {
+  applyConflictPicks,
+  emptySnap,
+  mergeByKey,
+  mergeScalar,
+  same,
+  threeWaySnapshot,
+} from '../src/utils/sync-merge.ts';
 
 const a = {
   account: 'etf',
@@ -53,6 +60,18 @@ assert.equal(mergeScalar(1, 1, 3), 3);
   assert.equal(merged.cash?.etf, 5);
   assert.equal(merged.cash?.stock, 8);
   assert.equal(conflicts.length, 0);
+}
+
+{
+  const { merged, conflicts } = threeWaySnapshot(
+    { ...emptySnap(), holdings: [a] },
+    { ...emptySnap(), holdings: [b] },
+    { ...emptySnap(), holdings: [{ ...a, cost: 9 }] },
+  );
+  assert.ok(conflicts.length >= 1);
+  const remote = applyConflictPicks(merged, conflicts, 'remote');
+  const row = (remote.holdings || []).find((h) => (h as { code: string }).code === 'sh510300') as { cost: number };
+  assert.equal(row.cost, 9);
 }
 
 console.log('check-sync ok');

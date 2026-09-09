@@ -39,7 +39,7 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 
 ## 持仓 SQLite 同步
 
-容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；每个用户独立 `holdings`/`cash`/`transactions`/`kv`。浏览器 localStorage 键为 `invest-v2-*::用户名`，同步用三方合并（冲突留本地）。
+容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。两端同时改同一标的时弹窗选本机或云端。浏览器 localStorage 键为 `invest-v2-*::用户名`，同步用三方合并（冲突留本地）。
 
 加用户（VPS）：
 

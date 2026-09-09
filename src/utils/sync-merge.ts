@@ -24,6 +24,8 @@ export function mergeScalar<T>(base: T | undefined, local: T | undefined, remote
 export interface MergeConflict {
   table: string;
   key: string;
+  local?: unknown;
+  remote?: unknown;
 }
 
 export function mergeByKey<T>(
@@ -55,8 +57,7 @@ export function mergeByKey<T>(
       if (l !== undefined) items.push(l);
       continue;
     }
-    conflicts.push({ table, key });
-    // ponytail: 冲突留本地；要远程优先或弹窗三选一时再改
+    conflicts.push({ table, key, local: l, remote: r });
     if (l !== undefined) items.push(l);
     else if (r !== undefined) items.push(r);
   }
@@ -271,4 +272,43 @@ export function threeWaySnapshot(
     industryFocus,
   };
   return { merged, conflicts };
+}
+
+const LIST_KEY: Record<string, (row: Record<string, unknown>) => string> = {
+  holdings: (h) => `${h.account}:${h.code}`,
+  transactions: (x) => String(x.id || ''),
+  todos: (x) => String(x.id || ''),
+  theses: (x) => String(x.id || ''),
+  journal: (x) => String(x.id || ''),
+  opportunities: (x) => String(x.id || ''),
+  customPortfolios: (x) => String(x.id || ''),
+  navSnapshots: (x) => String(x.date || ''),
+  macroIndicators: (x) => String(x.id || ''),
+  macroBriefs: (x) => String(x.id || ''),
+  macroEvents: (x) => String(x.id || ''),
+  industryFocus: (x) => String(x.id || ''),
+};
+
+export function applyConflictPicks(merged: BookSnap, conflicts: MergeConflict[], pick: 'local' | 'remote'): BookSnap {
+  const next = JSON.parse(JSON.stringify(merged)) as BookSnap;
+  const bag = next as Record<string, unknown>;
+  for (const c of conflicts) {
+    const chosen = pick === 'remote' ? c.remote : c.local;
+    if (c.table === 'watchlist') {
+      const ids = ((next.watchlist || []) as string[]).filter((id) => id !== c.key);
+      if (typeof chosen === 'string') {
+        ids.push(chosen);
+      } else if (chosen && typeof chosen === 'object' && 'id' in (chosen as object)) {
+        ids.push(String((chosen as { id: string }).id));
+      }
+      next.watchlist = ids;
+      continue;
+    }
+    const keyOf = LIST_KEY[c.table];
+    if (!keyOf) continue;
+    const list = ((bag[c.table] as unknown[]) || []).filter((row) => keyOf(row as Record<string, unknown>) !== c.key);
+    if (chosen !== undefined) list.push(chosen);
+    bag[c.table] = list;
+  }
+  return next;
 }

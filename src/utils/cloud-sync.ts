@@ -1,7 +1,7 @@
 /** 同源 /sync → VPS SQLite。浏览器 localStorage 只是缓存。 */
 
-import type { BookSnap } from './sync-merge';
-import { emptySnap, same, slimSnap, threeWaySnapshot } from './sync-merge';
+import type { BookSnap, MergeConflict } from './sync-merge';
+import { applyConflictPicks, emptySnap, same, slimSnap, threeWaySnapshot } from './sync-merge';
 
 export type SyncAction = 'push' | 'pull' | 'noop' | 'merge';
 export type CloudSnapshot = BookSnap;
@@ -18,6 +18,7 @@ let timer = 0;
 let storeRef: SyncStore | null = null;
 let pending: Promise<SyncAction | 'offline'> | null = null;
 let creds = { user: '', pass: '' };
+let pendingPick: { merged: BookSnap; conflicts: MergeConflict[] } | null = null;
 
 export function parseBasic(token: string): { user: string; pass: string } | null {
   if (!token || !token.startsWith('Basic ')) return null;
@@ -38,6 +39,32 @@ export function basicToken(user: string, pass: string): string {
 export function setSyncCreds(user: string, pass: string) {
   creds = { user, pass };
   pending = null;
+  pendingPick = null;
+}
+
+export function getPendingConflicts(): MergeConflict[] {
+  return pendingPick?.conflicts ?? [];
+}
+
+export async function applyEnd(pick: 'local' | 'remote') {
+  if (!pendingPick || !storeRef) {
+    pendingPick = null;
+    return;
+  }
+  const next = applyConflictPicks(pendingPick.merged, pendingPick.conflicts, pick);
+  const now = Date.now();
+  next.updatedAt = now;
+  setHydrating(true);
+  try {
+    storeRef.restoreSnapshot(next);
+    writeBase(next);
+    await pushCloudSnapshot(next);
+    storeRef.setPref('updatedAt', now);
+    storeRef.setPref('lastCloudSyncAt', now);
+  } finally {
+    setHydrating(false);
+    pendingPick = null;
+  }
 }
 
 function authHeader(): string {
@@ -125,19 +152,24 @@ export async function hydrateFromCloud(store: SyncStore): Promise<SyncAction | '
     const local = slimSnap(store.snapshot());
     const remote = remoteRaw ? slimSnap(remoteRaw) : emptySnap();
     const ancestor = readBase() ? slimSnap(readBase() as BookSnap) : emptySnap();
-    const { merged } = threeWaySnapshot(ancestor, local, remote);
+    const { merged, conflicts } = threeWaySnapshot(ancestor, local, remote);
     const now = Date.now();
     merged.updatedAt = now;
 
     const localSame = same(comparable(merged), comparable(local));
     const remoteSame = remoteRaw ? same(comparable(merged), comparable(remote)) : false;
 
+    if (conflicts.length) {
+      pendingPick = { merged, conflicts };
+      if (!localSame) store.restoreSnapshot(merged);
+      return 'merge';
+    }
+
     if (!localSame) store.restoreSnapshot(merged);
     writeBase(merged);
 
     let action: SyncAction = 'noop';
     if (!remoteRaw) action = 'push';
-    else if (!localSame && !remoteSame) action = 'merge';
     else if (!remoteSame) action = 'push';
     else if (!localSame) action = 'pull';
 
@@ -177,4 +209,15 @@ export async function loginAgainstSync(account: string, password: string): Promi
   if (res.status === 401) throw new Error('账号或密码错误');
   if (res.status !== 200 && res.status !== 204) throw new Error(`登录失败 ${res.status}`);
   setSyncCreds(account, password);
+}
+
+export async function registerAccount(account: string, password: string) {
+  const res = await fetch('/sync/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: account, password }),
+  });
+  if (res.status === 409) throw new Error('账号已存在');
+  if (res.status === 400) throw new Error('账号须为字母数字 ._-，密码至少 4 位');
+  if (!res.ok) throw new Error(`注册失败 ${res.status}`);
 }

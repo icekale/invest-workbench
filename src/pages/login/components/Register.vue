@@ -1,148 +1,164 @@
 <template>
-  <t-form
-    ref="form"
-    class="item-container"
-    :class="[`register-${type}`]"
-    :data="formData"
-    :rules="FORM_RULES"
-    label-width="0"
-    @submit="onSubmit"
-  >
-    <template v-if="type === 'phone'">
-      <t-form-item name="phone">
+  <div class="login-form-wrapper">
+    <t-form
+      class="login-password-form"
+      :data="formData"
+      :rules="FORM_RULES"
+      label-align="top"
+      :disabled="loading"
+      @submit="onSubmit"
+    >
+      <t-form-item name="account" label="账号">
         <t-input
-          v-model="formData.phone"
-          :maxlength="11"
+          v-model="formData.account"
           size="large"
-          :placeholder="t('pages.login.register.phonePlaceholder')"
+          placeholder="字母数字 ._- ，最多 32 位"
+          clearable
+          autocomplete="username"
         >
           <template #prefix-icon>
             <t-icon name="user" />
           </template>
         </t-input>
       </t-form-item>
-    </template>
-
-    <template v-if="type === 'email'">
-      <t-form-item name="email">
+      <t-form-item name="password" label="密码">
         <t-input
-          v-model="formData.email"
-          type="text"
+          v-model="formData.password"
           size="large"
-          :placeholder="t('pages.login.register.emailPlaceholder')"
+          :type="showPsw ? 'text' : 'password'"
+          clearable
+          placeholder="至少 4 位"
+          autocomplete="new-password"
         >
           <template #prefix-icon>
-            <t-icon name="mail" />
+            <t-icon name="lock-on" />
+          </template>
+          <template #suffix-icon>
+            <t-icon :name="showPsw ? 'browse' : 'browse-off'" class="toggle-pwd-btn" @click="showPsw = !showPsw" />
           </template>
         </t-input>
       </t-form-item>
-    </template>
-
-    <t-form-item name="password">
-      <t-input
-        v-model="formData.password"
-        size="large"
-        :type="showPsw ? 'text' : 'password'"
-        clearable
-        :placeholder="t('pages.login.register.passwordPlaceholder')"
-      >
-        <template #prefix-icon>
-          <t-icon name="lock-on" />
-        </template>
-        <template #suffix-icon>
-          <t-icon :name="showPsw ? 'browse' : 'browse-off'" @click="showPsw = !showPsw" />
-        </template>
-      </t-input>
-    </t-form-item>
-
-    <template v-if="type === 'phone'">
-      <t-form-item class="verification-code" name="verifyCode">
+      <t-form-item name="confirm" label="确认密码">
         <t-input
-          v-model="formData.verifyCode"
+          v-model="formData.confirm"
           size="large"
-          :placeholder="t('pages.login.register.verifyCodePlaceholder')"
-        />
-        <t-button variant="outline" :disabled="countDown > 0" @click="handleCounter">
-          {{
-            countDown === 0
-              ? t('pages.login.register.sendVerifyCode')
-              : t('pages.login.register.resendCountdown', { count: countDown })
-          }}
-        </t-button>
+          :type="showPsw ? 'text' : 'password'"
+          clearable
+          placeholder="再输入一次密码"
+          autocomplete="new-password"
+        >
+          <template #prefix-icon>
+            <t-icon name="lock-on" />
+          </template>
+        </t-input>
       </t-form-item>
-    </template>
-
-    <t-form-item class="check-container" name="checked">
-      <t-checkbox v-model="formData.checked">{{ t('pages.login.register.agreeTerms') }} </t-checkbox>
-      <span>{{ t('pages.login.register.serviceTerms') }}</span>
-      {{ t('common.conjunction') }}
-      <span>{{ t('pages.login.register.privacyStatement') }}</span>
-    </t-form-item>
-
-    <t-form-item>
-      <t-button block size="large" type="submit"> {{ t('pages.login.register.registerBtn') }} </t-button>
-    </t-form-item>
-
-    <div class="switch-container">
-      <span class="tip" @click="switchType(type === 'phone' ? 'email' : 'phone')">
-        {{ type === 'phone' ? t('pages.login.register.useEmailRegister') : t('pages.login.register.usePhoneRegister') }}
-      </span>
-    </div>
-  </t-form>
+      <div class="btn-container">
+        <t-button block size="large" theme="primary" type="submit" :loading="loading" class="login-submit-btn"
+          >注册并进入</t-button
+        >
+      </div>
+      <p class="auth-switch">已有账号？<a @click="emit('go-login')">去登录</a></p>
+    </t-form>
+  </div>
 </template>
 <script setup lang="ts">
 import type { FormRule, SubmitContext } from 'tdesign-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
-import { useCounter } from '@/hooks';
-import { t } from '@/locales';
+import { useInvestStore, useUserStore } from '@/store';
+import { bindCloudSync, registerAccount } from '@/utils/cloud-sync';
+import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
-const emit = defineEmits(['register-success']);
+const emit = defineEmits<{ 'go-login': [] }>();
+const userStore = useUserStore();
+const router = useRouter();
+const route = useRoute();
 
-const INITIAL_DATA = {
-  phone: '',
-  email: '',
-  password: '',
-  verifyCode: '',
-  checked: false,
-};
+const formData = ref({ account: '', password: '', confirm: '' });
+const showPsw = ref(false);
+const loading = ref(false);
 
 const FORM_RULES = computed<Record<string, FormRule[]>>(() => ({
-  phone: [{ required: true, message: t('pages.login.register.validation.phone'), type: 'error' }],
-  email: [
-    { required: true, message: t('pages.login.register.validation.email'), type: 'error' },
-    { email: true, message: t('pages.login.register.validation.emailFormat'), type: 'warning' },
+  account: [
+    { required: true, message: '请输入账号', type: 'error' },
+    { pattern: /^[\w.-]{1,32}$/, message: '账号须为字母数字 ._-', type: 'error' },
   ],
-  password: [{ required: true, message: t('pages.login.register.validation.password'), type: 'error' }],
-  verifyCode: [{ required: true, message: t('pages.login.register.validation.verifyCode'), type: 'error' }],
+  password: [
+    { required: true, message: '请输入密码', type: 'error' },
+    { min: 4, message: '密码至少 4 位', type: 'error' },
+  ],
+  confirm: [
+    { required: true, message: '请再次输入密码', type: 'error' },
+    {
+      validator: (val: string) => val === formData.value.password,
+      message: '两次密码不一致',
+      type: 'error',
+    },
+  ],
 }));
 
-const type = ref('phone');
-
-const form = ref();
-const formData = ref({ ...INITIAL_DATA });
-
-const showPsw = ref(false);
-
-const [countDown, handleCounter] = useCounter();
-
-const onSubmit = (ctx: SubmitContext) => {
-  if (ctx.validateResult === true) {
-    if (!formData.value.checked) {
-      MessagePlugin.error(t('pages.login.register.validation.agreeTerms'));
-      return;
-    }
-    MessagePlugin.success(t('pages.login.register.messages.registerSuccess'));
-    emit('register-success');
+const onSubmit = async (ctx: SubmitContext) => {
+  if (ctx.validateResult !== true) return;
+  try {
+    loading.value = true;
+    const account = formData.value.account.trim();
+    await registerAccount(account, formData.value.password);
+    await userStore.login({ account, password: formData.value.password });
+    useInvestStore().adoptUser(account);
+    await bindCloudSync(useInvestStore());
+    await settleConflictsIfNeeded();
+    router.push((route.query.redirect as string) || '/dashboard');
+  } catch (e: unknown) {
+    MessagePlugin.error((e as Error).message || '注册失败');
+  } finally {
+    loading.value = false;
   }
-};
-
-const switchType = (val: string) => {
-  form.value.reset();
-  type.value = val;
 };
 </script>
 <style lang="less" scoped>
-@import '../index.less';
+.login-form-wrapper {
+  width: 100%;
+}
+
+.login-password-form {
+  :deep(.t-form__item) {
+    margin-bottom: 20px;
+  }
+
+  :deep(.t-form__label) {
+    padding-bottom: 6px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  :deep(.t-input) {
+    height: 44px;
+    border-radius: 8px;
+  }
+}
+
+.btn-container {
+  margin-top: 8px;
+
+  .login-submit-btn {
+    height: 46px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+.auth-switch {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--td-text-color-secondary, #73808a);
+
+  a {
+    color: var(--td-brand-color, #0d706d);
+    cursor: pointer;
+  }
+}
 </style>

@@ -160,6 +160,17 @@ def migrate_legacy_blob(conn: sqlite3.Connection) -> None:
     put_snapshot(conn, "xiong", data)
 
 
+def register_user(conn: sqlite3.Connection, username: str, password: str) -> str:
+    if not USER_RE.match(username) or not password or len(password) < 4:
+        return "bad"
+    row = conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone()
+    if row:
+        return "exists"
+    conn.execute("INSERT INTO users(username, pass_hash) VALUES (?, ?)", (username, hash_pass(password)))
+    conn.commit()
+    return "ok"
+
+
 def upsert_user(conn: sqlite3.Connection, username: str, password: str) -> None:
     if not USER_RE.match(username):
         raise ValueError("bad username")
@@ -442,6 +453,32 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
         return self._send(200, b'{"ok":true}')
 
+    def do_POST(self) -> None:  # noqa: N802
+        if self._path() != "/sync/register":
+            return self._send(404, b'{"error":"not found"}')
+        n = int(self.headers.get("Content-Length") or 0)
+        if n <= 0 or n > 4096:
+            return self._send(413, b'{"error":"too large"}')
+        try:
+            data = json.loads(self.rfile.read(n))
+        except Exception:
+            return self._send(400, b'{"error":"invalid json"}')
+        if not isinstance(data, dict):
+            return self._send(400, b'{"error":"invalid json"}')
+        username = str(data.get("username") or "").strip()
+        password = str(data.get("password") or "")
+        with LOCK:
+            conn = connect()
+            try:
+                result = register_user(conn, username, password)
+            finally:
+                conn.close()
+        if result == "exists":
+            return self._send(409, b'{"error":"exists"}')
+        if result == "bad":
+            return self._send(400, b'{"error":"bad username or password"}')
+        return self._send(201, b'{"ok":true}')
+
 
 def selftest() -> None:
     import tempfile
@@ -456,6 +493,10 @@ def selftest() -> None:
     assert auth_user(conn, "Basic " + base64.b64encode(b"xiong:demo").decode()) == "xiong"
     assert auth_user(conn, "Basic " + base64.b64encode(b"xiong:wrong").decode()) is None
     assert auth_user(conn, "Basic " + base64.b64encode(b"bob:bobpass").decode()) == "bob"
+    assert register_user(conn, "cara", "pw12") == "ok"
+    assert register_user(conn, "cara", "pw12") == "exists"
+    assert register_user(conn, "bad name", "pw12") == "bad"
+    assert auth_user(conn, "Basic " + base64.b64encode(b"cara:pw12").decode()) == "cara"
 
     put_snapshot(
         conn,

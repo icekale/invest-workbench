@@ -28,18 +28,24 @@
 
       <div class="terminal-card">
         <div class="card-header">
-          <h2 class="card-title">登录</h2>
+          <h2 class="card-title">{{ panel === 'login' ? '登录' : '注册账号' }}</h2>
         </div>
-        <login />
+        <login v-if="panel === 'login'" @go-register="panel = 'register'" />
+        <register v-else @go-login="panel = 'login'" />
       </div>
     </main>
   </div>
 </template>
 <script setup lang="ts">
+import { ref } from 'vue';
+
 import GuanlanLogo from '@/components/GuanlanLogo.vue';
 
 import Login from './components/Login.vue';
+import Register from './components/Register.vue';
 import WaveIllustration from './components/WaveIllustration.vue';
+
+const panel = ref<'login' | 'register'>('login');
 </script>
 <style lang="less" scoped>
 @import './index.less';
