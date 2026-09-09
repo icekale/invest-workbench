@@ -72,7 +72,7 @@
           <span>{{ drillL1 }}</span>
         </div>
         <div class="weight-body">
-          <div class="donut" role="img" :aria-label="`${accountLabel}行业占比`" :style="{ background: donutBg }" />
+          <div ref="pieEl" class="donut-chart" role="img" :aria-label="`${accountLabel}行业占比`" />
           <div class="weight-rows">
             <div
               v-for="a in allocItems"
@@ -241,7 +241,11 @@
   </t-space>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { PieChart } from 'echarts/charts';
+import { TooltipComponent } from 'echarts/components';
+import * as echarts from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
@@ -253,9 +257,13 @@ import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
 defineOptions({ name: 'ReviewIndex' });
 
+echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
+
 const invest = useInvestStore();
 const accountView = ref<'stock' | 'etf'>('stock');
 const holdView = ref<'list' | 'weight'>('list');
+const pieEl = ref<HTMLDivElement>();
+let pie: echarts.ECharts | null = null;
 const scenKeys = ['bear', 'base', 'bull'] as const;
 const metricOpts = [
   { label: '隐含EPS', value: 'eps' },
@@ -344,18 +352,50 @@ function colorOf(name: string) {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
 }
-const donutBg = computed(() => {
-  const items = allocItems.value;
-  if (!items.length) return 'var(--guanlan-surface-soft, #eef2f4)';
-  let acc = 0;
-  const stops: string[] = [];
-  for (const a of items) {
-    const from = acc * 100;
-    acc += a.pct;
-    stops.push(`${colorOf(a.name)} ${from}% ${(acc * 100).toFixed(2)}%`);
+function renderPie() {
+  if (!pieEl.value) return;
+  if (!pie) {
+    pie = echarts.init(pieEl.value);
+    pie.on('click', (p) => onAllocClick(String(p.name)));
   }
-  if (acc < 0.999) stops.push(`var(--guanlan-surface-soft, #eef2f4) ${(acc * 100).toFixed(2)}% 100%`);
-  return `conic-gradient(${stops.join(', ')})`;
+  pie.setOption(
+    {
+      animation: false,
+      tooltip: { trigger: 'item', formatter: '{b} {d}%' },
+      series: [
+        {
+          type: 'pie',
+          radius: ['42%', '68%'],
+          avoidLabelOverlap: true,
+          label: { formatter: '{b}\n{d}%', fontSize: 11, color: '#1f2d3a' },
+          labelLine: { length: 8, length2: 6 },
+          data: allocItems.value.map((a) => ({
+            name: a.name,
+            value: Number((a.pct * 100).toFixed(1)),
+            itemStyle: { color: colorOf(a.name) },
+          })),
+        },
+      ],
+    },
+    true,
+  );
+}
+watch(
+  [holdView, allocItems],
+  async () => {
+    if (holdView.value !== 'weight') {
+      pie?.dispose();
+      pie = null;
+      return;
+    }
+    await nextTick();
+    renderPie();
+  },
+  { deep: true },
+);
+onUnmounted(() => {
+  pie?.dispose();
+  pie = null;
 });
 function weightOf(mv: number | null) {
   if (mv == null || !bookTotal.value) return '—';
@@ -594,20 +634,10 @@ function toggleTodo(id: string, status: TodoStatus) {
   gap: 24px;
 }
 
-.donut {
-  width: 168px;
-  height: 168px;
+.donut-chart {
+  width: 280px;
+  height: 220px;
   flex-shrink: 0;
-  border-radius: 50%;
-  position: relative;
-}
-
-.donut::after {
-  content: '';
-  position: absolute;
-  inset: 42px;
-  border-radius: 50%;
-  background: var(--td-bg-color-container, #fff);
 }
 
 .weight-row.clickable {
@@ -617,16 +647,15 @@ function toggleTodo(id: string, status: TodoStatus) {
 .weight-rows {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 200px;
-  flex: 1;
+  gap: 8px;
+  width: max-content;
 }
 
 .weight-row {
   display: grid;
-  grid-template-columns: 8px minmax(72px, 1fr) 56px;
+  grid-template-columns: 8px auto 48px;
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   font-size: 13px;
 }
 
