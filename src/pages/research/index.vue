@@ -177,5 +177,6 @@ function commitBriefingTodo(todo: BriefingTodoDraft) {
 
 onMounted(() => {
   void bootBriefing(false);
+  if (!invest.macroEventsLastUpdated) void invest.refreshMacroEvents();
 });
 </script>

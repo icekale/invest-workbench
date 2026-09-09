@@ -1,5 +1,7 @@
 import type { MacroEvent } from '@/types/invest';
 
+import { todayCN } from './date';
+import { fetchOk, withRetry } from './http.ts';
 import { CATALYST_TTL_MS, marketGet, marketPut } from './market-cache';
 
 /**
@@ -151,26 +153,31 @@ function inferBeneficiaries(title: string): string[] {
 /**
  * 实时从华尔街见闻公共财经日历与大事接口抓取近期重点会议与宏观事件
  */
-export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
-  const cacheKey = `invest-wscn:events:${days}`;
-  const hit = await marketGet<MacroEvent[]>(cacheKey, CATALYST_TTL_MS);
-  if (hit?.length) return hit;
-  const now = Math.floor(Date.now() / 1000);
-  const end = now + 86400 * Math.max(7, days);
+function shanghaiDayStartUnix() {
+  return Math.floor(new Date(`${todayCN()}T00:00:00+08:00`).getTime() / 1000);
+}
 
+async function fetchMacrodatas(start: number, end: number) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
-
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
-    const res = await fetch(`/wscn/apiv1/finance/macrodatas?start=${now}&end=${end}`, {
+    return await fetchOk(`/wscn/apiv1/finance/macrodatas?start=${start}&end=${end}`, {
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
+export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
+  const cacheKey = `invest-wscn:events:v3:${days}`;
+  const hit = await marketGet<MacroEvent[]>(cacheKey, CATALYST_TTL_MS);
+  if (hit?.length) return hit;
+  const start = shanghaiDayStartUnix();
+  const end = start + 86400 * Math.max(7, days);
 
+  try {
+    const res = await withRetry(() => fetchMacrodatas(start, end));
     const json = await res.json();
     interface RawItem {
       id: number;
@@ -186,7 +193,7 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
 
     for (const it of items) {
       const title = (it.title || '').trim();
-      if (!title || seenTitles.has(title)) continue;
+      if (!title || seenTitles.has(title) || !it.public_date) continue;
 
       const imp = it.importance || 1;
       const isFE = it.calendar_type === 'FE';
@@ -195,8 +202,7 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
       // 仅收录高信号事件（会议事件且权重>=2，或含高关注关键词）
       if ((isFE && imp >= 2) || (hasKw && imp >= 2) || imp >= 3) {
         seenTitles.add(title);
-        const pubDate = it.public_date ? it.public_date * 1000 : Date.now();
-        const d = new Date(pubDate);
+        const d = new Date(it.public_date * 1000);
         const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
         const country = (it.country || '').trim();
@@ -213,11 +219,10 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
       }
     }
 
-    const rows = results.slice(0, 25);
+    const rows = results.slice(0, 40);
     if (rows.length) marketPut(cacheKey, rows, CATALYST_TTL_MS);
     return rows;
   } catch (err) {
-    clearTimeout(timeoutId);
     throw err instanceof Error ? err : new Error('华尔街见闻宏观日历拉取失败');
   }
 }
