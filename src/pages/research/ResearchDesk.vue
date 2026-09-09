@@ -1,417 +1,403 @@
 <template>
   <div>
-    <!-- 研判与决策主体区：左侧信号动态 + 右侧决策待办 -->
-    <t-row :gutter="[16, 16]">
-      <t-col :span="12">
-        <t-card title="宏观研判与事件催化">
-          <!-- 四级标签切换 -->
-          <div class="macro-subtabs-nav">
-            <t-tabs v-model="macroSectionTab" theme="normal">
-              <t-tab-panel value="signals" :label="`晨会研判 (${macros.length})`" />
-              <t-tab-panel value="events" :label="`近期重点会议 (${invest.macroEvents.length})`" />
-              <t-tab-panel value="industries" :label="`产业催化 (${invest.industryFocus.length})`" />
-            </t-tabs>
-          </div>
+    <t-card v-if="pane !== 'plan'" title="宏观研判与事件催化">
+      <!-- 四级标签切换 -->
+      <div class="macro-subtabs-nav">
+        <t-tabs v-model="macroSectionTab" theme="normal">
+          <t-tab-panel value="signals" :label="`晨会研判 (${macros.length})`" />
+          <t-tab-panel value="events" :label="`近期重点会议 (${invest.macroEvents.length})`" />
+          <t-tab-panel value="industries" :label="`产业催化 (${invest.industryFocus.length})`" />
+        </t-tabs>
+      </div>
 
-          <div v-if="macroSectionTab === 'signals'">
-            <div class="macro-filter-row">
-              <t-radio-group v-model="macroFilter" variant="default-filled">
-                <t-radio-button value="all">全部</t-radio-button>
-                <t-radio-button value="增长">增长</t-radio-button>
-                <t-radio-button value="流动性">流动性</t-radio-button>
-                <t-radio-button value="政策">政策</t-radio-button>
-                <t-radio-button value="海外">海外</t-radio-button>
-              </t-radio-group>
-              <t-space :size="8" align="center">
-                <span class="macro-count-hint">
-                  华尔街见闻{{ invest.macroBriefsLastUpdated ? ` · ${invest.macroBriefsLastUpdated}` : '' }} ·
-                  {{ macros.length }} 条
-                </span>
-                <t-button
-                  size="small"
-                  variant="outline"
-                  :loading="invest.macroBriefsLoading"
-                  @click="handleRefreshBriefs"
-                >
-                  <template #icon><t-icon name="refresh" /></template>
-                  同步快讯
-                </t-button>
-              </t-space>
-            </div>
-            <t-alert
-              v-if="invest.macroBriefsError"
-              theme="error"
-              :message="invest.macroBriefsError"
-              style="margin-bottom: 12px"
-            />
+      <div v-if="macroSectionTab === 'signals'">
+        <div class="macro-filter-row">
+          <t-radio-group v-model="macroFilter" variant="default-filled">
+            <t-radio-button value="all">全部</t-radio-button>
+            <t-radio-button value="增长">增长</t-radio-button>
+            <t-radio-button value="流动性">流动性</t-radio-button>
+            <t-radio-button value="政策">政策</t-radio-button>
+            <t-radio-button value="海外">海外</t-radio-button>
+          </t-radio-group>
+          <t-space :size="8" align="center">
+            <span class="macro-count-hint">
+              华尔街见闻{{ invest.macroBriefsLastUpdated ? ` · ${invest.macroBriefsLastUpdated}` : '' }} ·
+              {{ macros.length }} 条
+            </span>
+            <t-button size="small" variant="outline" :loading="invest.macroBriefsLoading" @click="handleRefreshBriefs">
+              <template #icon><t-icon name="refresh" /></template>
+              同步快讯
+            </t-button>
+          </t-space>
+        </div>
+        <t-alert
+          v-if="invest.macroBriefsError"
+          theme="error"
+          :message="invest.macroBriefsError"
+          style="margin-bottom: 12px"
+        />
 
-            <!-- 时间轴研判列表 -->
-            <t-timeline v-if="macros.length" mode="same">
-              <t-timeline-item
-                v-for="m in macros"
-                :key="m.id"
-                :dot-color="toneTimelineDot[m.tone as MacroTone] || toneTimelineDot['待定']"
-              >
-                <div class="macro">
-                  <div class="macro-hd">
-                    <strong class="macro-title">{{ m.title }}</strong>
-                    <t-space :size="6" align="center">
-                      <t-tag size="small" :theme="toneTagTheme(m.tone as MacroTone)" variant="light">{{
-                        m.tone
-                      }}</t-tag>
-                      <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
-                      <t-tag size="small" variant="outline">{{
-                        m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
-                      }}</t-tag>
-                      <span class="macro-time-badge">{{ m.time }}</span>
-                    </t-space>
-                  </div>
-                  <p class="macro-bd">{{ m.body }}</p>
-
-                  <div v-if="m.actionAdvice" class="macro-action-box">
-                    <span class="action-box-title">【应对策略】</span>
-                    <span class="action-box-text">{{ m.actionAdvice }}</span>
-                  </div>
-
-                  <div class="macro-ft">
-                    <t-button
-                      v-if="m.suggestedTodo"
-                      size="small"
-                      theme="primary"
-                      variant="outline"
-                      @click="onConvertMacro(m)"
-                    >
-                      + 加入交易计划 ({{ m.suggestedTodo.side === 'buy' ? '买' : '卖' }} {{ m.suggestedTodo.name }})
-                    </t-button>
-                    <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
-                      + 加入交易计划
-                    </t-button>
-
-                    <t-popconfirm
-                      v-if="m.id.startsWith('m_')"
-                      content="确认删除此条自定义研判？"
-                      @confirm="invest.removeMacroBrief(m.id)"
-                    >
-                      <t-button size="small" theme="danger" variant="text">删除</t-button>
-                    </t-popconfirm>
-                  </div>
-                </div>
-              </t-timeline-item>
-            </t-timeline>
-            <t-empty v-else description="暂无宏观快讯，点击同步华尔街见闻" style="padding: 24px 0" />
-          </div>
-
-          <!-- 视图 2: 近期重点会议 -->
-          <div v-else-if="macroSectionTab === 'events'" class="macro-events-panel">
-            <div class="macro-filter-row events-filter-row">
-              <div class="events-filter-left">
-                <t-radio-group v-model="eventsFilter" variant="default-filled" size="small">
-                  <t-radio-button value="upcoming">即将召开</t-radio-button>
-                  <t-radio-button value="all">全部日程</t-radio-button>
-                  <t-radio-button value="past">已结束</t-radio-button>
-                </t-radio-group>
-                <div class="major-filter-toggle" :class="{ 'is-active': onlyMajorEvents }">
-                  <t-checkbox v-model="onlyMajorEvents">
-                    <span class="major-toggle-text">
-                      <span class="major-flame">🔥</span>
-                      只看重大
-                    </span>
-                  </t-checkbox>
-                </div>
-                <span class="macro-section-sub events-sub-desc">
-                  实时同步央行议息、物价指数(CPI/PPI)、重大会议与核心产业峰会
-                </span>
-              </div>
-              <div class="events-filter-right">
-                <t-space :size="8" align="center">
-                  <span class="macro-count-hint">
-                    {{ onlyMajorEvents ? '重大' : '' }}
-                    {{ eventsFilter === 'upcoming' ? '待召开' : eventsFilter === 'past' ? '已结束' : '共' }}
-                    {{ sortedEvents.length }} 场
-                  </span>
-                  <t-button
-                    size="small"
-                    variant="outline"
-                    theme="default"
-                    :loading="invest.macroEventsLoading"
-                    @click="handleRefreshEvents"
-                  >
-                    <template #icon><t-icon name="refresh" /></template>
-                    同步最新日历
-                  </t-button>
+        <!-- 时间轴研判列表 -->
+        <t-timeline v-if="macros.length" mode="same">
+          <t-timeline-item
+            v-for="m in macros"
+            :key="m.id"
+            :dot-color="toneTimelineDot[m.tone as MacroTone] || toneTimelineDot['待定']"
+          >
+            <div class="macro">
+              <div class="macro-hd">
+                <strong class="macro-title">{{ m.title }}</strong>
+                <t-space :size="6" align="center">
+                  <t-tag size="small" :theme="toneTagTheme(m.tone as MacroTone)" variant="light">{{ m.tone }}</t-tag>
+                  <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
+                  <t-tag size="small" variant="outline">{{
+                    m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
+                  }}</t-tag>
+                  <span class="macro-time-badge">{{ m.time }}</span>
                 </t-space>
               </div>
+              <p class="macro-bd">{{ m.body }}</p>
+
+              <div v-if="m.actionAdvice" class="macro-action-box">
+                <span class="action-box-title">【应对策略】</span>
+                <span class="action-box-text">{{ m.actionAdvice }}</span>
+              </div>
+
+              <div class="macro-ft">
+                <t-button
+                  v-if="m.suggestedTodo"
+                  size="small"
+                  theme="primary"
+                  variant="outline"
+                  @click="onConvertMacro(m)"
+                >
+                  + 加入交易计划 ({{ m.suggestedTodo.side === 'buy' ? '买' : '卖' }} {{ m.suggestedTodo.name }})
+                </t-button>
+                <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
+                  + 加入交易计划
+                </t-button>
+
+                <t-popconfirm
+                  v-if="m.id.startsWith('m_')"
+                  content="确认删除此条自定义研判？"
+                  @confirm="invest.removeMacroBrief(m.id)"
+                >
+                  <t-button size="small" theme="danger" variant="text">删除</t-button>
+                </t-popconfirm>
+              </div>
             </div>
-            <t-alert
-              v-if="invest.macroEventsError"
-              theme="error"
-              :message="invest.macroEventsError"
-              style="margin-bottom: 12px"
-            />
+          </t-timeline-item>
+        </t-timeline>
+        <t-empty v-else description="暂无宏观快讯，点击同步华尔街见闻" style="padding: 24px 0" />
+      </div>
 
-            <div v-if="sortedEvents.length" class="events-list">
-              <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
-                <div class="event-card-top">
-                  <div class="event-date-col">
-                    <span class="event-date-main">{{ ev.date }}</span>
-                    <span
-                      class="event-countdown-badge"
-                      :class="{
-                        'countdown-urgent': getEventCountdown(ev.date).urgent,
-                        'countdown-future': !getEventCountdown(ev.date).isPast && !getEventCountdown(ev.date).urgent,
-                        'countdown-past': getEventCountdown(ev.date).isPast,
-                      }"
-                    >
-                      {{ getEventCountdown(ev.date).label }}
-                    </span>
-                  </div>
-                  <div class="event-main-col">
-                    <div class="event-headline">
-                      <strong class="event-title">{{ ev.title }}</strong>
-                      <t-space :size="6" align="center" wrap>
-                        <t-tag
-                          size="small"
-                          :theme="ev.level === '重大' ? 'danger' : ev.level === '关键' ? 'warning' : 'default'"
-                          variant="light"
-                        >
-                          {{ ev.level }}
-                        </t-tag>
-                        <t-tag size="small" variant="outline">{{ ev.category }}</t-tag>
-                        <t-tag size="small" variant="light">{{
-                          ev.account === 'stock' ? '股票' : ev.account === 'etf' ? 'ETF' : '全市场'
-                        }}</t-tag>
-                      </t-space>
-                    </div>
-                    <div class="event-impact-text">{{ ev.impact }}</div>
-                  </div>
-                </div>
+      <!-- 视图 2: 近期重点会议 -->
+      <div v-else-if="macroSectionTab === 'events'" class="macro-events-panel">
+        <div class="macro-filter-row events-filter-row">
+          <div class="events-filter-left">
+            <t-radio-group v-model="eventsFilter" variant="default-filled" size="small">
+              <t-radio-button value="upcoming">即将召开</t-radio-button>
+              <t-radio-button value="all">全部日程</t-radio-button>
+              <t-radio-button value="past">已结束</t-radio-button>
+            </t-radio-group>
+            <div class="major-filter-toggle" :class="{ 'is-active': onlyMajorEvents }">
+              <t-checkbox v-model="onlyMajorEvents">
+                <span class="major-toggle-text">
+                  <span class="major-flame">🔥</span>
+                  只看重大
+                </span>
+              </t-checkbox>
+            </div>
+            <span class="macro-section-sub events-sub-desc">
+              实时同步央行议息、物价指数(CPI/PPI)、重大会议与核心产业峰会
+            </span>
+          </div>
+          <div class="events-filter-right">
+            <t-space :size="8" align="center">
+              <span class="macro-count-hint">
+                {{ onlyMajorEvents ? '重大' : '' }}
+                {{ eventsFilter === 'upcoming' ? '待召开' : eventsFilter === 'past' ? '已结束' : '共' }}
+                {{ sortedEvents.length }} 场
+              </span>
+              <t-button
+                size="small"
+                variant="outline"
+                theme="default"
+                :loading="invest.macroEventsLoading"
+                @click="handleRefreshEvents"
+              >
+                <template #icon><t-icon name="refresh" /></template>
+                同步最新日历
+              </t-button>
+            </t-space>
+          </div>
+        </div>
+        <t-alert
+          v-if="invest.macroEventsError"
+          theme="error"
+          :message="invest.macroEventsError"
+          style="margin-bottom: 12px"
+        />
 
-                <!-- 催化受益标的与板块 -->
-                <div v-if="ev.beneficiaries?.length" class="event-beneficiaries-bar">
-                  <span class="bar-label">潜在催化标的/板块：</span>
-                  <div class="beneficiary-chips">
-                    <div
-                      v-for="b in ev.beneficiaries"
-                      :key="b"
-                      class="beneficiary-chip"
-                      @click="handleEventTargetClick(b, ev)"
-                    >
-                      <span>{{ b }}</span>
-                      <t-icon name="swap" size="11px" />
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 应对策略建议 -->
-                <div v-if="ev.suggestedAction" class="macro-action-box event-action-box">
-                  <span class="action-box-title">【应对策略】</span>
-                  <span class="action-box-text">{{ ev.suggestedAction }}</span>
-                </div>
-
-                <!-- 底部操作 -->
-                <div class="event-footer-bar">
-                  <t-space :size="8" wrap>
-                    <t-button size="small" theme="primary" variant="outline" @click="onConvertEventToTodo(ev)">
-                      + 加入交易计划
-                    </t-button>
-                    <t-button
-                      v-if="ev.beneficiaries?.[0]"
+        <div v-if="sortedEvents.length" class="events-list">
+          <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
+            <div class="event-card-top">
+              <div class="event-date-col">
+                <span class="event-date-main">{{ ev.date }}</span>
+                <span
+                  class="event-countdown-badge"
+                  :class="{
+                    'countdown-urgent': getEventCountdown(ev.date).urgent,
+                    'countdown-future': !getEventCountdown(ev.date).isPast && !getEventCountdown(ev.date).urgent,
+                    'countdown-past': getEventCountdown(ev.date).isPast,
+                  }"
+                >
+                  {{ getEventCountdown(ev.date).label }}
+                </span>
+              </div>
+              <div class="event-main-col">
+                <div class="event-headline">
+                  <strong class="event-title">{{ ev.title }}</strong>
+                  <t-space :size="6" align="center" wrap>
+                    <t-tag
                       size="small"
-                      theme="default"
-                      variant="text"
-                      @click="handleEventTargetClick(ev.beneficiaries[0], ev)"
+                      :theme="ev.level === '重大' ? 'danger' : ev.level === '关键' ? 'warning' : 'default'"
+                      variant="light"
                     >
-                      模拟交易标的
-                    </t-button>
+                      {{ ev.level }}
+                    </t-tag>
+                    <t-tag size="small" variant="outline">{{ ev.category }}</t-tag>
+                    <t-tag size="small" variant="light">{{
+                      ev.account === 'stock' ? '股票' : ev.account === 'etf' ? 'ETF' : '全市场'
+                    }}</t-tag>
                   </t-space>
+                </div>
+                <div class="event-impact-text">{{ ev.impact }}</div>
+              </div>
+            </div>
 
-                  <t-popconfirm
-                    v-if="ev.id.startsWith('ev_')"
-                    content="确认删除此条重点会议？"
-                    @confirm="invest.removeMacroEvent(ev.id)"
-                  >
-                    <t-button size="small" theme="danger" variant="text">删除</t-button>
-                  </t-popconfirm>
+            <!-- 催化受益标的与板块 -->
+            <div v-if="ev.beneficiaries?.length" class="event-beneficiaries-bar">
+              <span class="bar-label">潜在催化标的/板块：</span>
+              <div class="beneficiary-chips">
+                <div
+                  v-for="b in ev.beneficiaries"
+                  :key="b"
+                  class="beneficiary-chip"
+                  @click="handleEventTargetClick(b, ev)"
+                >
+                  <span>{{ b }}</span>
+                  <t-icon name="swap" size="11px" />
                 </div>
               </div>
             </div>
-            <t-empty
-              v-else
-              :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无即将召开的日程，点击同步日历'"
-              style="padding: 24px 0"
-            >
-              <template v-if="onlyMajorEvents" #action>
-                <t-button size="small" variant="outline" theme="primary" @click="onlyMajorEvents = false">
-                  查看全部日程
-                </t-button>
-              </template>
-            </t-empty>
-          </div>
 
-          <!-- 视图 3: 产业催化 -->
-          <div v-else-if="macroSectionTab === 'industries'" class="macro-industry-panel">
-            <div class="macro-filter-row">
-              <span class="macro-section-sub events-sub-desc">选股宝板块异动 · 涨停家数与资金流向</span>
-              <t-space :size="8" align="center">
-                <span class="macro-count-hint">
-                  {{ invest.industryFocusLastUpdated ? `更新 ${invest.industryFocusLastUpdated}` : '' }}
-                  · {{ invest.industryFocus.length }} 个板块
-                </span>
+            <!-- 应对策略建议 -->
+            <div v-if="ev.suggestedAction" class="macro-action-box event-action-box">
+              <span class="action-box-title">【应对策略】</span>
+              <span class="action-box-text">{{ ev.suggestedAction }}</span>
+            </div>
+
+            <!-- 底部操作 -->
+            <div class="event-footer-bar">
+              <t-space :size="8" wrap>
+                <t-button size="small" theme="primary" variant="outline" @click="onConvertEventToTodo(ev)">
+                  + 加入交易计划
+                </t-button>
                 <t-button
+                  v-if="ev.beneficiaries?.[0]"
                   size="small"
-                  variant="outline"
-                  :loading="invest.industryFocusLoading"
-                  @click="handleRefreshIndustry"
+                  theme="default"
+                  variant="text"
+                  @click="handleEventTargetClick(ev.beneficiaries[0], ev)"
                 >
-                  <template #icon><t-icon name="refresh" /></template>
-                  同步产业风口
+                  模拟交易标的
                 </t-button>
               </t-space>
-            </div>
-            <t-alert
-              v-if="invest.industryFocusError"
-              theme="error"
-              :message="invest.industryFocusError"
-              style="margin-bottom: 12px"
-            />
-            <div v-if="invest.industryFocus.length" class="industry-grid">
-              <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card">
-                <div class="ind-card-hd">
-                  <div class="ind-title-wrap">
-                    <strong class="ind-card-name">{{ ind.name }}</strong>
-                    <span
-                      v-if="ind.changeRate != null"
-                      class="ind-chg-pill tabular-nums"
-                      :class="ind.changeRate >= 0 ? 'is-up' : 'is-down'"
-                    >
-                      {{ ind.changeRate >= 0 ? '+' : '' }}{{ ind.changeRate }}%
-                    </span>
-                    <t-tag v-if="ind.limitUpCount" size="small" theme="danger" variant="dark">
-                      {{ ind.limitUpCount }}股涨停
-                    </t-tag>
-                    <t-tag size="small" :theme="ind.trend === 'up' ? 'danger' : 'default'" variant="light">
-                      {{ ind.cycleStage }}
-                    </t-tag>
-                  </div>
-                  <span class="ind-heat tabular-nums">景气 {{ ind.heat }}</span>
-                </div>
-                <div v-if="ind.catalyst" class="ind-catalyst-box">
-                  <span class="catalyst-tag">催化</span>
-                  <span class="catalyst-text">{{ ind.catalyst }}</span>
-                </div>
-                <div v-if="ind.keyTargets.length" class="ind-targets-bar">
-                  <span class="targets-label">领涨 / ETF</span>
-                  <button
-                    v-for="tgt in ind.keyTargets"
-                    :key="tgt.code"
-                    type="button"
-                    class="target-pill"
-                    @click="openIndustryTarget(ind, tgt)"
-                  >
-                    <span>{{ tgt.name }}</span>
-                    <span
-                      v-if="tgt.changePercent != null"
-                      class="tgt-chg tabular-nums"
-                      :class="tgt.changePercent >= 0 ? 'is-up' : 'is-down'"
-                    >
-                      {{ tgt.changePercent >= 0 ? '+' : '' }}{{ tgt.changePercent }}%
-                    </span>
-                    <span class="tgt-type">{{ tgt.type }}</span>
-                  </button>
-                </div>
-                <div class="ind-card-ft">
-                  <span class="ind-meta">
-                    {{ ind.updatedAt }}
-                    <template v-if="ind.fundFlow">
-                      · 主力
-                      <span class="tabular-nums" :class="ind.fundFlow >= 0 ? 'is-up' : 'is-down'">
-                        {{ fmtYi(ind.fundFlow) }}
-                      </span>
-                    </template>
-                  </span>
-                  <t-space :size="8">
-                    <t-button size="small" variant="outline" @click="onConvertIndustry(ind)">存入机会池</t-button>
-                    <t-popconfirm
-                      v-if="ind.id.startsWith('ind_')"
-                      content="确认删除此条产业跟踪？"
-                      @confirm="invest.removeIndustryFocus(ind.id)"
-                    >
-                      <t-button size="small" theme="danger" variant="text">删除</t-button>
-                    </t-popconfirm>
-                  </t-space>
-                </div>
-              </div>
-            </div>
-            <t-empty v-else description="暂无产业催化，点击同步选股宝板块异动" style="padding: 24px 0" />
-          </div>
-        </t-card>
-      </t-col>
 
-      <t-col :span="12">
-        <t-card title="交易计划">
-          <template #actions>
-            <t-button size="small" theme="primary" @click="openCreateTodoDialog">+ 新建</t-button>
+              <t-popconfirm
+                v-if="ev.id.startsWith('ev_')"
+                content="确认删除此条重点会议？"
+                @confirm="invest.removeMacroEvent(ev.id)"
+              >
+                <t-button size="small" theme="danger" variant="text">删除</t-button>
+              </t-popconfirm>
+            </div>
+          </div>
+        </div>
+        <t-empty
+          v-else
+          :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无即将召开的日程，点击同步日历'"
+          style="padding: 24px 0"
+        >
+          <template v-if="onlyMajorEvents" #action>
+            <t-button size="small" variant="outline" theme="primary" @click="onlyMajorEvents = false">
+              查看全部日程
+            </t-button>
           </template>
+        </t-empty>
+      </div>
 
-          <div class="todo-filter-bar">
-            <t-radio-group v-model="todoFilter" variant="default-filled" size="small">
-              <t-radio-button value="open">待执行 ({{ openTodos.length }})</t-radio-button>
-              <t-radio-button value="all">全部 ({{ invest.todos.length }})</t-radio-button>
-              <t-radio-button value="done">已完成 ({{ doneTodos.length }})</t-radio-button>
-            </t-radio-group>
+      <!-- 视图 3: 产业催化 -->
+      <div v-else-if="macroSectionTab === 'industries'" class="macro-industry-panel">
+        <div class="macro-filter-row">
+          <span class="macro-section-sub events-sub-desc">选股宝板块异动 · 涨停家数与资金流向</span>
+          <t-space :size="8" align="center">
+            <span class="macro-count-hint">
+              {{ invest.industryFocusLastUpdated ? `更新 ${invest.industryFocusLastUpdated}` : '' }}
+              · {{ invest.industryFocus.length }} 个板块
+            </span>
+            <t-button
+              size="small"
+              variant="outline"
+              :loading="invest.industryFocusLoading"
+              @click="handleRefreshIndustry"
+            >
+              <template #icon><t-icon name="refresh" /></template>
+              同步产业风口
+            </t-button>
+          </t-space>
+        </div>
+        <t-alert
+          v-if="invest.industryFocusError"
+          theme="error"
+          :message="invest.industryFocusError"
+          style="margin-bottom: 12px"
+        />
+        <div v-if="invest.industryFocus.length" class="industry-grid">
+          <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card">
+            <div class="ind-card-hd">
+              <div class="ind-title-wrap">
+                <strong class="ind-card-name">{{ ind.name }}</strong>
+                <span
+                  v-if="ind.changeRate != null"
+                  class="ind-chg-pill tabular-nums"
+                  :class="ind.changeRate >= 0 ? 'is-up' : 'is-down'"
+                >
+                  {{ ind.changeRate >= 0 ? '+' : '' }}{{ ind.changeRate }}%
+                </span>
+                <t-tag v-if="ind.limitUpCount" size="small" theme="danger" variant="dark">
+                  {{ ind.limitUpCount }}股涨停
+                </t-tag>
+                <t-tag size="small" :theme="ind.trend === 'up' ? 'danger' : 'default'" variant="light">
+                  {{ ind.cycleStage }}
+                </t-tag>
+              </div>
+              <span class="ind-heat tabular-nums">景气 {{ ind.heat }}</span>
+            </div>
+            <div v-if="ind.catalyst" class="ind-catalyst-box">
+              <span class="catalyst-tag">催化</span>
+              <span class="catalyst-text">{{ ind.catalyst }}</span>
+            </div>
+            <div v-if="ind.keyTargets.length" class="ind-targets-bar">
+              <span class="targets-label">领涨 / ETF</span>
+              <button
+                v-for="tgt in ind.keyTargets"
+                :key="tgt.code"
+                type="button"
+                class="target-pill"
+                @click="openIndustryTarget(ind, tgt)"
+              >
+                <span>{{ tgt.name }}</span>
+                <span
+                  v-if="tgt.changePercent != null"
+                  class="tgt-chg tabular-nums"
+                  :class="tgt.changePercent >= 0 ? 'is-up' : 'is-down'"
+                >
+                  {{ tgt.changePercent >= 0 ? '+' : '' }}{{ tgt.changePercent }}%
+                </span>
+                <span class="tgt-type">{{ tgt.type }}</span>
+              </button>
+            </div>
+            <div class="ind-card-ft">
+              <span class="ind-meta">
+                {{ ind.updatedAt }}
+                <template v-if="ind.fundFlow">
+                  · 主力
+                  <span class="tabular-nums" :class="ind.fundFlow >= 0 ? 'is-up' : 'is-down'">
+                    {{ fmtYi(ind.fundFlow) }}
+                  </span>
+                </template>
+              </span>
+              <t-space :size="8">
+                <t-button size="small" variant="outline" @click="onConvertIndustry(ind)">存入机会池</t-button>
+                <t-popconfirm
+                  v-if="ind.id.startsWith('ind_')"
+                  content="确认删除此条产业跟踪？"
+                  @confirm="invest.removeIndustryFocus(ind.id)"
+                >
+                  <t-button size="small" theme="danger" variant="text">删除</t-button>
+                </t-popconfirm>
+              </t-space>
+            </div>
           </div>
+        </div>
+        <t-empty v-else description="暂无产业催化，点击同步选股宝板块异动" style="padding: 24px 0" />
+      </div>
+    </t-card>
 
-          <div v-if="filteredTodos.length" class="plan-table-wrap">
-            <table class="plan-table">
-              <thead>
-                <tr>
-                  <th>标的</th>
-                  <th>方向</th>
-                  <th>数量</th>
-                  <th>预计金额</th>
-                  <th>执行方式</th>
-                  <th>状态</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="t in filteredTodos" :key="t.id">
-                  <td>
-                    <button type="button" class="plan-symbol" @click="openPlanTrade(t)">
-                      {{ t.name }} <span class="plan-code">{{ t.code }}</span>
-                    </button>
-                  </td>
-                  <td>
-                    <span class="plan-side" :class="t.side === 'buy' ? 'is-buy' : 'is-sell'">
-                      {{ t.side === 'buy' ? '买' : '卖' }}
-                    </span>
-                  </td>
-                  <td class="tabular-nums">{{ qtyText(t) }}</td>
-                  <td class="tabular-nums">{{ amountText(t) }}</td>
-                  <td>{{ execText(t) }}</td>
-                  <td>{{ statusText(t) }}</td>
-                  <td class="plan-ops">
-                    <t-button
-                      v-if="t.status === 'open'"
-                      size="small"
-                      variant="text"
-                      theme="primary"
-                      @click="invest.setTodoStatus(t.id, 'done')"
-                    >
-                      完成
-                    </t-button>
-                    <t-popconfirm content="确认删除此条计划？" @confirm="invest.removeTodo(t.id)">
-                      <t-button size="small" theme="danger" variant="text">删除</t-button>
-                    </t-popconfirm>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <t-empty v-else description="暂无交易计划" style="padding: 40px 0" />
-        </t-card>
-      </t-col>
-    </t-row>
+    <t-card v-if="pane !== 'catalyst'" title="交易计划">
+      <template #actions>
+        <t-button size="small" theme="primary" @click="openCreateTodoDialog">+ 新建</t-button>
+      </template>
+
+      <div class="todo-filter-bar">
+        <t-radio-group v-model="todoFilter" variant="default-filled" size="small">
+          <t-radio-button value="open">待执行 ({{ openTodos.length }})</t-radio-button>
+          <t-radio-button value="all">全部 ({{ invest.todos.length }})</t-radio-button>
+          <t-radio-button value="done">已完成 ({{ doneTodos.length }})</t-radio-button>
+        </t-radio-group>
+      </div>
+
+      <div v-if="filteredTodos.length" class="plan-table-wrap">
+        <table class="plan-table">
+          <thead>
+            <tr>
+              <th>标的</th>
+              <th>方向</th>
+              <th>数量</th>
+              <th>预计金额</th>
+              <th>执行方式</th>
+              <th>状态</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in filteredTodos" :key="t.id">
+              <td>
+                <button type="button" class="plan-symbol" @click="openPlanTrade(t)">
+                  {{ t.name }} <span class="plan-code">{{ t.code }}</span>
+                </button>
+              </td>
+              <td>
+                <span class="plan-side" :class="t.side === 'buy' ? 'is-buy' : 'is-sell'">
+                  {{ t.side === 'buy' ? '买' : '卖' }}
+                </span>
+              </td>
+              <td class="tabular-nums">{{ qtyText(t) }}</td>
+              <td class="tabular-nums">{{ amountText(t) }}</td>
+              <td>{{ execText(t) }}</td>
+              <td>{{ statusText(t) }}</td>
+              <td class="plan-ops">
+                <t-button
+                  v-if="t.status === 'open'"
+                  size="small"
+                  variant="text"
+                  theme="primary"
+                  @click="invest.setTodoStatus(t.id, 'done')"
+                >
+                  完成
+                </t-button>
+                <t-popconfirm content="确认删除此条计划？" @confirm="invest.removeTodo(t.id)">
+                  <t-button size="small" theme="danger" variant="text">删除</t-button>
+                </t-popconfirm>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <t-empty v-else description="暂无交易计划" style="padding: 40px 0" />
+    </t-card>
 
     <!-- 新增决策待办弹窗 -->
     <t-dialog
@@ -464,6 +450,8 @@ import { normalizeCode } from '@/utils/quote';
 import { confirmCreateTodo, openCreateTodoDialog, todoDialogVisible, todoForm } from './todo';
 
 type MacroTone = '利多' | '中性' | '警惕' | '待定';
+
+withDefaults(defineProps<{ pane?: 'catalyst' | 'plan' }>(), { pane: 'catalyst' });
 
 const invest = useInvestStore();
 const macroSectionTab = ref('signals');

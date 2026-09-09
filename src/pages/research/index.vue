@@ -38,16 +38,19 @@
       <t-radio-button value="desk">交易计划</t-radio-button>
     </t-radio-group>
 
-    <div v-show="tab === 'macro'" class="research-pane">
-      <briefing-card :written="writtenKeys" @retry="bootBriefing(true)" @commit="commitBriefingTodo" />
-      <macro-compass />
-      <etf-radar />
+    <div v-show="tab === 'macro' || tab === 'desk'" class="research-pane">
+      <briefing-card
+        v-show="tab === 'macro'"
+        :written="writtenKeys"
+        @retry="bootBriefing(true)"
+        @commit="commitBriefingTodo"
+      />
+      <macro-compass v-show="tab === 'macro'" />
+      <research-desk :pane="tab === 'desk' ? 'plan' : 'catalyst'" />
+      <etf-radar v-show="tab === 'macro'" />
     </div>
     <div v-show="tab === 'valuation'" class="research-pane">
       <valuation-radar />
-    </div>
-    <div v-show="tab === 'desk'" class="research-pane">
-      <research-desk v-if="seen.desk" />
     </div>
   </t-space>
 </template>
@@ -55,7 +58,7 @@
 import './research.less';
 
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { BriefingTodoDraft } from '@/types/invest';
@@ -83,7 +86,6 @@ type Tab = 'macro' | 'valuation' | 'desk';
 
 const invest = useInvestStore();
 const tab = ref<Tab>('macro');
-const seen = reactive({ desk: false });
 const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
 const writtenKeys = computed(() => {
   const s = new Set<string>();
@@ -91,10 +93,6 @@ const writtenKeys = computed(() => {
     if (t.status === 'open') s.add(todoDraftKey(t));
   }
   return s;
-});
-
-watch(tab, (v) => {
-  if (v === 'desk') seen.desk = true;
 });
 
 function openTab(next: Tab) {
