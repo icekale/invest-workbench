@@ -62,7 +62,7 @@
         </t-radio-group>
         <t-radio-group v-model="holdView" variant="default-filled" size="small">
           <t-radio-button value="list">明细</t-radio-button>
-          <t-radio-button value="weight">持仓占比</t-radio-button>
+          <t-radio-button value="weight">行业占比</t-radio-button>
         </t-radio-group>
       </div>
       <t-empty v-if="!activeRows.length" description="暂无持仓数据" />
@@ -71,31 +71,20 @@
           <t-link hover="color" @click="drillL1 = null">返回一级</t-link>
           <span>{{ drillL1 }}</span>
         </div>
-        <div class="weight-stack" role="img" :aria-label="`${accountLabel}持仓占比`">
-          <span
-            v-for="a in allocItems"
-            :key="a.name"
-            class="weight-seg"
-            :class="{ clickable: canDrill(a.name) }"
-            :style="{ width: `${(a.pct * 100).toFixed(2)}%`, background: colorOf(a.name) }"
-            :title="`${a.name} ${(a.pct * 100).toFixed(1)}%`"
-            @click="onAllocClick(a.name)"
-          />
-        </div>
-        <div class="weight-rows">
-          <div
-            v-for="a in allocItems"
-            :key="a.name"
-            class="weight-row"
-            :class="{ clickable: canDrill(a.name) }"
-            @click="onAllocClick(a.name)"
-          >
-            <span class="dot" :style="{ background: colorOf(a.name) }" />
-            <span class="w-name">{{ a.name }}</span>
-            <div class="w-bar">
-              <i :style="{ width: `${(a.pct * 100).toFixed(2)}%`, background: colorOf(a.name) }" />
+        <div class="weight-body">
+          <div class="donut" role="img" :aria-label="`${accountLabel}行业占比`" :style="{ background: donutBg }" />
+          <div class="weight-rows">
+            <div
+              v-for="a in allocItems"
+              :key="a.name"
+              class="weight-row"
+              :class="{ clickable: canDrill(a.name) }"
+              @click="onAllocClick(a.name)"
+            >
+              <span class="dot" :style="{ background: colorOf(a.name) }" />
+              <span class="w-name">{{ a.name }}</span>
+              <span class="w-pct">{{ (a.pct * 100).toFixed(1) }}%</span>
             </div>
-            <span class="w-pct">{{ (a.pct * 100).toFixed(1) }}%</span>
           </div>
         </div>
       </div>
@@ -355,6 +344,19 @@ function colorOf(name: string) {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
 }
+const donutBg = computed(() => {
+  const items = allocItems.value;
+  if (!items.length) return 'var(--guanlan-surface-soft, #eef2f4)';
+  let acc = 0;
+  const stops: string[] = [];
+  for (const a of items) {
+    const from = acc * 100;
+    acc += a.pct;
+    stops.push(`${colorOf(a.name)} ${from}% ${(acc * 100).toFixed(2)}%`);
+  }
+  if (acc < 0.999) stops.push(`var(--guanlan-surface-soft, #eef2f4) ${(acc * 100).toFixed(2)}% 100%`);
+  return `conic-gradient(${stops.join(', ')})`;
+});
 function weightOf(mv: number | null) {
   if (mv == null || !bookTotal.value) return '—';
   return `${((mv / bookTotal.value) * 100).toFixed(1)}%`;
@@ -585,20 +587,29 @@ function toggleTodo(id: string, status: TodoStatus) {
   color: var(--guanlan-muted);
 }
 
-.weight-stack {
+.weight-body {
   display: flex;
-  height: 12px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--guanlan-surface-soft);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
 }
 
-.weight-seg {
-  height: 100%;
-  min-width: 2px;
+.donut {
+  width: 168px;
+  height: 168px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  position: relative;
 }
 
-.weight-seg.clickable,
+.donut::after {
+  content: '';
+  position: absolute;
+  inset: 42px;
+  border-radius: 50%;
+  background: var(--td-bg-color-container, #fff);
+}
+
 .weight-row.clickable {
   cursor: pointer;
 }
@@ -606,12 +617,14 @@ function toggleTodo(id: string, status: TodoStatus) {
 .weight-rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  min-width: 200px;
+  flex: 1;
 }
 
 .weight-row {
   display: grid;
-  grid-template-columns: 8px minmax(72px, 1.2fr) minmax(80px, 2fr) 56px;
+  grid-template-columns: 8px minmax(72px, 1fr) 56px;
   align-items: center;
   gap: 8px;
   font-size: 13px;
@@ -628,19 +641,6 @@ function toggleTodo(id: string, status: TodoStatus) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.w-bar {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--guanlan-surface-soft);
-  overflow: hidden;
-}
-
-.w-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 4px;
 }
 
 .w-pct {
