@@ -1,5 +1,6 @@
 import type {
   AccountId,
+  BriefingCite,
   BriefingStance,
   BriefingTodoDraft,
   DailyBriefing,
@@ -32,6 +33,9 @@ export const SYSTEM_PROMPT = [
   'events 是未来7天会议，重大优先。industries 是产业催化。',
   'yesterdayStance 是昨日立场（偏多最松，防守最紧）；headline 或 notes 写清比昨天更紧/更松/持平，没有则写数据不足。',
   'stockNote/etfNote 必须点名空间最极端或行业最集中的持仓，禁止只写宏观套话。',
+  '点名会议、估值、持仓时必须用事实包里的 title、name、code 原文。',
+  '待办不得与事实包 openTodos 重复（同一 code+side），重复的不要输出。',
+  '待办方向须与 stance 一致：偏多不要只卖，谨慎或防守不要只买。',
 ].join('');
 
 export interface StorageLike {
@@ -262,6 +266,66 @@ function asString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+export function briefingBlob(b: Pick<DailyBriefing, 'headline' | 'stockNote' | 'etfNote' | 'risks' | 'todos'>): string {
+  return [b.headline, b.stockNote, b.etfNote, ...b.risks, ...b.todos.map((t) => t.name + t.code + t.reason)].join('\n');
+}
+
+export function collectCites(
+  b: Pick<DailyBriefing, 'headline' | 'stockNote' | 'etfNote' | 'risks' | 'todos'>,
+  pack: BriefingFactPack,
+): BriefingCite[] {
+  const text = briefingBlob(b);
+  const out: BriefingCite[] = [];
+  const seen = new Set<string>();
+  const add = (cite: BriefingCite) => {
+    if (seen.has(cite.label) || out.length >= 6) return;
+    seen.add(cite.label);
+    out.push(cite);
+  };
+  for (const e of pack.events) {
+    if (e.title.length >= 2 && text.includes(e.title)) add({ kind: 'event', label: `${e.date.slice(5)} ${e.title}` });
+  }
+  for (const v of pack.valuation) {
+    if ((v.name.length >= 2 && text.includes(v.name)) || (v.code && text.includes(v.code))) {
+      add({ kind: 'valuation', label: `${v.name} ${v.percentile}%分位` });
+    }
+  }
+  const todoCodes = new Set(b.todos.map((t) => t.code).filter(Boolean));
+  for (const a of pack.accounts) {
+    for (const h of a.holdings) {
+      const hit =
+        todoCodes.has(h.code) || (h.code && text.includes(h.code)) || (h.name.length >= 2 && text.includes(h.name));
+      if (!hit) continue;
+      const up = h.baseUpside == null ? '' : ` 空间${h.baseUpside >= 0 ? '+' : ''}${(h.baseUpside * 100).toFixed(0)}%`;
+      add({ kind: 'holding', label: `${h.name}${up}` });
+    }
+  }
+  return out;
+}
+
+export function stanceConflicts(b: Pick<DailyBriefing, 'stance' | 'todos'>): string[] {
+  const buys = b.todos.filter((t) => t.side === 'buy').length;
+  const sells = b.todos.filter((t) => t.side === 'sell').length;
+  if (b.stance === '偏多' && sells > 0 && buys === 0) return ['立场偏多，待办却全是卖'];
+  if ((b.stance === '谨慎' || b.stance === '防守') && buys > 0 && sells === 0) {
+    return [`立场${b.stance}，待办却全是买`];
+  }
+  return [];
+}
+
+export function decorateBriefing(b: DailyBriefing, pack: BriefingFactPack): DailyBriefing {
+  const seen = new Set<string>();
+  const todos = b.todos.filter((t) => {
+    const k = todoDraftKey(t);
+    if (seen.has(k)) return false;
+    if (pack.openTodos.some((o) => todoDraftKey(o) === k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const next = { ...b, todos };
+  return { ...next, cites: collectCites(next, pack), conflicts: stanceConflicts(next) };
+}
+
 export function parseBriefing(raw: unknown, pack: BriefingFactPack, today: string): DailyBriefing {
   if (!raw || typeof raw !== 'object') throw new Error('not object');
   const o = raw as Record<string, unknown>;
@@ -292,15 +356,18 @@ export function parseBriefing(raw: unknown, pack: BriefingFactPack, today: strin
       reason: asString(t.reason),
     };
   });
-  return {
-    date: today,
-    headline,
-    stance,
-    stockNote: asString(o.stockNote),
-    etfNote: asString(o.etfNote),
-    risks: o.risks.map((r) => asString(r)).filter(Boolean),
-    todos,
-  };
+  return decorateBriefing(
+    {
+      date: today,
+      headline,
+      stance,
+      stockNote: asString(o.stockNote),
+      etfNote: asString(o.etfNote),
+      risks: o.risks.map((r) => asString(r)).filter(Boolean),
+      todos,
+    },
+    pack,
+  );
 }
 
 export function parseModelContent(content: string, pack: BriefingFactPack, today: string): DailyBriefing {

@@ -283,6 +283,11 @@ export interface BriefingTodoDraft {
   reason: string;
 }
 
+export interface BriefingCite {
+  kind: 'event' | 'valuation' | 'holding';
+  label: string;
+}
+
 export interface DailyBriefing {
   date: string;
   headline: string;
@@ -291,4 +296,6 @@ export interface DailyBriefing {
   etfNote: string;
   risks: string[];
   todos: BriefingTodoDraft[];
+  cites?: BriefingCite[];
+  conflicts?: string[];
 }

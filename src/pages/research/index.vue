@@ -64,6 +64,7 @@ import type { FactPackInput, HoldingSlice } from '@/utils/briefing';
 import {
   alreadyOpen,
   buildFactPack,
+  decorateBriefing,
   ensureTodayBriefing,
   QUOTE_WAIT_MS,
   readCachedBriefing,
@@ -180,7 +181,7 @@ async function bootBriefing(force = false) {
   if (!force) {
     const cached = readCachedBriefing(localStorage, todayCN());
     if (cached) {
-      briefing.value = cached;
+      briefing.value = decorateBriefing(cached, buildFactPack(factInput()));
       briefingStatus.value = 'ready';
       return;
     }

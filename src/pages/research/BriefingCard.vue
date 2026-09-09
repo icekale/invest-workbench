@@ -6,6 +6,7 @@
         <t-tag v-if="briefing && briefingStatus === 'ready'" size="small" variant="light" :theme="stanceTheme">
           {{ briefing.stance }}
         </t-tag>
+        <t-tag v-if="briefing?.conflicts?.length" size="small" theme="danger" variant="light">冲突</t-tag>
       </div>
       <t-button size="small" variant="outline" :loading="briefingStatus === 'loading'" @click="$emit('retry')">
         {{ briefingStatus === 'ready' ? '重新生成' : '重试' }}
@@ -16,6 +17,11 @@
     <div v-else-if="briefingStatus !== 'ready' || !briefing" class="briefing-card__muted">今日研判未生成</div>
     <template v-else>
       <p class="briefing-card__headline">{{ briefing.headline }}</p>
+      <p v-if="briefing.conflicts?.length" class="briefing-card__conflict">{{ briefing.conflicts[0] }}</p>
+      <div v-if="briefing.cites?.length" class="briefing-card__cites">
+        <span>依据</span>
+        <t-tag v-for="c in briefing.cites" :key="c.label" size="small" variant="outline">{{ c.label }}</t-tag>
+      </div>
       <div class="briefing-card__notes">
         <div><span>股票</span>{{ briefing.stockNote }}</div>
         <div><span>ETF</span>{{ briefing.etfNote }}</div>

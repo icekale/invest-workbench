@@ -152,20 +152,60 @@ assert.equal(etfAcct.holdings[0].industry, '宽基');
 assert.equal(etfAcct.holdings[0].baseTarget, 5.2);
 assert.equal(etfAcct.holdings[0].baseUpside, 0.1556);
 
+const sellDraft = {
+  account: 'etf' as const,
+  code: 'sh510300',
+  name: '沪深300ETF',
+  side: 'sell' as const,
+  quantity: 0,
+  reason: '分位偏高',
+};
 const ok = parseBriefing(
   {
     date: today,
-    headline: '中性持有，兑现部分300',
+    headline: '中性持有，关注大会落地',
     stance: '中性',
     stockNote: '数据不足',
     etfNote: '沪深300分位62%，可减',
     risks: ['外部冲击'],
-    todos: [{ account: 'etf', code: 'sh510300', name: '沪深300ETF', side: 'sell', quantity: 0, reason: '分位偏高' }],
+    todos: [sellDraft],
   },
   pack,
   today,
 );
-assert.equal(ok.todos.length, 1);
+assert.equal(ok.todos.length, 0); // openTodos 已有同 code+side，生成阶段丢掉
+assert.ok(ok.cites?.some((c) => c.kind === 'event' && c.label.includes('大会')));
+assert.ok(ok.cites?.some((c) => c.kind === 'valuation' && c.label.includes('沪深300')));
+assert.equal(ok.conflicts?.length ?? 0, 0);
+
+const buyOk = parseBriefing({ ...ok, todos: [{ ...sellDraft, side: 'buy' }] }, pack, today);
+assert.equal(buyOk.todos.length, 1);
+assert.ok(buyOk.cites?.some((c) => c.kind === 'holding' && c.label.includes('沪深300ETF')));
+const dups = parseBriefing(
+  {
+    ...ok,
+    todos: [
+      { ...sellDraft, side: 'buy' },
+      { ...sellDraft, side: 'buy' },
+    ],
+  },
+  pack,
+  today,
+);
+assert.equal(dups.todos.length, 1);
+
+const defenseBuy = parseBriefing(
+  {
+    ...ok,
+    headline: '防守为主',
+    stance: '防守',
+    todos: [{ ...sellDraft, side: 'buy' }],
+  },
+  pack,
+  today,
+);
+assert.equal(defenseBuy.todos.length, 1);
+assert.ok(defenseBuy.conflicts?.some((c) => c.includes('防守')));
 
 assert.throws(() => parseBriefing({ ...ok, date: '2020-01-01' }, pack, today));
 assert.throws(() => parseBriefing({ ...ok, todos: [ok.todos[0], ok.todos[0], ok.todos[0], ok.todos[0]] }, pack, today));
@@ -223,7 +263,7 @@ writeFailAt(storage, 1_000_000);
 assert.equal(shouldSkipAutoFetch(storage, 1_000_000 + 60_000), true);
 assert.equal(shouldSkipAutoFetch(storage, 1_000_000 + 11 * 60_000), false);
 
-assert.equal(alreadyOpen(input.todos, ok.todos[0]), true);
-assert.equal(alreadyOpen([], ok.todos[0]), false);
+assert.equal(alreadyOpen(input.todos, sellDraft), true);
+assert.equal(alreadyOpen([], sellDraft), false);
 
 console.log('check-briefing ok');
