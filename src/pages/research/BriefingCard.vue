@@ -13,7 +13,7 @@
     </div>
 
     <div v-if="briefingStatus === 'loading'" class="briefing-card__muted">正在生成今日研判…</div>
-    <div v-else-if="briefingStatus === 'fail' || !briefing" class="briefing-card__muted">今日研判未生成</div>
+    <div v-else-if="briefingStatus !== 'ready' || !briefing" class="briefing-card__muted">今日研判未生成</div>
     <template v-else>
       <p class="briefing-card__headline">{{ briefing.headline }}</p>
       <div class="briefing-card__notes">

@@ -5,6 +5,7 @@ import {
   alreadyOpen,
   buildFactPack,
   cacheKey,
+  ensureTodayBriefing,
   parseBriefing,
   parseModelContent,
   readCachedBriefing,
@@ -147,6 +148,16 @@ const storage = {
 writeCachedBriefing(storage, today, ok);
 assert.equal(readCachedBriefing(storage, today)?.headline, ok.headline);
 assert.equal(readCachedBriefing(storage, '2026-09-10'), null);
+const cached = await ensureTodayBriefing({
+  pack,
+  storage,
+  today,
+  fetchImpl: (async () => {
+    throw new Error('should not fetch');
+  }) as typeof fetch,
+});
+assert.equal(cached.status, 'ready');
+assert.equal(cached.briefing?.headline, ok.headline);
 
 assert.equal(shouldSkipAutoFetch(storage, 1_000_000), false);
 writeFailAt(storage, 1_000_000);

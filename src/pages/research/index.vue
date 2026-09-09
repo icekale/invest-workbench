@@ -60,7 +60,14 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useInvestStore } from '@/store';
 import type { BriefingTodoDraft } from '@/types/invest';
 import type { FactPackInput, HoldingSlice } from '@/utils/briefing';
-import { alreadyOpen, buildFactPack, ensureTodayBriefing, QUOTE_WAIT_MS, todoDraftKey } from '@/utils/briefing';
+import {
+  alreadyOpen,
+  buildFactPack,
+  ensureTodayBriefing,
+  QUOTE_WAIT_MS,
+  readCachedBriefing,
+  todoDraftKey,
+} from '@/utils/briefing';
 import { todayCN } from '@/utils/date';
 
 import BriefingCard from './BriefingCard.vue';
@@ -135,6 +142,14 @@ async function waitQuotes() {
 
 async function bootBriefing(force = false) {
   if (typeof localStorage === 'undefined') return;
+  if (!force) {
+    const cached = readCachedBriefing(localStorage, todayCN());
+    if (cached) {
+      briefing.value = cached;
+      briefingStatus.value = 'ready';
+      return;
+    }
+  }
   briefingStatus.value = 'loading';
   if (!force) await waitQuotes();
   const result = await ensureTodayBriefing({
