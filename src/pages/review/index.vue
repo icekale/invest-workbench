@@ -266,12 +266,13 @@
 </template>
 <script setup lang="ts">
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
 import type { ThesisStatus, TodoStatus, TradeSide } from '@/types/invest';
 import { allocation, summarize } from '@/utils/book';
+import { bareCode, fetchSwL1 } from '@/utils/sw-industry';
 
 defineOptions({ name: 'ReviewIndex' });
 
@@ -284,9 +285,33 @@ const conclusion = ref('');
 const thOpen = ref(false);
 const th = reactive({ title: '', code: '', body: '' });
 
+const swL1 = ref<Record<string, string>>({});
+
+async function loadSwL1() {
+  const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
+  if (!codes.length) {
+    swL1.value = {};
+    return;
+  }
+  try {
+    swL1.value = await fetchSwL1(codes);
+  } catch {
+    /* 上游失败时仍用 tag */
+  }
+}
+
 onMounted(() => {
   invest.refreshQuotes();
+  void loadSwL1();
 });
+watch(
+  () =>
+    invest.holdings
+      .filter((h) => h.account === 'stock')
+      .map((h) => h.code)
+      .join(','),
+  () => void loadSwL1(),
+);
 
 const stock = computed(() => summarize(invest.stockRows, invest.cash.stock));
 const etf = computed(() => summarize(invest.etfRows, invest.cash.etf));
@@ -308,7 +333,12 @@ const bookTotal = computed(() => {
   const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
   return mv + Math.max(0, activeCash.value);
 });
-const allocItems = computed(() => allocation(activeRows.value, activeCash.value));
+const allocItems = computed(() =>
+  allocation(activeRows.value, activeCash.value, [], (p) => {
+    if (accountView.value === 'etf') return p.tag || p.name;
+    return swL1.value[bareCode(p.code)] || p.tag || p.name;
+  }),
+);
 const accountLabel = computed(() => (accountView.value === 'etf' ? 'ETF 账户' : '股票账户'));
 
 const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];

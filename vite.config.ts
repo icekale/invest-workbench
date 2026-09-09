@@ -71,6 +71,17 @@ export default ({ mode }: ConfigEnv): UserConfig => {
             });
           },
         },
+        '/push2': {
+          target: 'https://push2delay.eastmoney.com',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/push2/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Host', 'push2delay.eastmoney.com');
+              req.setHeader('Referer', 'https://quote.eastmoney.com/');
+            });
+          },
+        },
         '/sina': {
           target: 'https://hq.sinajs.cn',
           changeOrigin: true,

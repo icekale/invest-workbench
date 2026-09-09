@@ -25,6 +25,7 @@
     | `/wscn/*` | `https://api-one-wscn.awtmt.com` | 华尔街见闻快讯/宏观日历 |
     | `/xgb/*` | `https://flash-api.xuangubao.cn` | 选股宝板块异动 |
     | `/em-dc/*` | `https://datacenter-web.eastmoney.com` | 东财数据中心宏观报表（PMI/CPI/PPI/GDP） |
+    | `/push2/*` | `https://push2delay.eastmoney.com` | 东财行情列表（申万二级 f100；push2 会 302） |
     | `/csindex/*` | `https://www.csindex.com.cn` | 中证指数 PE 历史真实曲线 |
     | `/sync` | `invest-sync:3003` | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
 - Cloudflare：`stock.053727.xyz` **必须保持橙云代理 + zone SSL 模式 Flexible**（2026-09-08 设定，https 全通）。⚠️ 两勿：勿把 SSL 模式改回 Full（回源撞 xray 443 → 525）；勿关橙云加速（灰云后浏览器 https 直连 xray 握手失败 → 无法访问，且灰云久了 Universal SSL 证书会被停用，重开橙云后要等边缘重新部署，期间 https 间歇 403/TLS 错误）。

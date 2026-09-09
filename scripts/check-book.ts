@@ -7,6 +7,7 @@ import {
   recalculateHoldingsFromTransactions,
   tradeFee,
 } from '../src/utils/ledger.ts';
+import { swL1FromF100, toSecid } from '../src/utils/sw-industry.ts';
 
 const empty = summarize([], 100);
 assert.equal(empty.mv, 0);
@@ -73,5 +74,14 @@ assert.equal(ledger.totalBuyAmount, 340000);
 assert.equal(ledger.totalSellAmount, 95000);
 assert.ok(ledger.realizedPnL > 9000); // 卖出50股，成本约1700，卖出价1900，盈利约10000减去手续费
 assert.ok(ledger.turnoverRate > 0);
+
+assert.equal(swL1FromF100('白酒Ⅱ'), '食品饮料');
+assert.equal(swL1FromF100('电池'), '电力设备');
+assert.equal(swL1FromF100('银行Ⅱ'), '银行');
+assert.equal(swL1FromF100('白色家电'), '家用电器');
+assert.equal(toSecid('sh600519'), '1.600519');
+assert.equal(toSecid('sz300750'), '0.300750');
+const bySw = allocation([row], 2000, [], () => '银行');
+assert.equal(bySw[0].name, '银行');
 
 console.log('check-book ok');

@@ -53,20 +53,25 @@ export function summarize(rows: BookRow[], cash: number) {
   return { cost, mv, pnl, pnlPct: cost > 0 ? pnl / cost : null, cash, pos, cashPct: 1 - pos };
 }
 
-export function allocation(rows: BookRow[], cash: number, targets: { code: string; targetWeight: number }[] = []) {
+export function allocation(
+  rows: BookRow[],
+  cash: number,
+  targets: { code: string; targetWeight: number }[] = [],
+  groupOf: (p: BookRow) => string = (p) => p.tag || p.name,
+) {
   const parts = rows.filter((r): r is BookRow & { marketValue: number } => r.marketValue != null);
   const invested = parts.reduce((s, r) => s + r.marketValue, 0);
   const total = invested + Math.max(0, cash);
   if (!total) return [] as { name: string; pct: number; target: number | null }[];
   const map = new Map<string, number>();
   for (const p of parts) {
-    const k = p.tag || p.name;
+    const k = groupOf(p) || '其他';
     map.set(k, (map.get(k) || 0) + p.marketValue);
   }
   const targetByTag = new Map<string, number>();
   for (const t of targets) {
     const row = rows.find((r) => r.code === t.code);
-    const k = row?.tag || row?.name;
+    const k = row ? groupOf(row) || row.name : undefined;
     if (!k) continue;
     targetByTag.set(k, (targetByTag.get(k) || 0) + t.targetWeight);
   }
