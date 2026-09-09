@@ -204,8 +204,10 @@
 
       <div class="afre-table-wrap">
         <div class="afre-caption">
-          <button type="button" :class="{ 'is-on': afreTab === 'flow' }" @click="afreTab = 'flow'">增量</button>
-          <button type="button" :class="{ 'is-on': afreTab === 'stock' }" @click="afreTab = 'stock'">存量</button>
+          <t-radio-group v-model="afreTab" variant="default-filled" size="small">
+            <t-radio-button value="flow">增量</t-radio-button>
+            <t-radio-button value="stock">存量</t-radio-button>
+          </t-radio-group>
           <span>{{ afreTab === 'flow' ? '亿元' : '万亿元' }} · 未公布月份已剔除</span>
         </div>
         <p v-if="afreViewError" class="sync-time-hint" style="color: var(--td-error-color)">{{ afreViewError }}</p>
