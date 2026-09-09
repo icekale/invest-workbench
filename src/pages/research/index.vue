@@ -67,9 +67,13 @@ import {
   ensureTodayBriefing,
   QUOTE_WAIT_MS,
   readCachedBriefing,
+  shiftDate,
   todoDraftKey,
 } from '@/utils/briefing';
 import { todayCN } from '@/utils/date';
+import { impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
+import type { SwClass } from '@/utils/sw-industry';
+import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
 import BriefingCard from './BriefingCard.vue';
 import EtfRadar from './EtfRadar.vue';
@@ -85,6 +89,7 @@ type Tab = 'macro' | 'catalyst' | 'valuation';
 const router = useRouter();
 const invest = useInvestStore();
 const tab = ref<Tab>('macro');
+const swMap = ref<Record<string, SwClass>>({});
 const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
 const writtenKeys = computed(() => {
   const s = new Set<string>();
@@ -98,19 +103,37 @@ function openTab(next: Tab) {
   tab.value = next;
 }
 
+function baseOf(code: string, last: number | null) {
+  const saved = invest.priceScenarios.find((s) => s.code === code);
+  const s = mergeScenario(code, saved);
+  const q = invest.quotes[code];
+  const live = (s.metric === 'bvps' ? q?.pb : q?.pe) ?? null;
+  const ref = s.ref != null && s.ref > 0 ? s.ref : impliedRef(last, live);
+  const baseTarget = scenarioTarget(ref, s.base.growth, s.base.multiple);
+  return { baseTarget, baseUpside: scenarioUpside(last, baseTarget) };
+}
+
 function factInput(): FactPackInput {
-  const holdings: HoldingSlice[] = invest.enriched.map((h) => ({
-    account: h.account,
-    code: h.code,
-    name: h.name,
-    quantity: h.quantity,
-    cost: h.cost,
-    marketValue: h.marketValue ?? null,
-    pnl: h.pnl ?? null,
-    pnlPct: h.pnlPct ?? null,
-    health: h.health,
-    action: h.action,
-  }));
+  const holdings: HoldingSlice[] = invest.enriched.map((h) => {
+    const { baseTarget, baseUpside } = baseOf(h.code, h.last);
+    return {
+      account: h.account,
+      code: h.code,
+      name: h.name,
+      quantity: h.quantity,
+      cost: h.cost,
+      marketValue: h.marketValue ?? null,
+      pnl: h.pnl ?? null,
+      pnlPct: h.pnlPct ?? null,
+      health: h.health,
+      action: h.action,
+      last: h.last,
+      industry: swGroupOf({ code: h.code, tag: h.tag, name: h.name }, swMap.value, 'l1'),
+      baseTarget,
+      baseUpside,
+    };
+  });
+  const yesterday = readCachedBriefing(localStorage, shiftDate(todayCN(), -1));
   return {
     date: todayCN(),
     weather: invest.macroWeather,
@@ -127,6 +150,8 @@ function factInput(): FactPackInput {
     cash: invest.cash,
     todos: invest.todos,
     alerts: invest.activeAlerts,
+    yesterdayStance: yesterday?.stance ?? null,
+    industries: invest.industryFocus,
   };
 }
 
@@ -134,6 +159,19 @@ async function waitQuotes() {
   const start = Date.now();
   while (invest.quoteLoading && Date.now() - start < QUOTE_WAIT_MS) {
     await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
+async function loadSw() {
+  const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
+  if (!codes.length) {
+    swMap.value = {};
+    return;
+  }
+  try {
+    swMap.value = await fetchSwClass(codes);
+  } catch {
+    /* keep last map */
   }
 }
 
@@ -149,6 +187,11 @@ async function bootBriefing(force = false) {
   }
   briefingStatus.value = 'loading';
   if (!force) await waitQuotes();
+  await loadSw();
+  const extra: Promise<unknown>[] = [];
+  if (!invest.macroEventsLastUpdated) extra.push(invest.refreshMacroEvents().catch(() => {}));
+  if (!invest.industryFocusLastUpdated) extra.push(invest.refreshIndustryFocus().catch(() => {}));
+  if (extra.length) await Promise.all(extra);
   const result = await ensureTodayBriefing({
     pack: buildFactPack(factInput()),
     storage: localStorage,
@@ -175,5 +218,6 @@ function commitBriefingTodo(todo: BriefingTodoDraft) {
 onMounted(() => {
   void bootBriefing(false);
   if (!invest.macroEventsLastUpdated) void invest.refreshMacroEvents();
+  if (!invest.industryFocusLastUpdated) void invest.refreshIndustryFocus();
 });
 </script>

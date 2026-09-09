@@ -28,6 +28,10 @@ export const SYSTEM_PROMPT = [
   'stockNote, etfNote, risks（0-3 条字符串）,',
   'todos（0-3 条：account=stock|etf, code, name, side=buy|sell, quantity 数字, reason）。',
   'code 必须是事实包中出现过的代码，或空字符串。',
+  '持仓含 last（现价）、cost（成本）、baseTarget（基准目标价）、baseUpside（相对现价空间，小数）、industry（申万一级）。',
+  'events 是未来7天会议，重大优先。industries 是产业催化。',
+  'yesterdayStance 是昨日立场（偏多最松，防守最紧）；headline 或 notes 写清比昨天更紧/更松/持平，没有则写数据不足。',
+  'stockNote/etfNote 必须点名空间最极端或行业最集中的持仓，禁止只写宏观套话。',
 ].join('');
 
 export interface StorageLike {
@@ -47,6 +51,18 @@ export interface HoldingSlice {
   pnlPct: number | null;
   health: string;
   action: string;
+  last: number | null;
+  industry: string;
+  baseTarget: number | null;
+  baseUpside: number | null;
+}
+
+export interface IndustrySlice {
+  name: string;
+  heat: number;
+  trend: string;
+  catalyst: string;
+  keyTargets?: Array<{ code: string; name?: string }>;
 }
 
 export interface ValuationSlice {
@@ -67,6 +83,8 @@ export interface FactPackInput {
   cash: { stock: number; etf: number };
   todos: TradeTodo[];
   alerts: TradeAlert[];
+  yesterdayStance: BriefingStance | null;
+  industries: IndustrySlice[];
 }
 
 export interface BriefingFactPack {
@@ -93,16 +111,30 @@ export interface BriefingFactPack {
       pnlPct: number;
       health: string;
       action: string;
+      last: number | null;
+      cost: number;
+      industry: string;
+      baseTarget: number | null;
+      baseUpside: number | null;
     }>;
   }>;
   openTodos: Array<{ name: string; code: string; side: string; reason: string }>;
   alerts: Array<{ code: string; type: string; title: string; level: string }>;
+  yesterdayStance: BriefingStance | null;
+  industries: Array<{ name: string; heat: number; trend: string; catalyst: string; codes: string[] }>;
 }
 
-function nextDay(iso: string): string {
+const LEVEL_RANK: Record<string, number> = { 重大: 0, 关键: 1, 关注: 2 };
+
+export function shiftDate(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00+08:00`);
-  d.setDate(d.getDate() + 1);
+  d.setDate(d.getDate() + days);
   return formatCN(d);
+}
+
+function r4(n: number | null | undefined): number | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  return Math.round(n * 10000) / 10000;
 }
 
 function num(n: number | null | undefined): number {
@@ -110,7 +142,7 @@ function num(n: number | null | undefined): number {
 }
 
 export function cacheKey(date: string): string {
-  return `invest-briefing-${date}`;
+  return `invest-briefing-v2-${date}`;
 }
 
 export function allowedCodes(pack: BriefingFactPack): Set<string> {
@@ -129,13 +161,22 @@ export function allowedCodes(pack: BriefingFactPack): Set<string> {
   for (const a of pack.alerts) {
     if (a.code) s.add(a.code);
   }
+  for (const i of pack.industries) {
+    for (const c of i.codes) {
+      if (c) s.add(c);
+    }
+  }
   return s;
 }
 
 export function buildFactPack(input: FactPackInput): BriefingFactPack {
-  const tomorrow = nextDay(input.date);
+  const end = shiftDate(input.date, 7);
   const events = input.events
-    .filter((e) => e.date === input.date || e.date === tomorrow)
+    .filter((e) => e.date >= input.date && e.date <= end)
+    .sort((a, b) => {
+      const lr = (LEVEL_RANK[a.level] ?? 9) - (LEVEL_RANK[b.level] ?? 9);
+      return lr || a.date.localeCompare(b.date);
+    })
     .slice(0, 8)
     .map((e) => ({ date: e.date, title: e.title, level: e.level, impact: e.impact }));
 
@@ -169,6 +210,11 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
         pnlPct: num(h.pnlPct),
         health: h.health,
         action: h.action,
+        last: h.last,
+        cost: h.cost,
+        industry: h.industry,
+        baseTarget: h.baseTarget,
+        baseUpside: r4(h.baseUpside),
       })),
     };
   });
@@ -195,6 +241,20 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
       title: a.title,
       level: a.level,
     })),
+    yesterdayStance: input.yesterdayStance,
+    industries: [...input.industries]
+      .sort((a, b) => b.heat - a.heat)
+      .slice(0, 6)
+      .map((i) => ({
+        name: i.name,
+        heat: i.heat,
+        trend: i.trend,
+        catalyst: i.catalyst.slice(0, 80),
+        codes: (i.keyTargets ?? [])
+          .slice(0, 2)
+          .map((t) => t.code)
+          .filter(Boolean),
+      })),
   };
 }
 

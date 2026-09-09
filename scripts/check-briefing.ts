@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import type { FactPackInput } from '../src/utils/briefing.ts';
 import {
+  allowedCodes,
   alreadyOpen,
   buildFactPack,
   cacheKey,
@@ -26,16 +27,48 @@ const input: FactPackInput = {
     updatedAt: today,
   },
   indicators: [{ name: 'PMI', value: '49.4', status: '弱势筑底', hint: '', id: 'pmi', theme: 'warning' }],
-  events: Array.from({ length: 10 }, (_, i) => ({
-    id: `e${i}`,
-    date: i === 0 ? today : '2026-09-10',
-    title: `会议${i}`,
-    category: '宏观政策',
-    level: '关注',
-    impact: '影响',
-    beneficiaries: [],
-    body: 'http://news.example/secret-body-should-not-leak',
-  })),
+  events: [
+    {
+      id: 'e-far',
+      date: '2026-09-17',
+      title: '太远',
+      category: '宏观政策',
+      level: '重大',
+      impact: '影响',
+      beneficiaries: [],
+      body: 'http://news.example/secret-body-should-not-leak',
+    },
+    {
+      id: 'e-soft',
+      date: today,
+      title: '小会',
+      category: '宏观政策',
+      level: '关注',
+      impact: '影响',
+      beneficiaries: [],
+      body: 'http://news.example/secret-body-should-not-leak',
+    },
+    {
+      id: 'e-big',
+      date: '2026-09-12',
+      title: '大会',
+      category: '宏观政策',
+      level: '重大',
+      impact: '影响',
+      beneficiaries: [],
+      body: 'http://news.example/secret-body-should-not-leak',
+    },
+    ...Array.from({ length: 10 }, (_, i) => ({
+      id: `e${i}`,
+      date: i === 0 ? today : '2026-09-10',
+      title: `会议${i}`,
+      category: '宏观政策',
+      level: '关注' as const,
+      impact: '影响',
+      beneficiaries: [] as string[],
+      body: 'http://news.example/secret-body-should-not-leak',
+    })),
+  ],
   valuation: [
     { name: '沪深300', code: 'sh000300', pe: 13.58, percentile: 62, advice: '中性持有' },
     { name: '中证2000', code: 'sh000852', pe: 28, percentile: 15, advice: '低估' },
@@ -52,9 +85,23 @@ const input: FactPackInput = {
       pnlPct: 0.125,
       health: 'healthy',
       action: 'hold',
+      last: 4.5,
+      industry: '宽基',
+      baseTarget: 5.2,
+      baseUpside: 0.1556,
     },
   ],
   cash: { stock: 10000, etf: 20000 },
+  yesterdayStance: '谨慎',
+  industries: [
+    {
+      name: '新能源',
+      heat: 90,
+      trend: 'up',
+      catalyst: '电池排产上修',
+      keyTargets: [{ code: 'sz159915', name: '创业板ETF' }],
+    },
+  ],
   todos: [
     {
       id: 'td1',
@@ -86,12 +133,24 @@ const input: FactPackInput = {
 const pack = buildFactPack(input);
 assert.equal(pack.date, today);
 assert.ok(pack.events.length <= 8);
+assert.equal(pack.events[0].title, '大会');
+assert.equal(
+  pack.events.some((e) => e.title === '太远'),
+  false,
+);
+assert.equal(pack.yesterdayStance, '谨慎');
+assert.equal(pack.industries[0].name, '新能源');
+assert.ok(allowedCodes(pack).has('sz159915'));
 assert.equal(pack.valuation[0].code, 'sh000852'); // |15-50| > |62-50|，极端项在前
 assert.equal(JSON.stringify(pack).includes('http://news.example'), false);
 assert.equal(JSON.stringify(pack).includes('secret-body'), false);
 const etfAcct = pack.accounts.find((a) => a.id === 'etf');
 assert.ok(etfAcct);
 assert.ok(etfAcct.holdings[0].weight > 0);
+assert.equal(etfAcct.holdings[0].last, 4.5);
+assert.equal(etfAcct.holdings[0].industry, '宽基');
+assert.equal(etfAcct.holdings[0].baseTarget, 5.2);
+assert.equal(etfAcct.holdings[0].baseUpside, 0.1556);
 
 const ok = parseBriefing(
   {
@@ -133,7 +192,7 @@ assert.equal(emptyCode.todos[0].code, '');
 const fenced = parseModelContent(`\`\`\`json\n${JSON.stringify(ok)}\n\`\`\``, pack, today);
 assert.equal(fenced.headline, ok.headline);
 
-assert.equal(cacheKey(today), 'invest-briefing-2026-09-09');
+assert.equal(cacheKey(today), 'invest-briefing-v2-2026-09-09');
 
 const mem = new Map<string, string>();
 const storage = {
