@@ -111,7 +111,7 @@
                   <t-radio-button value="past">已结束</t-radio-button>
                 </t-radio-group>
                 <div class="major-filter-toggle" :class="{ 'is-active': onlyMajorEvents }">
-                  <t-checkbox v-model="onlyMajorEvents" @change="onToggleOnlyMajor">
+                  <t-checkbox v-model="onlyMajorEvents">
                     <span class="major-toggle-text">
                       <span class="major-flame">🔥</span>
                       只看重大
@@ -459,7 +459,10 @@ const invest = useInvestStore();
 const macroSectionTab = ref('signals');
 const macroFilter = ref('all');
 const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
-const onlyMajorEvents = ref(localStorage.getItem('invest-only-major-events') === 'true');
+const onlyMajorEvents = computed({
+  get: () => !!invest.prefs.onlyMajorEvents,
+  set: (val: boolean) => invest.setPref('onlyMajorEvents', val),
+});
 const todoFilter = ref<'open' | 'all' | 'done'>('open');
 
 const macros = computed(() => {
@@ -533,11 +536,6 @@ function handleEventTargetClick(targetName: string, ev: MacroEvent) {
     account: !ev.account || ev.account === 'all' ? 'stock' : ev.account,
     note: `会议催化交易【${ev.title}】：${ev.impact}`,
   });
-}
-
-function onToggleOnlyMajor(val: boolean) {
-  onlyMajorEvents.value = val;
-  localStorage.setItem('invest-only-major-events', String(val));
 }
 
 function fmtYi(n: number) {

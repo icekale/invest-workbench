@@ -1,19 +1,6 @@
 import { defineStore } from 'pinia';
 
-import {
-  cashSeed,
-  holdings as seedHoldings,
-  indexes,
-  journal as seedJournal,
-  macroIndicatorsSeed,
-  macroWeatherSeed,
-  opportunities as seedOpps,
-  planTargets,
-  prefsSeed,
-  theses as seedTheses,
-  tradeTodos as seedTodos,
-  transactionsSeed,
-} from '@/mock/invest';
+import { indexes, planTargets, prefsSeed } from '@/mock/invest';
 import type {
   AccountId,
   CustomPortfolio,
@@ -48,71 +35,24 @@ import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts }
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
 
-const LS_HOLD = 'invest-v2-holdings';
-const LS_TODO = 'invest-v2-todos';
-const LS_WATCH = 'invest-watch';
-const LS_JOURNAL = 'invest-v2-journal';
-const LS_THESIS = 'invest-v2-theses';
-const LS_CASH = 'invest-v2-cash';
-const LS_OPPS = 'invest-v2-opportunities';
-const LS_PREFS = 'invest-prefs';
-const LS_PORT = 'invest-v2-portfolios';
-const LS_TX = 'invest-v2-transactions';
-const LS_MACRO_WEATHER = 'invest-v2-macro-weather';
-const LS_MACRO_INDICATORS = 'invest-v2-macro-indicators';
-const LS_NAV = 'invest-v2-nav-snapshots';
-const LS_KEYS = [
-  LS_HOLD,
-  LS_TODO,
-  LS_WATCH,
-  LS_JOURNAL,
-  LS_THESIS,
-  LS_CASH,
-  LS_OPPS,
-  LS_PREFS,
-  LS_PORT,
-  LS_TX,
-  LS_MACRO_WEATHER,
-  LS_MACRO_INDICATORS,
-  LS_NAV,
-];
-
-let lsUser = '';
-
-function scoped(key: string) {
-  return lsUser ? `${key}::${lsUser}` : key;
-}
-
-function migrateLegacyKeys(user: string) {
-  if (typeof localStorage === 'undefined') return;
-  for (const key of LS_KEYS) {
-    const dest = `${key}::${user}`;
-    if (localStorage.getItem(dest)) continue;
-    const src = localStorage.getItem(key);
-    if (src) localStorage.setItem(dest, src);
-  }
-}
-
-function writeUserLS(key: string, value: unknown) {
-  localStorage.setItem(scoped(key), JSON.stringify(value));
+function persist() {
   scheduleCloudPush();
+}
+
+function persistMacroNotes() {
+  persist();
 }
 
 function errText(err: unknown, fallback: string) {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-function persistMacroNotes() {
-  scheduleCloudPush();
+function emptyWeather(): MacroWeather {
+  return { cycle: '', sentiment: '中性', suggestedStockPos: '', suggestedEtfPos: '', updatedAt: '' };
 }
 
-function readLS<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(scoped(key));
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+function emptyIndicators(): MacroIndicator[] {
+  return [];
 }
 
 function normalizePrefs(raw: Partial<Prefs>): Prefs {
@@ -128,6 +68,7 @@ function normalizePrefs(raw: Partial<Prefs>): Prefs {
     lastBackupAt: raw.lastBackupAt,
     lastCloudSyncAt: raw.lastCloudSyncAt,
     updatedAt: raw.updatedAt,
+    onlyMajorEvents: raw.onlyMajorEvents ?? false,
   };
 }
 
@@ -140,41 +81,22 @@ function enrich(holdings: Holding[], quotes: Record<string, Quote>) {
 
 export const useInvestStore = defineStore('invest', {
   state: () => ({
-    holdings: readLS<Holding[]>(LS_HOLD, seedHoldings),
+    holdings: [] as Holding[],
     quotes: {} as Record<string, Quote>,
     quoteError: '' as string,
     quoteLoading: false,
     quoteAt: null as number | null,
-    todos: readLS<TradeTodo[]>(LS_TODO, seedTodos),
-    watchlist: readLS<string[]>(LS_WATCH, []),
-    journal: readLS<JournalEntry[]>(LS_JOURNAL, seedJournal).map((j) => ({
-      ...j,
-      topic: j.topic || j.body,
-      conclusion: j.conclusion || '',
-    })),
-    theses: readLS<Thesis[]>(LS_THESIS, seedTheses),
-    cash: readLS<{ stock: number; etf: number }>(LS_CASH, cashSeed),
-    opportunities: readLS<Opportunity[]>(LS_OPPS, seedOpps),
-    transactions: readLS<Transaction[]>(LS_TX, transactionsSeed),
-    prefs: ((): Prefs => {
-      const raw = readLS<Partial<Prefs>>(LS_PREFS, {});
-      return {
-        isolate: raw.isolate ?? prefsSeed.isolate,
-        closeRemind: raw.closeRemind ?? prefsSeed.closeRemind,
-        healthDate: { ...prefsSeed.healthDate, ...raw.healthDate },
-        health: { ...prefsSeed.health, ...raw.health },
-        healthDelta: { ...prefsSeed.healthDelta, ...raw.healthDelta },
-        stopLossPct: raw.stopLossPct ?? prefsSeed.stopLossPct ?? -0.08,
-        takeProfitPct: raw.takeProfitPct ?? prefsSeed.takeProfitPct ?? 0.25,
-        rebalanceThresholdPct: raw.rebalanceThresholdPct ?? prefsSeed.rebalanceThresholdPct ?? 0.03,
-        lastBackupAt: raw.lastBackupAt,
-        lastCloudSyncAt: raw.lastCloudSyncAt,
-        updatedAt: raw.updatedAt,
-      };
-    })(),
-    customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
-    macroWeather: readLS<MacroWeather>(LS_MACRO_WEATHER, macroWeatherSeed),
-    macroIndicators: readLS<MacroIndicator[]>(LS_MACRO_INDICATORS, macroIndicatorsSeed),
+    todos: [] as TradeTodo[],
+    watchlist: [] as string[],
+    journal: [] as JournalEntry[],
+    theses: [] as Thesis[],
+    cash: { stock: 0, etf: 0 },
+    opportunities: [] as Opportunity[],
+    transactions: [] as Transaction[],
+    prefs: normalizePrefs({}),
+    customPortfolios: [] as CustomPortfolio[],
+    macroWeather: emptyWeather(),
+    macroIndicators: emptyIndicators(),
     macroBriefs: [] as MacroBrief[],
     macroBriefsLoading: false,
     macroBriefsLastUpdated: null as string | null,
@@ -187,7 +109,7 @@ export const useInvestStore = defineStore('invest', {
     industryFocusLoading: false,
     industryFocusLastUpdated: null as string | null,
     industryFocusError: '',
-    navSnapshots: readLS<NavSnapshot[]>(LS_NAV, []),
+    navSnapshots: [] as NavSnapshot[],
     tradeModal: {
       visible: false,
       options: {
@@ -227,7 +149,7 @@ export const useInvestStore = defineStore('invest', {
   },
   actions: {
     persistHoldings() {
-      writeUserLS(LS_HOLD, this.holdings);
+      persist();
     },
     /** 每次行情刷新后落一条当日快照（同日覆盖），用于绘制真实净值曲线 */
     recordDailySnapshot() {
@@ -243,7 +165,7 @@ export const useInvestStore = defineStore('invest', {
       list.push(entry);
       // 只保留最近 400 个自然日
       this.navSnapshots = list.slice(-400);
-      writeUserLS(LS_NAV, this.navSnapshots);
+      persist();
     },
     openTradeModal(opts?: Partial<TradeModalOptions>) {
       this.tradeModal.options = {
@@ -263,7 +185,7 @@ export const useInvestStore = defineStore('invest', {
     },
     setCash(account: AccountId, value: number) {
       this.cash = { ...this.cash, [account]: Math.max(0, value) };
-      writeUserLS(LS_CASH, this.cash);
+      persist();
     },
     async refreshQuotes() {
       if (this.quoteAt && Date.now() - this.quoteAt < 15_000 && Object.keys(this.quotes).length) return;
@@ -304,7 +226,7 @@ export const useInvestStore = defineStore('invest', {
     },
     setTodoStatus(id: string, status: TodoStatus) {
       this.todos = this.todos.map((t) => (t.id === id ? { ...t, status } : t));
-      writeUserLS(LS_TODO, this.todos);
+      persist();
     },
     addTodo(todo: Omit<TradeTodo, 'id' | 'status'>) {
       const row: TradeTodo = {
@@ -313,14 +235,14 @@ export const useInvestStore = defineStore('invest', {
         status: 'open',
       };
       this.todos = [row, ...this.todos];
-      writeUserLS(LS_TODO, this.todos);
+      persist();
     },
     removeTodo(id: string) {
       this.todos = this.todos.filter((t) => t.id !== id);
-      writeUserLS(LS_TODO, this.todos);
+      persist();
     },
     persistTransactions() {
-      writeUserLS(LS_TX, this.transactions);
+      persist();
     },
     addTransaction(row: Omit<Transaction, 'id' | 'amount'>) {
       const amount = Number((row.price * row.quantity).toFixed(2));
@@ -477,15 +399,15 @@ export const useInvestStore = defineStore('invest', {
       this.watchlist = this.watchlist.includes(code)
         ? this.watchlist.filter((c) => c !== code)
         : [...this.watchlist, code];
-      writeUserLS(LS_WATCH, this.watchlist);
+      persist();
     },
     setThesisStatus(id: string, status: ThesisStatus) {
       this.theses = this.theses.map((t) => (t.id === id ? { ...t, status } : t));
-      writeUserLS(LS_THESIS, this.theses);
+      persist();
     },
     removeThesis(id: string) {
       this.theses = this.theses.filter((t) => t.id !== id);
-      writeUserLS(LS_THESIS, this.theses);
+      persist();
     },
     addJournal(topic: string, conclusion = '', body = '') {
       const entry: JournalEntry = {
@@ -496,24 +418,24 @@ export const useInvestStore = defineStore('invest', {
         body: body || topic,
       };
       this.journal = [entry, ...this.journal];
-      writeUserLS(LS_JOURNAL, this.journal);
+      persist();
     },
     removeJournal(id: string) {
       this.journal = this.journal.filter((j) => j.id !== id);
-      writeUserLS(LS_JOURNAL, this.journal);
+      persist();
     },
     addThesis(title: string, code: string, body: string) {
       const row: Thesis = { id: `th${Date.now()}`, title, code, status: 'watch', body };
       this.theses = [row, ...this.theses];
-      writeUserLS(LS_THESIS, this.theses);
+      persist();
     },
     addOpportunity(row: Omit<Opportunity, 'id'>) {
       this.opportunities = [{ ...row, id: `o${Date.now()}` }, ...this.opportunities];
-      writeUserLS(LS_OPPS, this.opportunities);
+      persist();
     },
     removeOpportunity(id: string) {
       this.opportunities = this.opportunities.filter((o) => o.id !== id);
-      writeUserLS(LS_OPPS, this.opportunities);
+      persist();
     },
     saveCustomPortfolio(row: CustomPortfolio) {
       const i = this.customPortfolios.findIndex((p) => p.id === row.id);
@@ -521,19 +443,19 @@ export const useInvestStore = defineStore('invest', {
       if (i >= 0) next[i] = row;
       else next.unshift(row);
       this.customPortfolios = next;
-      writeUserLS(LS_PORT, next);
+      persist();
     },
     removeCustomPortfolio(id: string) {
       this.customPortfolios = this.customPortfolios.filter((p) => p.id !== id);
-      writeUserLS(LS_PORT, this.customPortfolios);
+      persist();
     },
     updateMacroWeather(partial: Partial<MacroWeather>) {
       this.macroWeather = { ...this.macroWeather, ...partial };
-      writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
+      persist();
     },
     updateMacroIndicator(id: string, partial: Partial<MacroIndicator>) {
       this.macroIndicators = this.macroIndicators.map((item) => (item.id === id ? { ...item, ...partial } : item));
-      writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
+      persist();
     },
     addMacroBrief(brief: Omit<MacroBrief, 'id' | 'time'> & { time?: string }) {
       const now = new Date();
@@ -691,11 +613,8 @@ export const useInvestStore = defineStore('invest', {
     },
     setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
       this.prefs = { ...this.prefs, [key]: value };
-      if (key === 'lastCloudSyncAt' || key === 'updatedAt') {
-        localStorage.setItem(scoped(LS_PREFS), JSON.stringify(this.prefs));
-        return;
-      }
-      writeUserLS(LS_PREFS, this.prefs);
+      if (key === 'lastCloudSyncAt' || key === 'updatedAt') return;
+      persist();
     },
     touchHealth(account: AccountId, total: number) {
       const today = todayCN();
@@ -704,45 +623,32 @@ export const useInvestStore = defineStore('invest', {
         this.prefs.healthDelta[account] = prev ? total - prev : 0;
         this.prefs.health[account] = total;
         this.prefs.healthDate = { ...this.prefs.healthDate, [account]: today };
-        writeUserLS(LS_PREFS, this.prefs);
+        persist();
       }
       return this.prefs.healthDelta[account];
     },
-    adoptUser(username: string) {
-      if (!username) return;
+    adoptUser(_username?: string) {
       setHydrating(true);
       try {
-        if (username === 'xiong') migrateLegacyKeys(username);
-        lsUser = username;
-        const keep = username === 'xiong';
-        this.holdings = readLS(LS_HOLD, keep ? this.holdings : []);
-        this.todos = readLS(LS_TODO, keep ? this.todos : []);
-        this.watchlist = readLS(LS_WATCH, keep ? this.watchlist : []);
-        this.journal = readLS(LS_JOURNAL, keep ? this.journal : []).map((j) => ({
-          ...j,
-          topic: j.topic || j.body,
-          conclusion: j.conclusion || '',
-        }));
-        this.theses = readLS(LS_THESIS, keep ? this.theses : []);
-        this.cash = readLS(LS_CASH, keep ? this.cash : { stock: 0, etf: 0 });
-        this.opportunities = readLS(LS_OPPS, keep ? this.opportunities : []);
-        this.transactions = readLS(LS_TX, keep ? this.transactions : []);
-        this.prefs = normalizePrefs(readLS(LS_PREFS, keep ? this.prefs : {}));
-        this.customPortfolios = readLS(LS_PORT, keep ? this.customPortfolios : []);
-        this.macroWeather = readLS(
-          LS_MACRO_WEATHER,
-          keep
-            ? this.macroWeather
-            : { cycle: '', sentiment: '中性', suggestedStockPos: '', suggestedEtfPos: '', updatedAt: '' },
-        );
-        this.macroIndicators = readLS(LS_MACRO_INDICATORS, keep ? this.macroIndicators : []);
+        this.holdings = [];
+        this.todos = [];
+        this.watchlist = [];
+        this.journal = [];
+        this.theses = [];
+        this.cash = { stock: 0, etf: 0 };
+        this.opportunities = [];
+        this.transactions = [];
+        this.prefs = normalizePrefs({});
+        this.customPortfolios = [];
+        this.macroWeather = emptyWeather();
+        this.macroIndicators = emptyIndicators();
         this.macroBriefs = this.macroBriefs.filter((b) => b.id.startsWith('live_'));
         this.macroEvents = this.macroEvents.filter((e) => e.id.startsWith('wscn_'));
         this.industryFocus = this.industryFocus.filter((i) => i.id.startsWith('plate_'));
         this.macroBriefsError = '';
         this.macroEventsError = '';
         this.industryFocusError = '';
-        this.navSnapshots = readLS(LS_NAV, keep ? this.navSnapshots : []);
+        this.navSnapshots = [];
       } finally {
         setHydrating(false);
       }
@@ -779,73 +685,22 @@ export const useInvestStore = defineStore('invest', {
         return { success: false, message: '快照数据缺少核心持仓或资金字段' };
       }
 
-      // 1. 持仓
       this.holdings = data.holdings;
-      writeUserLS(LS_HOLD, this.holdings);
-
-      // 2. 现金
       if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
         this.cash = { stock: data.cash.stock, etf: data.cash.etf };
-        writeUserLS(LS_CASH, this.cash);
       }
-
-      // 3. 交易流水台账
-      if (Array.isArray(data.transactions)) {
-        this.transactions = data.transactions;
-        writeUserLS(LS_TX, this.transactions);
-      }
-
-      // 4. 待办清单
-      if (Array.isArray(data.todos)) {
-        this.todos = data.todos;
-        writeUserLS(LS_TODO, this.todos);
-      }
-
-      // 5. 投资论点
-      if (Array.isArray(data.theses)) {
-        this.theses = data.theses;
-        writeUserLS(LS_THESIS, this.theses);
-      }
-
-      // 6. 复盘日记
-      if (Array.isArray(data.journal)) {
-        this.journal = data.journal;
-        writeUserLS(LS_JOURNAL, this.journal);
-      }
-
-      // 7. 机会池
-      if (Array.isArray(data.opportunities)) {
-        this.opportunities = data.opportunities;
-        writeUserLS(LS_OPPS, this.opportunities);
-      }
-
-      // 8. 偏好设定
-      if (data.prefs && typeof data.prefs === 'object') {
-        this.prefs = { ...this.prefs, ...data.prefs };
-        writeUserLS(LS_PREFS, this.prefs);
-      }
-
-      // 9. 自选池
-      if (Array.isArray(data.watchlist)) {
-        this.watchlist = data.watchlist;
-        writeUserLS(LS_WATCH, this.watchlist);
-      }
-
-      // 10. 自定义策略组合
-      if (Array.isArray(data.customPortfolios)) {
-        this.customPortfolios = data.customPortfolios;
-        writeUserLS(LS_PORT, this.customPortfolios);
-      }
-
-      // 11. 宏观天气与指标
+      if (Array.isArray(data.transactions)) this.transactions = data.transactions;
+      if (Array.isArray(data.todos)) this.todos = data.todos;
+      if (Array.isArray(data.theses)) this.theses = data.theses;
+      if (Array.isArray(data.journal)) this.journal = data.journal;
+      if (Array.isArray(data.opportunities)) this.opportunities = data.opportunities;
+      if (data.prefs && typeof data.prefs === 'object') this.prefs = { ...this.prefs, ...data.prefs };
+      if (Array.isArray(data.watchlist)) this.watchlist = data.watchlist;
+      if (Array.isArray(data.customPortfolios)) this.customPortfolios = data.customPortfolios;
       if (data.macroWeather && typeof data.macroWeather === 'object') {
         this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
-        writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
       }
-      if (Array.isArray(data.macroIndicators)) {
-        this.macroIndicators = data.macroIndicators;
-        writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
-      }
+      if (Array.isArray(data.macroIndicators)) this.macroIndicators = data.macroIndicators;
       if (Array.isArray(data.macroBriefs)) {
         const live = this.macroBriefs.filter((b) => b.id.startsWith('live_'));
         const custom = data.macroBriefs.filter((b: MacroBrief) => b.id.startsWith('m_'));
@@ -861,11 +716,9 @@ export const useInvestStore = defineStore('invest', {
         const custom = data.industryFocus.filter((i: IndustryFocus) => i.id.startsWith('ind_'));
         this.industryFocus = [...custom, ...live];
       }
-      if (Array.isArray(data.navSnapshots)) {
-        this.navSnapshots = data.navSnapshots;
-        writeUserLS(LS_NAV, this.navSnapshots);
-      }
+      if (Array.isArray(data.navSnapshots)) this.navSnapshots = data.navSnapshots;
 
+      persist();
       this.refreshQuotes();
 
       return {

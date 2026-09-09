@@ -50,6 +50,8 @@ export const useUserStore = defineStore('user', {
       this.token = '';
       this.userInfo = { ...InitUserInfo };
       setSyncCreds('', '');
+      const { useInvestStore } = await import('./invest');
+      useInvestStore().adoptUser();
     },
   },
   persist: {
@@ -59,5 +61,6 @@ export const useUserStore = defineStore('user', {
     },
     key: 'user',
     pick: ['token'],
+    storage: typeof sessionStorage === 'undefined' ? undefined : sessionStorage,
   },
 });

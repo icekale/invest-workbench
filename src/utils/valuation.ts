@@ -8,6 +8,7 @@
  *  - 分位数 60% ~ 80%: 合理偏高 (偏高区，适度止盈 / 浅红灯 🟠)
  *  - 分位数 > 80%: 极度高估 (高危区，坚决减仓 / 红灯 🔴)
  */
+import { fetchOk, withRetry } from './http.ts';
 
 export type ValuationSignal = 'STRONG_BUY' | 'BUY' | 'HOLD' | 'REDUCE' | 'SELL';
 
@@ -386,7 +387,7 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
     });
   } catch (err) {
     console.warn('获取实时指数行情降级为基准参数:', err);
-    // 降级使用基准参数
+    // 降级：价格置 0（UI 显示 —），估值用历史中枢，不编造点位
     return INDEX_VALUATION_CONFIGS.map((cfg) => {
       const pe = cfg.peStats.p50;
       const pePercentile = 50;
@@ -399,7 +400,7 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
         etfCode: cfg.etfCode,
         etfName: cfg.etfName,
         description: cfg.description,
-        price: cfg.peStats.p50 * 200,
+        price: 0,
         changePct: 0,
         pe,
         pePercentile,
@@ -420,8 +421,12 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
 }
 
 /**
- * 生成指数估值历史走势序列数据（用于 ECharts 下钻走势弹窗）
- * 包含：日期序列、PE-TTM 历史走势、20% 机会线、50% 中枢线、80% 警戒线
+ * 生成指数估值走势序列（用于 ECharts 下钻走势弹窗）。
+ * ⚠️ 当前没有可用的指数 PE 历史数据源，序列是基于当前 PE 与历史分位参数的
+ * 确定性示意模拟（同一指数每次生成结果一致，不含随机数），
+ * 仅用于展示「当前值落在历史区间的位置」，不能当作真实历史行情。
+ * 图表标题与注释必须带「示意」字样。
+ * 优先使用 fetchIndexPeHistory() 的中证官网真实历史。
  */
 export function generateValuationHistorySeries(item: IndexValuationItem, years = 3) {
   const dates: string[] = [];
@@ -429,9 +434,10 @@ export function generateValuationHistorySeries(item: IndexValuationItem, years =
   const now = new Date();
   const totalMonths = years * 12;
 
-  // 波动模拟因子（基于真实周期形态）
   const base = item.peStats.p50;
   const amp = (item.peStats.max - item.peStats.min) * 0.38;
+  // 以指数代码派生稳定相位，保证同一指数多次生成结果一致
+  const phase = (item.code.charCodeAt(3) % 5) + (item.code.charCodeAt(4) % 3) * 0.4;
 
   for (let i = totalMonths; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -441,9 +447,9 @@ export function generateValuationHistorySeries(item: IndexValuationItem, years =
     if (i === 0) {
       peValues.push(item.pe);
     } else {
-      // 周期波动形态 + 均值回归
-      const cycle = Math.sin((i / 12) * Math.PI * 1.5 + (item.code.charCodeAt(3) % 5));
-      const noise = (Math.random() - 0.5) * 0.12 * base;
+      // 周期波动形态 + 均值回归（确定性，无随机数）
+      const cycle = Math.sin((i / 12) * Math.PI * 1.5 + phase);
+      const noise = Math.sin(i * 2.3 + phase) * 0.06 * base;
       const simulated = Math.max(
         item.peStats.min * 1.02,
         Math.min(item.peStats.max * 0.98, base + cycle * amp + noise),
@@ -461,5 +467,48 @@ export function generateValuationHistorySeries(item: IndexValuationItem, years =
     p80: item.peStats.p80,
     min: item.peStats.min,
     max: item.peStats.max,
+    isSimulated: true,
   };
+}
+
+export interface IndexPeHistory {
+  dates: string[]; // YYYY-MM-DD
+  peValues: number[];
+  isSimulated: boolean;
+}
+
+/**
+ * 从中证官网（经 /csindex/ 反代）拉取指数真实 PE 历史。
+ * 数据源字段 peg 即每日收盘对应的市盈率。失败或样本过少返回 null（调用方回退示意序列）。
+ */
+export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Promise<IndexPeHistory | null> {
+  const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - years);
+
+  try {
+    const res = await withRetry(() =>
+      fetchOk(`/csindex/csindex-home/perf/index-perf?indexCode=${code6}&startDate=${fmt(start)}&endDate=${fmt(end)}`, {
+        headers: { Referer: 'https://www.csindex.com.cn/' },
+      }),
+    );
+    const json = (await res.json()) as { data?: Array<Record<string, unknown>> };
+    const rows = Array.isArray(json.data) ? json.data : [];
+    const dates: string[] = [];
+    const peValues: number[] = [];
+    for (const row of rows) {
+      const peg = Number(row.peg);
+      const day = String(row.tradeDate ?? '');
+      if (!Number.isFinite(peg) || peg <= 0 || day.length !== 8) continue;
+      dates.push(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`);
+      peValues.push(Number(peg.toFixed(2)));
+    }
+    if (dates.length < 10) return null;
+    return { dates, peValues, isSimulated: false };
+  } catch {
+    return null;
+  }
 }

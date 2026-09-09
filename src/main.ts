@@ -12,10 +12,8 @@ import './permission';
 import { useInvestStore, useUserStore } from '@/store';
 
 import { bindCloudSync, parseBasic, setSyncCreds } from './utils/cloud-sync';
-import { runStorageHygiene } from './utils/storage';
 
 document.documentElement.setAttribute('data-skin', 'guanlan');
-runStorageHygiene();
 
 const app = createApp(App);
 

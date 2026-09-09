@@ -5,8 +5,6 @@ import { computed } from 'vue';
 import type { I18nOptions } from 'vue-i18n';
 import { createI18n } from 'vue-i18n';
 
-export const localeConfigKey = 'tdesign-starter-locale';
-
 // 定义支持的语言列表，添加新语言时只需在此处添加
 export const supportedLocales = ['zh_CN', 'en_US'] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
@@ -32,14 +30,7 @@ Object.entries(langModules).forEach(([path, module]) => {
 
 export { langCode };
 
-// 获取初始语言：优先本地存储，否则默认中文（单人中文工具，不跟随浏览器偏好）
-const getInitialLocale = (): SupportedLocale => {
-  const stored = localStorage.getItem(localeConfigKey);
-  if (stored && supportedLocales.includes(stored as SupportedLocale)) {
-    return stored as SupportedLocale;
-  }
-  return 'zh_CN';
-};
+const getInitialLocale = (): SupportedLocale => 'zh_CN';
 
 const initialLocale = getInitialLocale();
 

@@ -37,6 +37,17 @@ export interface WindNewsItem {
 
 const CACHE_PREFIX = 'wind-cache-v1-';
 const DEFAULT_TTL_MS = 6 * 3600 * 1000; // 6 小时缓存
+const mem = new Map<string, { ts: number; data: unknown }>();
+
+function readMem<T>(key: string): T | null {
+  const hit = mem.get(key) as { ts: number; data: T } | undefined;
+  if (!hit || Date.now() - hit.ts >= DEFAULT_TTL_MS) return null;
+  return hit.data;
+}
+
+function writeMem(key: string, data: unknown) {
+  mem.set(key, { ts: Date.now(), data });
+}
 
 function parseSseOrJson(text: string): Record<string, unknown> {
   const trimmed = text.trim();
@@ -125,17 +136,8 @@ async function callWindMcp(serverType: string, toolName: string, args: Record<st
 export async function fetchWindEdb(question: string, observation = 8, force = false): Promise<WindMetric[]> {
   const cacheKey = `${CACHE_PREFIX}edb-${question}-${observation}`;
   if (!force) {
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.ts < DEFAULT_TTL_MS && Array.isArray(cached.data) && cached.data.length > 0) {
-          return cached.data;
-        }
-      }
-    } catch {
-      // ignore
-    }
+    const cached = readMem<WindMetric[]>(cacheKey);
+    if (cached?.length) return cached;
   }
 
   const parsed = await callWindMcp('economic_data', 'query_economic_indicator_data', {
@@ -189,14 +191,7 @@ export async function fetchWindEdb(question: string, observation = 8, force = fa
     });
   }
 
-  if (list.length > 0) {
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: list }));
-    } catch {
-      // storage quota
-    }
-  }
-
+  if (list.length > 0) writeMem(cacheKey, list);
   return list;
 }
 
@@ -206,17 +201,8 @@ export async function fetchWindEdb(question: string, observation = 8, force = fa
 export async function fetchWindNews(query: string, topK = 4, force = false): Promise<WindNewsItem[]> {
   const cacheKey = `${CACHE_PREFIX}news-${query}-${topK}`;
   if (!force) {
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.ts < DEFAULT_TTL_MS && Array.isArray(cached.data) && cached.data.length > 0) {
-          return cached.data;
-        }
-      }
-    } catch {
-      // ignore
-    }
+    const cached = readMem<WindNewsItem[]>(cacheKey);
+    if (cached?.length) return cached;
   }
 
   const parsed = await callWindMcp('financial_docs', 'get_financial_news', {
@@ -237,13 +223,6 @@ export async function fetchWindNews(query: string, topK = 4, force = false): Pro
     url: String(item.url || ''),
   }));
 
-  if (list.length > 0) {
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: list }));
-    } catch {
-      // storage quota
-    }
-  }
-
+  if (list.length > 0) writeMem(cacheKey, list);
   return list;
 }

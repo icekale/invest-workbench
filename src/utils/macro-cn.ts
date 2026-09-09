@@ -23,29 +23,20 @@ type DcRow = Record<string, unknown>;
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_PREFIX = 'invest-em-dc:';
+const mem = new Map<string, { at: number; rows: DcRow[] }>();
 
 function cacheKey(report: string, pageSize: number) {
   return `${CACHE_PREFIX}${report}:${pageSize}`;
 }
 
 function readCached(report: string, pageSize: number): DcRow[] | null {
-  try {
-    const raw = localStorage.getItem(cacheKey(report, pageSize));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { at?: number; rows?: unknown };
-    if (!parsed || Date.now() - Number(parsed.at || 0) > CACHE_TTL_MS || !Array.isArray(parsed.rows)) return null;
-    return parsed.rows as DcRow[];
-  } catch {
-    return null;
-  }
+  const hit = mem.get(cacheKey(report, pageSize));
+  if (!hit || Date.now() - hit.at > CACHE_TTL_MS) return null;
+  return hit.rows;
 }
 
 function writeCached(report: string, pageSize: number, rows: DcRow[]) {
-  try {
-    localStorage.setItem(cacheKey(report, pageSize), JSON.stringify({ at: Date.now(), rows }));
-  } catch {
-    /* quota */
-  }
+  mem.set(cacheKey(report, pageSize), { at: Date.now(), rows });
 }
 
 function dcUrl(report: string, pageSize = 12): string {

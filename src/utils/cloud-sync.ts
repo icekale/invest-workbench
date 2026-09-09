@@ -1,4 +1,4 @@
-/** 同源 /sync → VPS SQLite。浏览器 localStorage 只是缓存。 */
+/** 同源 /sync → VPS SQLite。账本只信 SQL，浏览器不落盘。 */
 
 import type { BookSnap } from './sync-merge';
 import { same, slimSnap } from './sync-merge';
@@ -14,6 +14,7 @@ interface SyncStore {
 }
 
 let hydrating = false;
+let sqlReady = false;
 let timer = 0;
 let storeRef: SyncStore | null = null;
 let pending: Promise<SyncAction | 'offline'> | null = null;
@@ -38,6 +39,7 @@ export function basicToken(user: string, pass: string): string {
 export function setSyncCreds(user: string, pass: string) {
   creds = { user, pass };
   pending = null;
+  sqlReady = false;
 }
 
 function authHeader(): string {
@@ -66,7 +68,8 @@ export async function pushCloudSnapshot(data: CloudSnapshot): Promise<void> {
 }
 
 export function scheduleCloudPush() {
-  if (hydrating || !storeRef || !creds.user || typeof window === 'undefined') return;
+  // ponytail: no offline book cache; skip push until SQL hydrate succeeds so empty memory cannot wipe the db
+  if (hydrating || !sqlReady || !storeRef || !creds.user || typeof window === 'undefined') return;
   window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     void flushPush();
@@ -83,7 +86,7 @@ async function flushPush() {
     storeRef.setPref('updatedAt', now);
     storeRef.setPref('lastCloudSyncAt', now);
   } catch {
-    // ponytail: offline keeps localStorage; retry on next edit
+    // ponytail: retry on next edit; unsynced session is lost on refresh
   }
 }
 
@@ -108,15 +111,18 @@ export async function hydrateFromCloud(store: SyncStore): Promise<SyncAction | '
       const remote = slimSnap(remoteRaw);
       const changed = !same(comparable(local), comparable(remote));
       if (changed) store.restoreSnapshot(remote);
+      sqlReady = true;
       store.setPref('updatedAt', remote.updatedAt || now);
       store.setPref('lastCloudSyncAt', now);
       return changed ? 'pull' : 'noop';
     }
+    sqlReady = true;
     await pushCloudSnapshot(slimSnap(store.snapshot()));
     store.setPref('updatedAt', now);
     store.setPref('lastCloudSyncAt', now);
     return 'push';
   } catch {
+    sqlReady = false;
     return 'offline';
   } finally {
     setHydrating(false);

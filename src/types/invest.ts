@@ -250,5 +250,6 @@ export interface Prefs {
   rebalanceThresholdPct?: number; // 默认 3%
   lastBackupAt?: number; // 上次导出快照时间戳（周提醒用）
   lastCloudSyncAt?: number; // 上次 SQLite 云端同步成功
-  updatedAt?: number; // 本地账本修订时间，LWW
+  updatedAt?: number; // 账本修订时间
+  onlyMajorEvents?: boolean;
 }
