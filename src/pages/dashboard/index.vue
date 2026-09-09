@@ -75,8 +75,7 @@ let timer = 0;
 
 onMounted(async () => {
   await refresh(true);
-  const sync = await bindCloudSync(invest);
-  if (sync === 'pull') MessagePlugin.success('已从服务器恢复持仓');
+  await bindCloudSync(invest);
   remindBackupIfNeeded();
   const now = new Date();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);
