@@ -29,6 +29,7 @@ import type {
   MacroEvent,
   MacroIndicator,
   MacroWeather,
+  NavSnapshot,
   Opportunity,
   Prefs,
   Thesis,
@@ -42,6 +43,8 @@ import type {
 } from '@/types/invest';
 import { fetchSinaQuotes } from '@/utils/backup';
 import { fetchLiveMacroEvents } from '@/utils/calendar';
+import { scheduleCloudPush, setHydrating } from '@/utils/cloud-sync';
+import { todayCN } from '@/utils/date';
 import { fetchLiveIndustryCatalysts } from '@/utils/industry';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
@@ -62,6 +65,12 @@ const LS_MACRO_INDICATORS = 'invest-v2-macro-indicators';
 const LS_MACRO_BRIEFS = 'invest-v2-macro-briefs';
 const LS_MACRO_EVENTS = 'invest-v2-macro-events';
 const LS_INDUSTRY_FOCUS = 'invest-v2-industry-focus';
+const LS_NAV = 'invest-v2-nav-snapshots';
+
+function writeUserLS(key: string, value: unknown) {
+  localStorage.setItem(key, JSON.stringify(value));
+  scheduleCloudPush();
+}
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -108,6 +117,9 @@ export const useInvestStore = defineStore('invest', {
         stopLossPct: raw.stopLossPct ?? prefsSeed.stopLossPct ?? -0.08,
         takeProfitPct: raw.takeProfitPct ?? prefsSeed.takeProfitPct ?? 0.25,
         rebalanceThresholdPct: raw.rebalanceThresholdPct ?? prefsSeed.rebalanceThresholdPct ?? 0.03,
+        lastBackupAt: raw.lastBackupAt,
+        lastCloudSyncAt: raw.lastCloudSyncAt,
+        updatedAt: raw.updatedAt,
       };
     })(),
     customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
@@ -118,7 +130,7 @@ export const useInvestStore = defineStore('invest', {
       const stored = readLS<MacroEvent[]>(LS_MACRO_EVENTS, macroEventsSeed);
       const hasOldAprilSeed = stored.some((e) => e.date.startsWith('04-') || e.date.startsWith('05-'));
       if (hasOldAprilSeed) {
-        localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(macroEventsSeed));
+        writeUserLS(LS_MACRO_EVENTS, macroEventsSeed);
         return macroEventsSeed;
       }
       return stored;
@@ -128,6 +140,7 @@ export const useInvestStore = defineStore('invest', {
     industryFocusLoading: false,
     industryFocusLastUpdated: null as string | null,
     industryFocus: readLS<IndustryFocus[]>(LS_INDUSTRY_FOCUS, industryFocusSeed),
+    navSnapshots: readLS<NavSnapshot[]>(LS_NAV, []),
     tradeModal: {
       visible: false,
       options: {
@@ -167,7 +180,23 @@ export const useInvestStore = defineStore('invest', {
   },
   actions: {
     persistHoldings() {
-      localStorage.setItem(LS_HOLD, JSON.stringify(this.holdings));
+      writeUserLS(LS_HOLD, this.holdings);
+    },
+    /** 每次行情刷新后落一条当日快照（同日覆盖），用于绘制真实净值曲线 */
+    recordDailySnapshot() {
+      const rows = this.enriched;
+      const sumAccount = (acc: AccountId) =>
+        rows.filter((r) => r.account === acc).reduce((s, r) => s + (r.marketValue ?? r.cost * r.quantity), 0);
+      const entry: NavSnapshot = {
+        date: todayCN(),
+        stockTotal: Number((sumAccount('stock') + this.cash.stock).toFixed(2)),
+        etfTotal: Number((sumAccount('etf') + this.cash.etf).toFixed(2)),
+      };
+      const list = this.navSnapshots.filter((s) => s.date !== entry.date);
+      list.push(entry);
+      // 只保留最近 400 个自然日
+      this.navSnapshots = list.slice(-400);
+      localStorage.setItem(LS_NAV, JSON.stringify(this.navSnapshots));
     },
     openTradeModal(opts?: Partial<TradeModalOptions>) {
       this.tradeModal.options = {
@@ -187,7 +216,7 @@ export const useInvestStore = defineStore('invest', {
     },
     setCash(account: AccountId, value: number) {
       this.cash = { ...this.cash, [account]: Math.max(0, value) };
-      localStorage.setItem(LS_CASH, JSON.stringify(this.cash));
+      writeUserLS(LS_CASH, this.cash);
     },
     async refreshQuotes() {
       this.quoteLoading = true;
@@ -201,8 +230,12 @@ export const useInvestStore = defineStore('invest', {
           next[k] = q;
         });
         this.quotes = next;
-        if (map.size) this.quoteAt = Date.now();
-        else this.quoteError = '行情暂不可用';
+        if (map.size) {
+          this.quoteAt = Date.now();
+          this.recordDailySnapshot();
+        } else {
+          this.quoteError = '行情暂不可用';
+        }
       } catch (e) {
         this.quoteError = e instanceof Error ? e.message : '行情暂不可用';
       } finally {
@@ -223,7 +256,7 @@ export const useInvestStore = defineStore('invest', {
     },
     setTodoStatus(id: string, status: TodoStatus) {
       this.todos = this.todos.map((t) => (t.id === id ? { ...t, status } : t));
-      localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+      writeUserLS(LS_TODO, this.todos);
     },
     addTodo(todo: Omit<TradeTodo, 'id' | 'status'>) {
       const row: TradeTodo = {
@@ -232,14 +265,14 @@ export const useInvestStore = defineStore('invest', {
         status: 'open',
       };
       this.todos = [row, ...this.todos];
-      localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+      writeUserLS(LS_TODO, this.todos);
     },
     removeTodo(id: string) {
       this.todos = this.todos.filter((t) => t.id !== id);
-      localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
+      writeUserLS(LS_TODO, this.todos);
     },
     persistTransactions() {
-      localStorage.setItem(LS_TX, JSON.stringify(this.transactions));
+      writeUserLS(LS_TX, this.transactions);
     },
     addTransaction(row: Omit<Transaction, 'id' | 'amount'>) {
       const amount = Number((row.price * row.quantity).toFixed(2));
@@ -254,8 +287,9 @@ export const useInvestStore = defineStore('invest', {
     executeTrade(params: ExecuteTradeParams): ExecuteTradeResult {
       const { account, side, name, price, quantity, todoId } = params;
       const code = normalizeCode(params.code);
-      const date = params.date || new Date().toISOString().slice(0, 10);
+      const date = params.date || todayCN();
       const note = params.note?.trim() || '';
+      const fee = Math.max(0, Number((params.fee ?? 0).toFixed(2)));
 
       if (!price || price <= 0 || !quantity || quantity <= 0) {
         throw new Error('成交单价与成交数量必须大于 0');
@@ -265,17 +299,17 @@ export const useInvestStore = defineStore('invest', {
       const currentCash = this.cash[account] || 0;
 
       if (side === 'buy') {
-        if (amount > currentCash) {
+        if (amount + fee > currentCash) {
           throw new Error(
-            `可用现金不足：需 ¥${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}，当前可用仅剩 ¥${currentCash.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`,
+            `可用现金不足：需 ¥${(amount + fee).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}（含手续费），当前可用仅剩 ¥${currentCash.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`,
           );
         }
 
-        // 1. 扣减现金
-        const nextCash = Number((currentCash - amount).toFixed(2));
+        // 1. 扣减现金（含手续费）
+        const nextCash = Number((currentCash - amount - fee).toFixed(2));
         this.setCash(account, nextCash);
 
-        // 2. 更新或新建持仓 (加权移动平均成本)
+        // 2. 更新或新建持仓 (加权移动平均成本，手续费计入成本)
         const idx = this.holdings.findIndex(
           (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
         );
@@ -284,7 +318,7 @@ export const useInvestStore = defineStore('invest', {
         if (idx >= 0) {
           const old = holdingsCopy[idx];
           const newQty = old.quantity + quantity;
-          const newCost = Number(((old.cost * old.quantity + amount) / newQty).toFixed(4));
+          const newCost = Number(((old.cost * old.quantity + amount + fee) / newQty).toFixed(4));
           holdingsCopy[idx] = {
             ...old,
             name: name || old.name,
@@ -298,7 +332,7 @@ export const useInvestStore = defineStore('invest', {
             code,
             name: name || code,
             quantity,
-            cost: Number(price.toFixed(4)),
+            cost: Number(((amount + fee) / quantity).toFixed(4)),
             health: 'healthy',
             action: 'hold',
             thesisId: matchedThesis?.id || '',
@@ -319,8 +353,8 @@ export const useInvestStore = defineStore('invest', {
           throw new Error(`卖出数量超出持仓：尝试卖出 ${quantity} 股/份，当前仅持有 ${holding.quantity} 股/份`);
         }
 
-        // 1. 增加现金
-        const nextCash = Number((currentCash + amount).toFixed(2));
+        // 1. 增加现金（扣除手续费）
+        const nextCash = Number((currentCash + amount - fee).toFixed(2));
         this.setCash(account, nextCash);
 
         // 2. 扣减持仓 (数量减少，成本价在加权会计中保持不变)
@@ -350,7 +384,7 @@ export const useInvestStore = defineStore('invest', {
         price,
         quantity,
         amount,
-        fee: 0,
+        fee,
         note: note || (todoId ? '决策待办一键执行' : ''),
       };
       this.transactions = [tx, ...this.transactions];
@@ -395,43 +429,43 @@ export const useInvestStore = defineStore('invest', {
       this.watchlist = this.watchlist.includes(code)
         ? this.watchlist.filter((c) => c !== code)
         : [...this.watchlist, code];
-      localStorage.setItem(LS_WATCH, JSON.stringify(this.watchlist));
+      writeUserLS(LS_WATCH, this.watchlist);
     },
     setThesisStatus(id: string, status: ThesisStatus) {
       this.theses = this.theses.map((t) => (t.id === id ? { ...t, status } : t));
-      localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
+      writeUserLS(LS_THESIS, this.theses);
     },
     removeThesis(id: string) {
       this.theses = this.theses.filter((t) => t.id !== id);
-      localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
+      writeUserLS(LS_THESIS, this.theses);
     },
     addJournal(topic: string, conclusion = '', body = '') {
       const entry: JournalEntry = {
         id: `j${Date.now()}`,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayCN(),
         topic,
         conclusion,
         body: body || topic,
       };
       this.journal = [entry, ...this.journal];
-      localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
+      writeUserLS(LS_JOURNAL, this.journal);
     },
     removeJournal(id: string) {
       this.journal = this.journal.filter((j) => j.id !== id);
-      localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
+      writeUserLS(LS_JOURNAL, this.journal);
     },
     addThesis(title: string, code: string, body: string) {
       const row: Thesis = { id: `th${Date.now()}`, title, code, status: 'watch', body };
       this.theses = [row, ...this.theses];
-      localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
+      writeUserLS(LS_THESIS, this.theses);
     },
     addOpportunity(row: Omit<Opportunity, 'id'>) {
       this.opportunities = [{ ...row, id: `o${Date.now()}` }, ...this.opportunities];
-      localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
+      writeUserLS(LS_OPPS, this.opportunities);
     },
     removeOpportunity(id: string) {
       this.opportunities = this.opportunities.filter((o) => o.id !== id);
-      localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
+      writeUserLS(LS_OPPS, this.opportunities);
     },
     saveCustomPortfolio(row: CustomPortfolio) {
       const i = this.customPortfolios.findIndex((p) => p.id === row.id);
@@ -439,19 +473,19 @@ export const useInvestStore = defineStore('invest', {
       if (i >= 0) next[i] = row;
       else next.unshift(row);
       this.customPortfolios = next;
-      localStorage.setItem(LS_PORT, JSON.stringify(next));
+      writeUserLS(LS_PORT, next);
     },
     removeCustomPortfolio(id: string) {
       this.customPortfolios = this.customPortfolios.filter((p) => p.id !== id);
-      localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
+      writeUserLS(LS_PORT, this.customPortfolios);
     },
     updateMacroWeather(partial: Partial<MacroWeather>) {
       this.macroWeather = { ...this.macroWeather, ...partial };
-      localStorage.setItem(LS_MACRO_WEATHER, JSON.stringify(this.macroWeather));
+      writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
     },
     updateMacroIndicator(id: string, partial: Partial<MacroIndicator>) {
       this.macroIndicators = this.macroIndicators.map((item) => (item.id === id ? { ...item, ...partial } : item));
-      localStorage.setItem(LS_MACRO_INDICATORS, JSON.stringify(this.macroIndicators));
+      writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
     },
     addMacroBrief(brief: Omit<MacroBrief, 'id' | 'time'> & { time?: string }) {
       const now = new Date();
@@ -463,12 +497,12 @@ export const useInvestStore = defineStore('invest', {
         time: timeStr,
       };
       this.macroBriefs = [row, ...this.macroBriefs];
-      localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
+      writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
       return row;
     },
     removeMacroBrief(id: string) {
       this.macroBriefs = this.macroBriefs.filter((m) => m.id !== id);
-      localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
+      writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
     },
     addMacroEvent(event: Omit<MacroEvent, 'id'>) {
       const row: MacroEvent = {
@@ -476,7 +510,7 @@ export const useInvestStore = defineStore('invest', {
         id: `ev_${Date.now()}`,
       };
       this.macroEvents = [row, ...this.macroEvents];
-      localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+      writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
       return row;
     },
     async refreshMacroEvents() {
@@ -507,7 +541,7 @@ export const useInvestStore = defineStore('invest', {
 
           this.macroEvents = merged;
           this.macroEventsLastUpdated = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-          localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+          writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
         }
       } catch (err) {
         console.warn('[calendar] refreshMacroEvents failed:', err);
@@ -517,7 +551,7 @@ export const useInvestStore = defineStore('invest', {
     },
     removeMacroEvent(id: string) {
       this.macroEvents = this.macroEvents.filter((e) => e.id !== id);
-      localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
+      writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
     },
     addIndustryFocus(ind: Omit<IndustryFocus, 'id' | 'updatedAt'>) {
       const row: IndustryFocus = {
@@ -526,7 +560,7 @@ export const useInvestStore = defineStore('invest', {
         updatedAt: '刚刚新增',
       };
       this.industryFocus = [row, ...this.industryFocus];
-      localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+      writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
       return row;
     },
     async refreshIndustryFocus() {
@@ -561,7 +595,7 @@ export const useInvestStore = defineStore('invest', {
           this.industryFocus = merged;
           const now = new Date();
           this.industryFocusLastUpdated = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-          localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+          writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
         }
       } catch (err) {
         console.warn('Failed to refresh industry focus:', err);
@@ -571,7 +605,7 @@ export const useInvestStore = defineStore('invest', {
     },
     removeIndustryFocus(id: string) {
       this.industryFocus = this.industryFocus.filter((i) => i.id !== id);
-      localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
+      writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
     },
     convertEventToTodo(event: MacroEvent): boolean {
       const primaryTarget = event.beneficiaries?.[0] || event.title;
@@ -622,16 +656,20 @@ export const useInvestStore = defineStore('invest', {
     },
     setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
       this.prefs = { ...this.prefs, [key]: value };
-      localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
+      if (key === 'lastCloudSyncAt' || key === 'updatedAt') {
+        localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
+        return;
+      }
+      writeUserLS(LS_PREFS, this.prefs);
     },
     touchHealth(account: AccountId, total: number) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayCN();
       if (this.prefs.healthDate[account] !== today) {
         const prev = this.prefs.health[account];
         this.prefs.healthDelta[account] = prev ? total - prev : 0;
         this.prefs.health[account] = total;
         this.prefs.healthDate = { ...this.prefs.healthDate, [account]: today };
-        localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
+        writeUserLS(LS_PREFS, this.prefs);
       }
       return this.prefs.healthDelta[account];
     },
@@ -639,9 +677,11 @@ export const useInvestStore = defineStore('invest', {
       return {
         at: new Date().toISOString(),
         version: 2,
+        updatedAt: this.prefs.updatedAt || Date.now(),
         holdings: this.holdings,
         cash: this.cash,
         quotes: this.quotes,
+        navSnapshots: this.navSnapshots,
         todos: this.todos,
         theses: this.theses,
         journal: this.journal,
@@ -665,100 +705,108 @@ export const useInvestStore = defineStore('invest', {
         return { success: false, message: '快照数据缺少核心持仓或资金字段' };
       }
 
-      // 1. 持仓
-      this.holdings = data.holdings;
-      localStorage.setItem(LS_HOLD, JSON.stringify(this.holdings));
+      setHydrating(true);
+      try {
+        // 1. 持仓
+        this.holdings = data.holdings;
+        writeUserLS(LS_HOLD, this.holdings);
 
-      // 2. 现金
-      if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
-        this.cash = { stock: data.cash.stock, etf: data.cash.etf };
-        localStorage.setItem(LS_CASH, JSON.stringify(this.cash));
-      }
+        // 2. 现金
+        if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
+          this.cash = { stock: data.cash.stock, etf: data.cash.etf };
+          writeUserLS(LS_CASH, this.cash);
+        }
 
-      // 3. 交易流水台账
-      if (Array.isArray(data.transactions)) {
-        this.transactions = data.transactions;
-        localStorage.setItem(LS_TX, JSON.stringify(this.transactions));
-      }
+        // 3. 交易流水台账
+        if (Array.isArray(data.transactions)) {
+          this.transactions = data.transactions;
+          writeUserLS(LS_TX, this.transactions);
+        }
 
-      // 4. 待办清单
-      if (Array.isArray(data.todos)) {
-        this.todos = data.todos;
-        localStorage.setItem(LS_TODO, JSON.stringify(this.todos));
-      }
+        // 4. 待办清单
+        if (Array.isArray(data.todos)) {
+          this.todos = data.todos;
+          writeUserLS(LS_TODO, this.todos);
+        }
 
-      // 5. 投资论点
-      if (Array.isArray(data.theses)) {
-        this.theses = data.theses;
-        localStorage.setItem(LS_THESIS, JSON.stringify(this.theses));
-      }
+        // 5. 投资论点
+        if (Array.isArray(data.theses)) {
+          this.theses = data.theses;
+          writeUserLS(LS_THESIS, this.theses);
+        }
 
-      // 6. 复盘日记
-      if (Array.isArray(data.journal)) {
-        this.journal = data.journal;
-        localStorage.setItem(LS_JOURNAL, JSON.stringify(this.journal));
-      }
+        // 6. 复盘日记
+        if (Array.isArray(data.journal)) {
+          this.journal = data.journal;
+          writeUserLS(LS_JOURNAL, this.journal);
+        }
 
-      // 7. 机会池
-      if (Array.isArray(data.opportunities)) {
-        this.opportunities = data.opportunities;
-        localStorage.setItem(LS_OPPS, JSON.stringify(this.opportunities));
-      }
+        // 7. 机会池
+        if (Array.isArray(data.opportunities)) {
+          this.opportunities = data.opportunities;
+          writeUserLS(LS_OPPS, this.opportunities);
+        }
 
-      // 8. 偏好设定
-      if (data.prefs && typeof data.prefs === 'object') {
-        this.prefs = { ...this.prefs, ...data.prefs };
-        localStorage.setItem(LS_PREFS, JSON.stringify(this.prefs));
-      }
+        // 8. 偏好设定
+        if (data.prefs && typeof data.prefs === 'object') {
+          this.prefs = { ...this.prefs, ...data.prefs };
+          writeUserLS(LS_PREFS, this.prefs);
+        }
 
-      // 9. 自选池
-      if (Array.isArray(data.watchlist)) {
-        this.watchlist = data.watchlist;
-        localStorage.setItem(LS_WATCH, JSON.stringify(this.watchlist));
-      }
+        // 9. 自选池
+        if (Array.isArray(data.watchlist)) {
+          this.watchlist = data.watchlist;
+          writeUserLS(LS_WATCH, this.watchlist);
+        }
 
-      // 10. 自定义策略组合
-      if (Array.isArray(data.customPortfolios)) {
-        this.customPortfolios = data.customPortfolios;
-        localStorage.setItem(LS_PORT, JSON.stringify(this.customPortfolios));
-      }
+        // 10. 自定义策略组合
+        if (Array.isArray(data.customPortfolios)) {
+          this.customPortfolios = data.customPortfolios;
+          writeUserLS(LS_PORT, this.customPortfolios);
+        }
 
-      // 11. 宏观天气与指标
-      if (data.macroWeather && typeof data.macroWeather === 'object') {
-        this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
-        localStorage.setItem(LS_MACRO_WEATHER, JSON.stringify(this.macroWeather));
-      }
-      if (Array.isArray(data.macroIndicators)) {
-        this.macroIndicators = data.macroIndicators;
-        localStorage.setItem(LS_MACRO_INDICATORS, JSON.stringify(this.macroIndicators));
-      }
-      if (Array.isArray(data.macroBriefs)) {
-        this.macroBriefs = data.macroBriefs;
-        localStorage.setItem(LS_MACRO_BRIEFS, JSON.stringify(this.macroBriefs));
-      }
-      if (Array.isArray(data.macroEvents)) {
-        this.macroEvents = data.macroEvents;
-        localStorage.setItem(LS_MACRO_EVENTS, JSON.stringify(this.macroEvents));
-      }
-      if (Array.isArray(data.industryFocus)) {
-        this.industryFocus = data.industryFocus;
-        localStorage.setItem(LS_INDUSTRY_FOCUS, JSON.stringify(this.industryFocus));
-      }
+        // 11. 宏观天气与指标
+        if (data.macroWeather && typeof data.macroWeather === 'object') {
+          this.macroWeather = { ...this.macroWeather, ...data.macroWeather };
+          writeUserLS(LS_MACRO_WEATHER, this.macroWeather);
+        }
+        if (Array.isArray(data.macroIndicators)) {
+          this.macroIndicators = data.macroIndicators;
+          writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
+        }
+        if (Array.isArray(data.macroBriefs)) {
+          this.macroBriefs = data.macroBriefs;
+          writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
+        }
+        if (Array.isArray(data.macroEvents)) {
+          this.macroEvents = data.macroEvents;
+          writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
+        }
+        if (Array.isArray(data.industryFocus)) {
+          this.industryFocus = data.industryFocus;
+          writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
+        }
+        if (Array.isArray(data.navSnapshots)) {
+          this.navSnapshots = data.navSnapshots;
+          localStorage.setItem(LS_NAV, JSON.stringify(this.navSnapshots));
+        }
 
-      // 触发最新行情更新
-      this.refreshQuotes();
+        this.refreshQuotes();
 
-      return {
-        success: true,
-        message: '数据恢复成功',
-        counts: {
-          holdings: this.holdings.length,
-          transactions: this.transactions.length,
-          todos: this.todos.length,
-          theses: this.theses.length,
-          journal: this.journal.length,
-        },
-      };
+        return {
+          success: true,
+          message: '数据恢复成功',
+          counts: {
+            holdings: this.holdings.length,
+            transactions: this.transactions.length,
+            todos: this.todos.length,
+            theses: this.theses.length,
+            journal: this.journal.length,
+          },
+        };
+      } finally {
+        setHydrating(false);
+      }
     },
   },
 });

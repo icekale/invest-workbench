@@ -91,6 +91,10 @@ export default ({ mode }: ConfigEnv): UserConfig => {
             });
           },
         },
+        '/sync': {
+          target: 'http://127.0.0.1:3003',
+          changeOrigin: true,
+        },
         '/szse': {
           target: 'https://www.szse.cn',
           changeOrigin: true,

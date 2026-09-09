@@ -222,6 +222,14 @@ export interface ExecuteTradeParams {
   date?: string;
   note?: string;
   todoId?: string;
+  fee?: number;
+}
+
+/** 每日收盘快照：账户总资产（持仓市值 + 现金），用于绘制真实净值曲线 */
+export interface NavSnapshot {
+  date: string; // YYYY-MM-DD（北京自然日）
+  stockTotal: number;
+  etfTotal: number;
 }
 
 export interface ExecuteTradeResult {
@@ -240,4 +248,7 @@ export interface Prefs {
   stopLossPct?: number; // 默认 -8%
   takeProfitPct?: number; // 默认 25%
   rebalanceThresholdPct?: number; // 默认 3%
+  lastBackupAt?: number; // 上次导出快照时间戳（周提醒用）
+  lastCloudSyncAt?: number; // 上次 SQLite 云端同步成功
+  updatedAt?: number; // 本地账本修订时间，LWW
 }

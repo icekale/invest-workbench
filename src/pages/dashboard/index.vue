@@ -63,6 +63,7 @@ import { useRouter } from 'vue-router';
 import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
 import { fetchTradeMonth } from '@/utils/backup';
+import { bindCloudSync } from '@/utils/cloud-sync';
 
 import AccountPanel from './AccountPanel.vue';
 import HoldingsEditor from './HoldingsEditor.vue';
@@ -78,6 +79,9 @@ let timer = 0;
 
 onMounted(async () => {
   await refresh(true);
+  const sync = await bindCloudSync(invest);
+  if (sync === 'pull') MessagePlugin.success('已从服务器恢复持仓');
+  remindBackupIfNeeded();
   const now = new Date();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);
   try {
@@ -91,6 +95,17 @@ onMounted(async () => {
   }, 60_000);
 });
 onUnmounted(() => clearInterval(timer));
+
+let backupReminded = false;
+/** 云端 SQLite 同步失败时，超过 7 天未导出快照才提醒 */
+function remindBackupIfNeeded() {
+  if (backupReminded) return;
+  if (invest.prefs.lastCloudSyncAt && Date.now() - invest.prefs.lastCloudSyncAt < 7 * 86400_000) return;
+  const last = invest.prefs.lastBackupAt ?? 0;
+  if (Date.now() - last < 7 * 86400_000) return;
+  backupReminded = true;
+  MessagePlugin.warning('云端同步暂不可用，且超过 7 天未导出快照。建议点击「导出快照」存档。', 6000);
+}
 
 async function refresh(silent = false) {
   await invest.refreshQuotes();
@@ -111,6 +126,7 @@ function exportSnap() {
   a.download = `invest-snapshot-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+  invest.setPref('lastBackupAt', Date.now());
   MessagePlugin.success('快照已下载');
 }
 
