@@ -71,16 +71,6 @@ export default ({ mode }: ConfigEnv): UserConfig => {
             });
           },
         },
-        '/wind': {
-          target: 'https://mcp.wind.com.cn',
-          changeOrigin: true,
-          rewrite: (p: string) => p.replace(/^\/wind/, ''),
-          configure(proxy) {
-            proxy.on('proxyReq', (req) => {
-              req.setHeader('Authorization', 'Bearer ak_S_TGLKE6zft8oo5gALJA5BSaP3oyAnuN');
-            });
-          },
-        },
         '/sina': {
           target: 'https://hq.sinajs.cn',
           changeOrigin: true,

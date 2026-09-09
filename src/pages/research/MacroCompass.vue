@@ -74,7 +74,7 @@
                 :theme="growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? 'danger' : 'warning'"
                 variant="light"
               >
-                {{ growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? '荣枯线上' : '弱势筑底' }}
+                {{ pmiTag(growthPmi.latestValue) }}
               </t-tag>
             </div>
             <div class="pillar-main">
@@ -104,8 +104,8 @@
             <div class="pillar-top">
               <span class="pillar-label">物价与利润 · 剪刀差</span>
               <t-tag v-if="!cpiMetric" size="small" variant="light">未同步</t-tag>
-              <t-tag v-else size="small" theme="primary" variant="light">
-                {{ cpiMetric.latestValue != null && cpiMetric.latestValue > 0 ? '温和物价' : '低位磨底' }}
+              <t-tag v-else size="small" :theme="cpiTheme(cpiMetric.latestValue)" variant="light">
+                {{ cpiTag(cpiMetric.latestValue) }}
               </t-tag>
             </div>
             <div class="pillar-main">
@@ -123,11 +123,7 @@
               </div>
             </div>
             <div class="pillar-sub">
-              <span>{{
-                cpiMetric && ppiMetric
-                  ? `PPI ${ppiMetric.latestValue ?? '—'}% · 剪刀差`
-                  : cpiMetric?.source || '数据未同步'
-              }}</span>
+              <span>{{ cpiSub(cpiMetric, ppiMetric) }}</span>
               <span v-if="cpiMetric" class="chart-link">趋势图 →</span>
             </div>
           </div>
@@ -139,8 +135,13 @@
             <div class="pillar-top">
               <span class="pillar-label">经济总量 · 增长动能</span>
               <t-tag v-if="!gdpMetric" size="small" variant="light">未同步</t-tag>
-              <t-tag v-else size="small" theme="success" variant="light">
-                {{ (gdpMetric.latestValue ?? 0) >= 5 ? '总量稳健' : '增速承压' }}
+              <t-tag
+                v-else
+                size="small"
+                :theme="(gdpMetric.latestValue ?? 0) >= 5 ? 'success' : 'warning'"
+                variant="light"
+              >
+                {{ gdpTag(gdpMetric.latestValue) }}
               </t-tag>
             </div>
             <div class="pillar-main">
@@ -448,6 +449,35 @@ function submitMacroModal() {
     MessagePlugin.success('已添加一条晨会宏观研判');
   }
   macroModalVisible.value = false;
+}
+
+function pmiTag(v: number | null | undefined) {
+  return v != null && v >= 50 ? '荣枯线上' : '荣枯线下';
+}
+
+function cpiTag(v: number | null | undefined) {
+  if (v == null) return '未同步';
+  if (v < 0) return '通缩压力';
+  if (v < 2) return '低于2%目标';
+  return '物价偏热';
+}
+
+function cpiTheme(v: number | null | undefined): 'danger' | 'warning' | 'primary' {
+  if (v == null || v < 0) return 'warning';
+  if (v < 2) return 'primary';
+  return 'danger';
+}
+
+function gdpTag(v: number | null | undefined) {
+  return v != null && v >= 5 ? '达到5%目标' : '低于5%目标';
+}
+
+function cpiSub(cpi: MacroSeries | null, ppi: MacroSeries | null) {
+  if (cpi?.latestValue != null && ppi?.latestValue != null) {
+    const gap = Math.round((cpi.latestValue - ppi.latestValue) * 10) / 10;
+    return `PPI ${ppi.latestValue}% · 剪刀差 ${gap}`;
+  }
+  return cpi?.source || '数据未同步';
 }
 
 function fmtAfre(n: number) {
