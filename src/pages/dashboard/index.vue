@@ -64,7 +64,6 @@ import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
 import { fetchTradeMonth } from '@/utils/backup';
 import { bindCloudSync } from '@/utils/cloud-sync';
-import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
 import AccountPanel from './AccountPanel.vue';
 import HoldingsEditor from './HoldingsEditor.vue';
@@ -81,9 +80,7 @@ let timer = 0;
 onMounted(async () => {
   await refresh(true);
   const sync = await bindCloudSync(invest);
-  await settleConflictsIfNeeded();
   if (sync === 'pull') MessagePlugin.success('已从服务器恢复持仓');
-  else if (sync === 'merge') MessagePlugin.info('已按你的选择合并两端持仓');
   remindBackupIfNeeded();
   const now = new Date();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);

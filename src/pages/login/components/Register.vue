@@ -69,7 +69,6 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { useInvestStore, useUserStore } from '@/store';
 import { bindCloudSync, registerAccount } from '@/utils/cloud-sync';
-import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
 const emit = defineEmits<{ 'go-login': [] }>();
 const userStore = useUserStore();
@@ -108,7 +107,6 @@ const onSubmit = async (ctx: SubmitContext) => {
     await userStore.login({ account, password: formData.value.password });
     useInvestStore().adoptUser(account);
     await bindCloudSync(useInvestStore());
-    await settleConflictsIfNeeded();
     router.push((route.query.redirect as string) || '/dashboard');
   } catch (e: unknown) {
     MessagePlugin.error((e as Error).message || '注册失败');

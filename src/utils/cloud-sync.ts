@@ -1,9 +1,9 @@
 /** 同源 /sync → VPS SQLite。浏览器 localStorage 只是缓存。 */
 
-import type { BookSnap, MergeConflict } from './sync-merge';
-import { applyConflictPicks, emptySnap, same, slimSnap, threeWaySnapshot } from './sync-merge';
+import type { BookSnap } from './sync-merge';
+import { same, slimSnap } from './sync-merge';
 
-export type SyncAction = 'push' | 'pull' | 'noop' | 'merge';
+export type SyncAction = 'push' | 'pull' | 'noop';
 export type CloudSnapshot = BookSnap;
 
 interface SyncStore {
@@ -18,7 +18,6 @@ let timer = 0;
 let storeRef: SyncStore | null = null;
 let pending: Promise<SyncAction | 'offline'> | null = null;
 let creds = { user: '', pass: '' };
-let pendingPick: { merged: BookSnap; conflicts: MergeConflict[] } | null = null;
 
 export function parseBasic(token: string): { user: string; pass: string } | null {
   if (!token || !token.startsWith('Basic ')) return null;
@@ -39,55 +38,10 @@ export function basicToken(user: string, pass: string): string {
 export function setSyncCreds(user: string, pass: string) {
   creds = { user, pass };
   pending = null;
-  pendingPick = null;
-}
-
-export function getPendingConflicts(): MergeConflict[] {
-  return pendingPick?.conflicts ?? [];
-}
-
-export async function applyEnd(pick: 'local' | 'remote') {
-  if (!pendingPick || !storeRef) {
-    pendingPick = null;
-    return;
-  }
-  const next = applyConflictPicks(pendingPick.merged, pendingPick.conflicts, pick);
-  const now = Date.now();
-  next.updatedAt = now;
-  setHydrating(true);
-  try {
-    storeRef.restoreSnapshot(next);
-    writeBase(next);
-    await pushCloudSnapshot(next);
-    storeRef.setPref('updatedAt', now);
-    storeRef.setPref('lastCloudSyncAt', now);
-  } finally {
-    setHydrating(false);
-    pendingPick = null;
-  }
 }
 
 function authHeader(): string {
   return basicToken(creds.user, creds.pass);
-}
-
-function baseKey(): string {
-  return `invest-v2-sync-base::${creds.user || 'anon'}`;
-}
-
-function readBase(): BookSnap | null {
-  if (typeof localStorage === 'undefined' || !creds.user) return null;
-  try {
-    const raw = localStorage.getItem(baseKey());
-    return raw ? (JSON.parse(raw) as BookSnap) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeBase(data: BookSnap) {
-  if (typeof localStorage === 'undefined' || !creds.user) return;
-  localStorage.setItem(baseKey(), JSON.stringify(slimSnap(data)));
 }
 
 export function setHydrating(v: boolean) {
@@ -126,7 +80,6 @@ async function flushPush() {
   snap.updatedAt = now;
   try {
     await pushCloudSnapshot(snap);
-    writeBase(snap);
     storeRef.setPref('updatedAt', now);
     storeRef.setPref('lastCloudSyncAt', now);
   } catch {
@@ -149,36 +102,20 @@ export async function hydrateFromCloud(store: SyncStore): Promise<SyncAction | '
   setHydrating(true);
   try {
     const remoteRaw = await pullCloudSnapshot();
-    const local = slimSnap(store.snapshot());
-    const remote = remoteRaw ? slimSnap(remoteRaw) : emptySnap();
-    const ancestor = readBase() ? slimSnap(readBase() as BookSnap) : emptySnap();
-    const { merged, conflicts } = threeWaySnapshot(ancestor, local, remote);
     const now = Date.now();
-    merged.updatedAt = now;
-
-    const localSame = same(comparable(merged), comparable(local));
-    const remoteSame = remoteRaw ? same(comparable(merged), comparable(remote)) : false;
-
-    if (conflicts.length) {
-      pendingPick = { merged, conflicts };
-      if (!localSame) store.restoreSnapshot(merged);
-      return 'merge';
+    if (remoteRaw) {
+      const local = slimSnap(store.snapshot());
+      const remote = slimSnap(remoteRaw);
+      const changed = !same(comparable(local), comparable(remote));
+      if (changed) store.restoreSnapshot(remote);
+      store.setPref('updatedAt', remote.updatedAt || now);
+      store.setPref('lastCloudSyncAt', now);
+      return changed ? 'pull' : 'noop';
     }
-
-    if (!localSame) store.restoreSnapshot(merged);
-    writeBase(merged);
-
-    let action: SyncAction = 'noop';
-    if (!remoteRaw) action = 'push';
-    else if (!remoteSame) action = 'push';
-    else if (!localSame) action = 'pull';
-
-    if (!remoteRaw || !remoteSame) {
-      await pushCloudSnapshot(merged);
-    }
+    await pushCloudSnapshot(slimSnap(store.snapshot()));
     store.setPref('updatedAt', now);
     store.setPref('lastCloudSyncAt', now);
-    return action;
+    return 'push';
   } catch {
     return 'offline';
   } finally {

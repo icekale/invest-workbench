@@ -52,7 +52,6 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { useInvestStore, useUserStore } from '@/store';
 import { bindCloudSync } from '@/utils/cloud-sync';
-import { settleConflictsIfNeeded } from '@/utils/sync-ui';
 
 const emit = defineEmits<{ 'go-register': [] }>();
 const userStore = useUserStore();
@@ -83,7 +82,6 @@ const onSubmit = async (ctx: SubmitContext) => {
       const account = String(formData.value.account || '').trim();
       useInvestStore().adoptUser(account);
       await bindCloudSync(useInvestStore());
-      await settleConflictsIfNeeded();
       const redirect = route.query.redirect as string;
       router.push(redirect || '/dashboard');
     } catch (e: unknown) {
