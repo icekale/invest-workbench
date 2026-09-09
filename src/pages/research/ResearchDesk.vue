@@ -2,7 +2,7 @@
   <div>
     <!-- 研判与决策主体区：左侧信号动态 + 右侧决策待办 -->
     <t-row :gutter="[16, 16]">
-      <t-col :xs="12" :xl="7">
+      <t-col :span="12">
         <t-card title="宏观研判与事件催化">
           <!-- 四级标签切换 -->
           <div class="macro-subtabs-nav">
@@ -81,10 +81,10 @@
                       variant="outline"
                       @click="onConvertMacro(m)"
                     >
-                      + 转为决策待办 ({{ m.suggestedTodo.side === 'buy' ? '买入' : '卖出' }} {{ m.suggestedTodo.name }})
+                      + 加入交易计划 ({{ m.suggestedTodo.side === 'buy' ? '买' : '卖' }} {{ m.suggestedTodo.name }})
                     </t-button>
                     <t-button v-else size="small" theme="default" variant="outline" @click="onConvertMacro(m)">
-                      + 转为研判待办
+                      + 加入交易计划
                     </t-button>
 
                     <t-popconfirm
@@ -212,7 +212,7 @@
                 <div class="event-footer-bar">
                   <t-space :size="8" wrap>
                     <t-button size="small" theme="primary" variant="outline" @click="onConvertEventToTodo(ev)">
-                      + 生成重点跟踪待办
+                      + 加入交易计划
                     </t-button>
                     <t-button
                       v-if="ev.beneficiaries?.[0]"
@@ -347,11 +347,10 @@
         </t-card>
       </t-col>
 
-      <!-- 右侧: 投资决策与交易待办清单 -->
-      <t-col :xs="12" :xl="5">
-        <t-card title="决策待办清单 (Trading Todos)">
+      <t-col :span="12">
+        <t-card title="交易计划">
           <template #actions>
-            <t-button size="small" theme="primary" @click="openCreateTodoDialog">+ 新建立项</t-button>
+            <t-button size="small" theme="primary" @click="openCreateTodoDialog">+ 新建</t-button>
           </template>
 
           <div class="todo-filter-bar">
@@ -362,47 +361,54 @@
             </t-radio-group>
           </div>
 
-          <t-list v-if="filteredTodos.length" :split="true" class="todo-list">
-            <t-list-item v-for="t in filteredTodos" :key="t.id" class="todo-item-card">
-              <div class="todo-inner">
-                <div class="todo-top">
-                  <div class="todo-badges">
-                    <t-tag size="small" :theme="t.side === 'buy' ? 'danger' : 'success'" variant="light">
-                      {{ t.side === 'buy' ? '拟买入' : '拟卖出' }}
-                    </t-tag>
-                    <t-tag size="small" variant="outline">{{ t.account === 'etf' ? 'ETF 账户' : '股票账户' }}</t-tag>
-                    <span class="todo-code">{{ t.code }}</span>
-                  </div>
-                  <span class="todo-date">{{ t.status === 'open' ? '待执行' : '已完成' }}</span>
-                </div>
-                <div class="todo-name-line">
-                  <strong class="todo-name">{{ t.name }}</strong>
-                  <span class="todo-qty">{{ t.quantity }} 份</span>
-                </div>
-                <p class="todo-reason">{{ t.reason }}</p>
-                <div class="todo-actions">
-                  <t-space :size="8">
+          <div v-if="filteredTodos.length" class="plan-table-wrap">
+            <table class="plan-table">
+              <thead>
+                <tr>
+                  <th>标的</th>
+                  <th>方向</th>
+                  <th>数量</th>
+                  <th>预计金额</th>
+                  <th>执行方式</th>
+                  <th>状态</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="t in filteredTodos" :key="t.id">
+                  <td>
+                    <button type="button" class="plan-symbol" @click="openPlanTrade(t)">
+                      {{ t.name }} <span class="plan-code">{{ t.code }}</span>
+                    </button>
+                  </td>
+                  <td>
+                    <span class="plan-side" :class="t.side === 'buy' ? 'is-buy' : 'is-sell'">
+                      {{ t.side === 'buy' ? '买' : '卖' }}
+                    </span>
+                  </td>
+                  <td class="tabular-nums">{{ qtyText(t) }}</td>
+                  <td class="tabular-nums">{{ amountText(t) }}</td>
+                  <td>{{ execText(t) }}</td>
+                  <td>{{ statusText(t) }}</td>
+                  <td class="plan-ops">
                     <t-button
                       v-if="t.status === 'open'"
                       size="small"
-                      theme="success"
-                      variant="outline"
+                      variant="text"
+                      theme="primary"
                       @click="invest.setTodoStatus(t.id, 'done')"
                     >
-                      标记执行
+                      完成
                     </t-button>
-                    <t-button size="small" theme="default" variant="text" @click="openAddToOpportunityFromTodo(t)">
-                      存入机会池
-                    </t-button>
-                    <t-popconfirm content="确认删除此项待办？" @confirm="invest.removeTodo(t.id)">
+                    <t-popconfirm content="确认删除此条计划？" @confirm="invest.removeTodo(t.id)">
                       <t-button size="small" theme="danger" variant="text">删除</t-button>
                     </t-popconfirm>
-                  </t-space>
-                </div>
-              </div>
-            </t-list-item>
-          </t-list>
-          <t-empty v-else description="暂无待办交易，可从宏观信号或 ETF 雷达直接生成" style="padding: 40px 0" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <t-empty v-else description="暂无交易计划" style="padding: 40px 0" />
         </t-card>
       </t-col>
     </t-row>
@@ -410,34 +416,37 @@
     <!-- 新增决策待办弹窗 -->
     <t-dialog
       v-model:visible="todoDialogVisible"
-      header="新建投资交易待办"
+      header="新建交易计划"
       :confirm-btn="{ content: '确认添加', theme: 'primary' }"
       @confirm="confirmCreateTodo"
     >
       <t-form :data="todoForm" label-align="left" :label-width="80">
         <t-form-item label="标的代码">
-          <t-input v-model="todoForm.code" placeholder="如：511090 或 510300" />
+          <t-input v-model="todoForm.code" placeholder="如：300750 或 512890" />
         </t-form-item>
         <t-form-item label="标的名称">
-          <t-input v-model="todoForm.name" placeholder="如：30年国债ETF" />
+          <t-input v-model="todoForm.name" placeholder="如：宁德时代" />
         </t-form-item>
-        <t-form-item label="买卖方向">
+        <t-form-item label="方向">
           <t-radio-group v-model="todoForm.side">
-            <t-radio-button value="buy">买入</t-radio-button>
-            <t-radio-button value="sell">卖出</t-radio-button>
+            <t-radio-button value="buy">买</t-radio-button>
+            <t-radio-button value="sell">卖</t-radio-button>
           </t-radio-group>
         </t-form-item>
-        <t-form-item label="归属账户">
+        <t-form-item label="账户">
           <t-radio-group v-model="todoForm.account">
-            <t-radio-button value="etf">ETF 账户</t-radio-button>
-            <t-radio-button value="stock">股票账户</t-radio-button>
+            <t-radio-button value="etf">ETF</t-radio-button>
+            <t-radio-button value="stock">股票</t-radio-button>
           </t-radio-group>
         </t-form-item>
-        <t-form-item label="拟买份数">
-          <t-input-number v-model="todoForm.quantity" :min="100" :step="1000" style="width: 180px" />
+        <t-form-item label="数量">
+          <t-input-number v-model="todoForm.quantity" :min="0" :step="100" style="width: 180px" />
         </t-form-item>
-        <t-form-item label="决策理由">
-          <t-input v-model="todoForm.reason" placeholder="如：宏观资产荒逻辑持续，逢低建仓" />
+        <t-form-item label="执行方式">
+          <t-input v-model="todoForm.exec" placeholder="即期，或 条件：股息率 ≥ 4.2%" />
+        </t-form-item>
+        <t-form-item label="备注">
+          <t-input v-model="todoForm.reason" placeholder="可选" />
         </t-form-item>
       </t-form>
     </t-dialog>
@@ -448,8 +457,9 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
-import type { IndustryFocus, MacroBrief, MacroEvent } from '@/types/invest';
+import type { IndustryFocus, MacroBrief, MacroEvent, TradeTodo } from '@/types/invest';
 import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
+import { normalizeCode } from '@/utils/quote';
 
 import { confirmCreateTodo, openCreateTodoDialog, todoDialogVisible, todoForm } from './todo';
 
@@ -478,6 +488,39 @@ const filteredTodos = computed(() => {
   if (todoFilter.value === 'done') return doneTodos.value;
   return invest.todos;
 });
+
+function qtyText(t: TradeTodo) {
+  if (!t.quantity) return '—';
+  return `${t.quantity.toLocaleString('zh-CN')} ${t.account === 'etf' ? '份' : '股'}`;
+}
+
+function amountText(t: TradeTodo) {
+  const px = invest.quotes[normalizeCode(t.code)]?.price;
+  if (!px || !t.quantity) return '—';
+  return `≈ ¥${Math.round(px * t.quantity).toLocaleString('zh-CN')}`;
+}
+
+function execText(t: TradeTodo) {
+  return t.exec?.trim() || '即期';
+}
+
+function statusText(t: TradeTodo) {
+  if (t.status === 'done') return '已完成';
+  if (execText(t).includes('条件')) return '待触发';
+  return '可执行';
+}
+
+function openPlanTrade(t: TradeTodo) {
+  invest.openTradeModal({
+    account: t.account,
+    side: t.side,
+    code: t.code === '—' ? '' : t.code,
+    name: t.name,
+    quantity: t.quantity || 100,
+    todoId: t.id,
+    note: t.reason,
+  });
+}
 
 const sortedEvents = computed(() => {
   let sorted = sortMacroEvents(invest.macroEvents);
@@ -513,6 +556,7 @@ function onConvertMacro(m: MacroBrief) {
     todoForm.name = m.suggestedTodo.name;
     todoForm.side = m.suggestedTodo.side;
     todoForm.quantity = m.suggestedTodo.quantity || 1000;
+    todoForm.exec = '即期';
     todoForm.reason = m.suggestedTodo.reason;
   } else {
     todoForm.account = m.account === 'stock' ? 'stock' : 'etf';
@@ -520,6 +564,7 @@ function onConvertMacro(m: MacroBrief) {
     todoForm.name = m.title;
     todoForm.side = m.tone === '利多' ? 'buy' : 'sell';
     todoForm.quantity = 1000;
+    todoForm.exec = '即期';
     todoForm.reason = m.actionAdvice || m.body;
   }
   todoDialogVisible.value = true;
@@ -527,7 +572,7 @@ function onConvertMacro(m: MacroBrief) {
 
 function onConvertEventToTodo(ev: MacroEvent) {
   invest.convertEventToTodo(ev);
-  MessagePlugin.success(`已生成【${ev.title}】重点跟踪待办`);
+  MessagePlugin.success(`已将【${ev.title}】加入交易计划`);
 }
 
 function handleEventTargetClick(targetName: string, ev: MacroEvent) {
@@ -569,17 +614,6 @@ async function handleRefreshIndustry() {
   MessagePlugin.success('已同步选股宝产业风口');
 }
 
-function openAddToOpportunityFromTodo(t: { name: string; reason: string }) {
-  invest.addOpportunity({
-    account: 'etf',
-    name: t.name,
-    thesis: t.reason,
-    score: 85,
-    note: '来自决策待办转化',
-  });
-  MessagePlugin.success(`已将【${t.name}】存入研究机会池`);
-}
-
 function onConvertIndustry(ind: IndustryFocus) {
   invest.convertIndustryToOpportunity(ind);
   MessagePlugin.success(`已将【${ind.name}】加入机会池`);
@@ -598,5 +632,6 @@ onMounted(() => {
   if (!invest.macroBriefsLastUpdated) void invest.refreshMacroBriefs();
   if (!invest.macroEventsLastUpdated) void invest.refreshMacroEvents();
   if (!invest.industryFocusLastUpdated) void invest.refreshIndustryFocus();
+  void invest.refreshQuotes();
 });
 </script>

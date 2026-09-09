@@ -11,6 +11,7 @@ export const todoForm = reactive({
   name: '',
   side: 'buy' as 'buy' | 'sell',
   quantity: 1000,
+  exec: '即期',
   reason: '',
 });
 
@@ -20,6 +21,7 @@ export function quickAddTodo(code: string, name: string, reason: string) {
   todoForm.account = 'etf';
   todoForm.side = 'buy';
   todoForm.quantity = 2000;
+  todoForm.exec = '即期';
   todoForm.reason = reason;
   todoDialogVisible.value = true;
 }
@@ -29,6 +31,7 @@ export function openCreateTodoDialog() {
   todoForm.name = '';
   todoForm.side = 'buy';
   todoForm.quantity = 1000;
+  todoForm.exec = '即期';
   todoForm.reason = '';
   todoDialogVisible.value = true;
 }
@@ -45,8 +48,9 @@ export function confirmCreateTodo() {
     name: todoForm.name.trim(),
     side: todoForm.side,
     quantity: todoForm.quantity,
+    exec: todoForm.exec.trim() || '即期',
     reason: todoForm.reason.trim() || '投研决策执行',
   });
   todoDialogVisible.value = false;
-  MessagePlugin.success(`已创建【${todoForm.name}】待办`);
+  MessagePlugin.success(`已加入【${todoForm.name}】交易计划`);
 }

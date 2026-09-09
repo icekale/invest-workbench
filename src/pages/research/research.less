@@ -826,74 +826,9 @@
   }
 }
 
-/* 决策待办 */
+/* 交易计划 */
 .todo-filter-bar {
   margin-bottom: 12px;
-}
-
-.todo-list .t-list-item {
-  padding: 10px 4px;
-}
-
-.todo-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-
-  .todo-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .todo-badges {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-
-      .todo-code {
-        font-family: var(--td-font-family-mono, monospace);
-        font-size: 11px;
-        color: var(--td-text-color-placeholder);
-      }
-    }
-
-    .todo-date {
-      font-size: 11px;
-      color: var(--td-text-color-placeholder);
-    }
-  }
-
-  .todo-name-line {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: 2px 0;
-
-    .todo-name {
-      font-size: 13px;
-      color: var(--td-text-color-primary);
-    }
-
-    .todo-qty {
-      font-size: 12px;
-      font-weight: 600;
-      font-family: var(--td-font-family-mono, monospace);
-      color: var(--td-brand-color, #0d706d);
-    }
-  }
-
-  .todo-reason {
-    font-size: 12px;
-    color: var(--td-text-color-secondary);
-    margin: 0;
-  }
-
-  .todo-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 4px;
-  }
 }
 
 /* 指标弹窗下钻 */
@@ -1507,6 +1442,67 @@
     color: var(--td-text-color-secondary);
     font-weight: 600;
   }
+}
+
+.plan-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--td-border-level-1-color);
+  border-radius: 12px;
+}
+
+.plan-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 12px 16px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--td-border-level-1-color);
+  }
+
+  th {
+    background: rgb(13 112 109 / 8%);
+    font-weight: 600;
+    color: var(--td-text-color-primary);
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.plan-symbol {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--td-text-color-primary);
+  text-align: left;
+
+  .plan-code {
+    color: var(--td-text-color-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.plan-side.is-buy {
+  color: var(--guanlan-gain, #b8433e);
+  font-weight: 600;
+}
+
+.plan-side.is-sell {
+  color: var(--guanlan-loss, #16815f);
+  font-weight: 600;
+}
+
+.plan-ops {
+  text-align: right;
+  white-space: nowrap;
 }
 
 @media (width <= 767px) {

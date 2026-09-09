@@ -8,7 +8,7 @@
       <div class="overview-strip__divider" />
       <button type="button" class="overview-strip__item" @click="openTab('desk')">
         <span class="overview-strip__label">待执行交易</span>
-        <span class="overview-strip__val">{{ openTodos.length }} <small>项待办</small></span>
+        <span class="overview-strip__val">{{ openTodos.length }} <small>项计划</small></span>
       </button>
       <div class="overview-strip__divider" />
       <button type="button" class="overview-strip__item" @click="openTab('desk')">
@@ -35,7 +35,7 @@
     <t-radio-group v-model="tab" variant="default-filled" class="research-nav">
       <t-radio-button value="macro">宏观定调</t-radio-button>
       <t-radio-button value="valuation">估值信号</t-radio-button>
-      <t-radio-button value="desk">研判待办</t-radio-button>
+      <t-radio-button value="desk">交易计划</t-radio-button>
     </t-radio-group>
 
     <div v-show="tab === 'macro'" class="research-pane">
@@ -172,7 +172,7 @@ function commitBriefingTodo(todo: BriefingTodoDraft) {
     quantity: todo.quantity || 0,
     reason: todo.reason,
   });
-  MessagePlugin.success('已写入待办');
+  MessagePlugin.success('已写入交易计划');
 }
 
 onMounted(() => {

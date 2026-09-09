@@ -190,10 +190,14 @@ export const useInvestStore = defineStore('invest', {
       persist();
     },
     async refreshQuotes() {
-      if (this.quoteAt && Date.now() - this.quoteAt < 15_000 && Object.keys(this.quotes).length) return;
+      const extra = this.todos.map((t) => normalizeCode(t.code)).filter(Boolean);
+      const missing = extra.filter((c) => !this.quotes[c]);
+      if (this.quoteAt && Date.now() - this.quoteAt < 15_000 && Object.keys(this.quotes).length && !missing.length) {
+        return;
+      }
       this.quoteLoading = true;
       this.quoteError = '';
-      const codes = [...new Set([...this.holdings.map((h) => h.code), ...indexes])];
+      const codes = [...new Set([...this.holdings.map((h) => h.code), ...extra, ...indexes])];
       try {
         let map = await fetchQuotes(codes).catch(() => new Map<string, Quote>());
         if (!map.size) map = await fetchSinaQuotes(codes);
@@ -233,6 +237,7 @@ export const useInvestStore = defineStore('invest', {
     addTodo(todo: Omit<TradeTodo, 'id' | 'status'>) {
       const row: TradeTodo = {
         ...todo,
+        exec: todo.exec?.trim() || '即期',
         id: `td_${Date.now()}`,
         status: 'open',
       };
@@ -606,6 +611,7 @@ export const useInvestStore = defineStore('invest', {
         name: primaryTarget.slice(0, 14),
         side: 'buy',
         quantity: 0,
+        exec: `条件：${event.title}`,
         reason: `重点会议催化【${event.title}】：${event.suggestedAction || event.impact}`,
       });
       return true;

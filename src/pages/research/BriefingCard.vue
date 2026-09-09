@@ -35,7 +35,7 @@
           :disabled="written.has(todoKey(todo))"
           @click="$emit('commit', todo)"
         >
-          {{ written.has(todoKey(todo)) ? '已写入' : '写入待办' }}
+          {{ written.has(todoKey(todo)) ? '已写入' : '写入计划' }}
         </t-button>
       </div>
     </template>

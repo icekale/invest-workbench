@@ -141,6 +141,7 @@ export interface TradeTodo {
   side: TradeSide;
   quantity: number;
   reason: string;
+  exec?: string;
   status: TodoStatus;
 }
 export interface DisciplineRule {
