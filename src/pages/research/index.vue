@@ -25,8 +25,11 @@
       </div>
       <div class="overview-strip__divider" />
       <div class="overview-strip__item">
-        <span class="overview-strip__label">万得 EDB 状态</span>
-        <span class="overview-strip__val edb-status"> <span class="edb-dot" />已接入 </span>
+        <span class="overview-strip__label">宏观源状态</span>
+        <span class="overview-strip__val edb-status">
+          <span class="edb-dot" :class="{ 'is-down': macroState !== 'ok' }" />
+          {{ macroState === 'ok' ? '已接入' : macroState === 'loading' ? '同步中' : '未接通' }}
+        </span>
       </div>
     </div>
 
@@ -82,8 +85,11 @@
     <t-card title="万得 EDB 宏观四大支柱温度计" subtitle="点击任一指标卡片可下钻查看真实历史走势图与分位数">
       <template #actions>
         <t-space :size="8" align="center">
-          <span v-if="windSyncTime" class="sync-time-hint">已同步: {{ windSyncTime }}</span>
-          <t-button size="small" variant="outline" theme="primary" :loading="windLoading" @click="refreshWindData">
+          <span v-if="macroErrorMsg" class="sync-time-hint" style="color: var(--td-error-color)">
+            {{ macroErrorMsg }}
+          </span>
+          <span v-else-if="macroSyncTime" class="sync-time-hint">已同步: {{ macroSyncTime }}</span>
+          <t-button size="small" variant="outline" theme="primary" :loading="macroLoading" @click="refreshMacroData">
             <template #icon><t-icon name="refresh" /></template>
             从万得同步
           </t-button>
@@ -96,23 +102,21 @@
           <div class="edb-pillar-card" @click="openMetricChart('pmi')">
             <div class="pillar-top">
               <span class="pillar-label">经济增长 · 景气度</span>
+              <t-tag v-if="!growthPmi" size="small" variant="light">未同步</t-tag>
               <t-tag
+                v-else
                 size="small"
-                :theme="
-                  growthPmi && growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? 'danger' : 'warning'
-                "
+                :theme="growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? 'danger' : 'warning'"
                 variant="light"
               >
-                {{
-                  growthPmi && growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? '荣枯线上' : '弱势筑底'
-                }}
+                {{ growthPmi.latestValue != null && growthPmi.latestValue >= 50 ? '荣枯线上' : '弱势筑底' }}
               </t-tag>
             </div>
             <div class="pillar-main">
               <span class="pillar-name">{{ growthPmi?.name || '官方制造业PMI' }}</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">{{ growthPmi?.latestValue ?? '49.8' }}</span>
-                <span class="pillar-unit">{{ growthPmi?.unit || '%' }}</span>
+                <span class="pillar-val">{{ growthPmi?.latestValue ?? '—' }}</span>
+                <span v-if="growthPmi" class="pillar-unit">{{ growthPmi.unit }}</span>
                 <span
                   v-if="growthPmi?.change != null"
                   class="pillar-change"
@@ -123,8 +127,8 @@
               </div>
             </div>
             <div class="pillar-sub">
-              <span>{{ growthPmi?.source || '国家统计局' }}</span>
-              <span class="chart-link">趋势图 →</span>
+              <span>{{ growthPmi?.source || '数据未同步' }}</span>
+              <span v-if="growthPmi" class="chart-link">趋势图 →</span>
             </div>
           </div>
         </t-col>
@@ -134,15 +138,16 @@
           <div class="edb-pillar-card" @click="openMetricChart('cpi')">
             <div class="pillar-top">
               <span class="pillar-label">物价与利润 · 剪刀差</span>
-              <t-tag size="small" theme="primary" variant="light">
-                {{ cpiMetric?.latestValue != null && cpiMetric.latestValue > 0 ? '温和物价' : '低位磨底' }}
+              <t-tag v-if="!cpiMetric" size="small" variant="light">未同步</t-tag>
+              <t-tag v-else size="small" theme="primary" variant="light">
+                {{ cpiMetric.latestValue != null && cpiMetric.latestValue > 0 ? '温和物价' : '低位磨底' }}
               </t-tag>
             </div>
             <div class="pillar-main">
               <span class="pillar-name">{{ cpiMetric?.name || 'CPI:当月同比' }}</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">{{ cpiMetric?.latestValue ?? '0.5' }}</span>
-                <span class="pillar-unit">{{ cpiMetric?.unit || '%' }}</span>
+                <span class="pillar-val">{{ cpiMetric?.latestValue ?? '—' }}</span>
+                <span v-if="cpiMetric" class="pillar-unit">{{ cpiMetric.unit }}</span>
                 <span
                   v-if="cpiMetric?.change != null"
                   class="pillar-change"
@@ -153,58 +158,65 @@
               </div>
             </div>
             <div class="pillar-sub">
-              <span>{{ cpiMetric?.source || '国家统计局' }}</span>
-              <span class="chart-link">趋势图 →</span>
+              <span>{{
+                cpiMetric && ppiMetric
+                  ? `PPI ${ppiMetric.latestValue ?? '—'}% · 剪刀差`
+                  : cpiMetric?.source || '数据未同步'
+              }}</span>
+              <span v-if="cpiMetric" class="chart-link">趋势图 →</span>
             </div>
           </div>
         </t-col>
 
-        <!-- 支柱 3: 货币与流动性 (M2 / M1) -->
+        <!-- 支柱 3: 经济总量 (GDP) -->
         <t-col :xs="12" :sm="6" :xl="3">
-          <div class="edb-pillar-card" @click="openMetricChart('m2')">
+          <div class="edb-pillar-card" @click="openMetricChart('gdp')">
             <div class="pillar-top">
-              <span class="pillar-label">货币供应 · 资金活化</span>
-              <t-tag size="small" theme="success" variant="light"> 宽松适度 </t-tag>
+              <span class="pillar-label">经济总量 · 增长动能</span>
+              <t-tag v-if="!gdpMetric" size="small" variant="light">未同步</t-tag>
+              <t-tag v-else size="small" theme="success" variant="light">
+                {{ (gdpMetric.latestValue ?? 0) >= 5 ? '总量稳健' : '增速承压' }}
+              </t-tag>
             </div>
             <div class="pillar-main">
-              <span class="pillar-name">{{ m2Metric?.name || 'M2 货币供应:同比' }}</span>
+              <span class="pillar-name">{{ gdpMetric?.name || 'GDP:不变价同比' }}</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">{{ m2Metric?.latestValue ?? '8.0' }}</span>
-                <span class="pillar-unit">{{ m2Metric?.unit || '%' }}</span>
+                <span class="pillar-val">{{ gdpMetric?.latestValue ?? '—' }}</span>
+                <span v-if="gdpMetric" class="pillar-unit">{{ gdpMetric.unit }}</span>
                 <span
-                  v-if="m2Metric?.change != null"
+                  v-if="gdpMetric?.change != null"
                   class="pillar-change"
-                  :class="m2Metric.change >= 0 ? 'is-up' : 'is-down'"
+                  :class="gdpMetric.change >= 0 ? 'is-up' : 'is-down'"
                 >
-                  {{ m2Metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(m2Metric.change) }}
+                  {{ gdpMetric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(gdpMetric.change) }}
                 </span>
               </div>
             </div>
             <div class="pillar-sub">
-              <span>{{ m2Metric?.source || '中国人民银行' }}</span>
-              <span class="chart-link">趋势图 →</span>
+              <span>{{ gdpMetric?.source || '数据未同步' }}</span>
+              <span v-if="gdpMetric" class="chart-link">趋势图 →</span>
             </div>
           </div>
         </t-col>
 
-        <!-- 支柱 4: 利率估值与资产荒 (10Y国债 / 股债利差) -->
+        <!-- 支柱 4: 利率估值与资产荒 (10Y国债 / 股债利差) · 静态参考值 -->
         <t-col :xs="12" :sm="6" :xl="3">
           <div class="edb-pillar-card" @click="openMetricChart('bond')">
             <div class="pillar-top">
               <span class="pillar-label">利率中枢 · 资产荒</span>
-              <t-tag size="small" theme="danger" variant="light"> 深度击球区 </t-tag>
+              <t-tag size="small" variant="light">静态参考</t-tag>
             </div>
             <div class="pillar-main">
               <span class="pillar-name">10Y国债收益率 / ERP</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">1.82</span>
+                <span class="pillar-val">≈1.82</span>
                 <span class="pillar-unit">%</span>
-                <span class="pillar-tag-sub">ERP 3.85%</span>
+                <span class="pillar-tag-sub">非实时</span>
               </div>
             </div>
             <div class="pillar-sub">
-              <span>长端利率下行 · 股债利差84%高分位</span>
-              <span class="chart-link">趋势图 →</span>
+              <span>静态参考值 · 以万得同步为准</span>
+              <span class="chart-link">示意 →</span>
             </div>
           </div>
         </t-col>
@@ -284,14 +296,15 @@
 
           <div class="val-data-row">
             <div class="val-price-box">
-              <span class="val-price">{{ Number(item.price).toFixed(2) }}</span>
-              <span class="val-change" :class="item.changePct >= 0 ? 'is-up' : 'is-down'">
+              <span class="val-price">{{ item.price > 0 ? Number(item.price).toFixed(2) : '—' }}</span>
+              <span v-if="item.price > 0" class="val-change" :class="item.changePct >= 0 ? 'is-up' : 'is-down'">
                 {{
                   item.changePct >= 0
                     ? `+${Number(item.changePct).toFixed(2)}%`
                     : `${Number(item.changePct).toFixed(2)}%`
                 }}
               </span>
+              <span v-else class="val-change muted-hint">行情未同步</span>
             </div>
             <div class="val-pe-box">
               <span class="pe-label">PE(TTM)</span>
@@ -380,7 +393,7 @@
 
         <template #priceInfo="{ row }">
           <div class="table-price-cell">
-            <strong class="idx-price">{{ Number(row.price).toFixed(2) }}</strong>
+            <strong class="idx-price">{{ row.price > 0 ? Number(row.price).toFixed(2) : '—' }}</strong>
             <span class="idx-chg" :class="row.changePct >= 0 ? 'is-up' : 'is-down'">
               {{
                 row.changePct >= 0 ? `+${Number(row.changePct).toFixed(2)}%` : `${Number(row.changePct).toFixed(2)}%`
@@ -555,47 +568,17 @@
     <!-- 研判与决策主体区：左侧信号动态 + 右侧决策待办 -->
     <t-row :gutter="[16, 16]">
       <t-col :xs="12" :xl="7">
-        <t-card title="宏观研判、万得要闻与事件催化">
+        <t-card title="宏观研判与事件催化">
           <!-- 四级标签切换 -->
           <div class="macro-subtabs-nav">
             <t-tabs v-model="macroSectionTab" theme="normal">
-              <t-tab-panel value="wind_news" :label="`万得权威要闻 (${windNewsList.length || 4})`" />
               <t-tab-panel value="signals" :label="`晨会研判 (${macros.length})`" />
               <t-tab-panel value="events" :label="`近期重点会议 (${invest.macroEvents.length})`" />
               <t-tab-panel value="industries" :label="`产业催化 (${invest.industryFocus.length})`" />
             </t-tabs>
           </div>
 
-          <!-- 视图 0: 万得权威宏观要闻 -->
-          <div v-if="macroSectionTab === 'wind_news'" class="wind-news-panel">
-            <div class="wind-news-filter">
-              <span class="wind-news-hint">依托万得金融文档 RAG 实时抓取央行执行报告与宏观部委官方公报</span>
-              <t-button size="small" variant="outline" :loading="windLoading" @click="refreshWindData">
-                刷新要闻
-              </t-button>
-            </div>
-            <div class="wind-news-list">
-              <div v-for="(news, idx) in windNewsList" :key="idx" class="wind-news-card">
-                <div class="news-hd">
-                  <span class="news-badge">官方权威</span>
-                  <strong class="news-title">{{ news.title }}</strong>
-                  <span class="news-date">{{ news.date }}</span>
-                </div>
-                <p class="news-content">{{ news.content }}</p>
-                <div class="news-ft">
-                  <span class="news-rel">关联度: {{ Math.round(news.relevance * 100) }}%</span>
-                  <t-space :size="8">
-                    <t-button size="small" theme="primary" variant="outline" @click="convertNewsToTodo(news)">
-                      + 转为投资待办
-                    </t-button>
-                  </t-space>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 视图 1: 晨会信号列表 -->
-          <div v-else-if="macroSectionTab === 'signals'">
+          <div v-if="macroSectionTab === 'signals'">
             <div class="macro-filter-row">
               <t-radio-group v-model="macroFilter" variant="default-filled">
                 <t-radio-button value="all">全部</t-radio-button>
@@ -929,7 +912,10 @@
 
         <div ref="metricChartEl" style="height: 320px; width: 100%; margin-top: 16px" />
         <div class="dialog-foot-note">
-          <span>* 数据来源于万得 Wind EDB 金融数据库，经 Caddy 安全反向代理直连取数。</span>
+          <span
+            >* 数据来源于万得 Wind EDB 金融数据库，经 Caddy
+            安全反向代理直连取数。接口不可用时展示静态示意，非真实数据。</span
+          >
         </div>
       </div>
     </t-dialog>
@@ -939,8 +925,8 @@
       v-model:visible="valChartModalVisible"
       :header="
         selectedValuation
-          ? `${selectedValuation.name} (${selectedValuation.code.toUpperCase()}) · 估值走势与通道`
-          : '估值历史走势'
+          ? `${selectedValuation.name} (${selectedValuation.code.toUpperCase()}) · 估值走势（示意）`
+          : '估值走势（示意）'
       "
       width="740px"
       :footer="false"
@@ -1105,10 +1091,7 @@
   </t-space>
 </template>
 <script setup lang="ts">
-import { LineChart } from 'echarts/charts';
-import { GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
-import * as echarts from 'echarts/core';
-import { CanvasRenderer } from 'echarts/renderers';
+import type { ECharts } from 'echarts/core';
 import type { PrimaryTableCol } from 'tdesign-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
@@ -1116,27 +1099,48 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useInvestStore } from '@/store';
 import type { AccountId, MacroBrief, MacroEvent } from '@/types/invest';
 import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
+import type { MacroSeries } from '@/utils/macro-cn';
+import { fetchMacroBundle, peekMacroBundle } from '@/utils/macro-cn';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
-import { fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
-import type { WindMetric, WindNewsItem } from '@/utils/wind';
-import { fetchWindEdb, fetchWindNews } from '@/utils/wind';
+import { fetchIndexPeHistory, fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
 
 type MacroTone = '利多' | '中性' | '警惕' | '待定';
 type MacroTopic = '增长' | '流动性' | '政策' | '海外';
 
 defineOptions({ name: 'ResearchIndex' });
 
-echarts.use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer]);
+let echartsCore: typeof import('echarts/core') | null = null;
+async function loadEcharts() {
+  if (echartsCore) return echartsCore;
+  const [echarts, { LineChart }, comps, { CanvasRenderer }] = await Promise.all([
+    import('echarts/core'),
+    import('echarts/charts'),
+    import('echarts/components'),
+    import('echarts/renderers'),
+  ]);
+  echarts.use([
+    LineChart,
+    comps.GridComponent,
+    comps.TooltipComponent,
+    comps.MarkLineComponent,
+    comps.MarkAreaComponent,
+    CanvasRenderer,
+  ]);
+  echartsCore = echarts;
+  return echarts;
+}
 
 const invest = useInvestStore();
 
 // 宏观四大支柱状态
-const windLoading = ref(false);
-const windSyncTime = ref('');
-const growthPmi = ref<WindMetric | null>(null);
-const cpiMetric = ref<WindMetric | null>(null);
-const m2Metric = ref<WindMetric | null>(null);
-const windNewsList = ref<WindNewsItem[]>([]);
+const macroLoading = ref(false);
+const macroSyncTime = ref('');
+const macroErrorMsg = ref('');
+const macroState = ref<'never' | 'loading' | 'ok' | 'error'>('never');
+const growthPmi = ref<MacroSeries | null>(null);
+const cpiMetric = ref<MacroSeries | null>(null);
+const ppiMetric = ref<MacroSeries | null>(null);
+const gdpMetric = ref<MacroSeries | null>(null);
 
 // 核心指数估值分位与买卖信号状态
 const valLoading = ref(false);
@@ -1147,7 +1151,7 @@ const selectedValuation = ref<IndexValuationItem | null>(null);
 const valChartModalVisible = ref(false);
 const valChartPeriod = ref<number>(3);
 const valChartEl = ref<HTMLDivElement | null>(null);
-let valChartInstance: echarts.ECharts | null = null;
+let valChartInstance: ECharts | null = null;
 
 const filteredValuations = computed(() => {
   if (valFilter.value === 'all') return valList.value;
@@ -1169,12 +1173,12 @@ const valTableColumns: PrimaryTableCol[] = [
 
 // 指标下钻图表弹窗
 const chartModalVisible = ref(false);
-const activeMetric = ref<WindMetric | null>(null);
+const activeMetric = ref<MacroSeries | null>(null);
 const metricChartEl = ref<HTMLDivElement | null>(null);
-let chartInstance: echarts.ECharts | null = null;
+let chartInstance: ECharts | null = null;
 
 // 选项卡
-const macroSectionTab = ref('wind_news');
+const macroSectionTab = ref('signals');
 const macroFilter = ref('all');
 const eventsFilter = ref<'upcoming' | 'all' | 'past'>('upcoming');
 const onlyMajorEvents = ref(localStorage.getItem('invest-only-major-events') === 'true');
@@ -1303,16 +1307,6 @@ function quickAddTodo(code: string, name: string, reason: string) {
   todoDialogVisible.value = true;
 }
 
-function convertNewsToTodo(news: WindNewsItem) {
-  todoForm.code = '510300';
-  todoForm.name = '沪深300ETF';
-  todoForm.account = 'etf';
-  todoForm.side = 'buy';
-  todoForm.quantity = 1000;
-  todoForm.reason = `万得权威要闻联动: ${news.title.slice(0, 30)}`;
-  todoDialogVisible.value = true;
-}
-
 function onConvertMacro(m: MacroBrief) {
   if (m.suggestedTodo) {
     todoForm.account = m.suggestedTodo.account;
@@ -1397,21 +1391,23 @@ function openIndDrawer(ind: { name: string; catalyst: string }) {
 }
 
 // 万得指标图表下钻
-function openMetricChart(type: 'pmi' | 'cpi' | 'm2' | 'bond') {
+function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'bond') {
   if (type === 'pmi') {
     activeMetric.value = growthPmi.value;
   } else if (type === 'cpi') {
     activeMetric.value = cpiMetric.value;
-  } else if (type === 'm2') {
-    activeMetric.value = m2Metric.value;
+  } else if (type === 'ppi') {
+    activeMetric.value = ppiMetric.value;
+  } else if (type === 'gdp') {
+    activeMetric.value = gdpMetric.value;
   } else {
     activeMetric.value = {
       code: 'CN10Y',
-      name: '中债国债10年到期收益率与ERP',
+      name: '中债国债10年到期收益率（静态示意）',
       unit: '%',
-      source: '万得 / 中债估值',
+      source: '静态示例 · 非实时',
       freq: '日',
-      updateDate: '今日',
+      updateDate: '示例',
       dates: ['2025-09', '2025-11', '2026-01', '2026-03', '2026-05', '2026-07', '2026-09'],
       values: [2.05, 1.98, 1.92, 1.86, 1.84, 1.83, 1.82],
       latestValue: 1.82,
@@ -1422,155 +1418,118 @@ function openMetricChart(type: 'pmi' | 'cpi' | 'm2' | 'bond') {
   chartModalVisible.value = true;
 }
 
-function renderMetricChart() {
-  nextTick(() => {
-    if (!metricChartEl.value || !activeMetric.value) return;
-    if (!chartInstance) {
-      chartInstance = echarts.init(metricChartEl.value);
-    }
-    const dates = activeMetric.value.dates.map((d) => d.slice(0, 7));
-    const values = activeMetric.value.values;
+async function renderMetricChart() {
+  await nextTick();
+  if (!metricChartEl.value || !activeMetric.value) return;
+  const echarts = await loadEcharts();
+  if (!chartInstance) chartInstance = echarts.init(metricChartEl.value);
+  const dates = activeMetric.value.dates.map((d) => d.slice(0, 7));
+  const values = activeMetric.value.values;
 
-    chartInstance.setOption(
-      {
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            const p = params[0];
-            return `${p.name}<br/>${activeMetric.value?.name}: <strong>${p.value} ${activeMetric.value?.unit}</strong>`;
-          },
+  chartInstance.setOption(
+    {
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const p = params[0];
+          return `${p.name}<br/>${activeMetric.value?.name}: <strong>${p.value} ${activeMetric.value?.unit}</strong>`;
         },
-        grid: { left: 52, right: 24, top: 24, bottom: 28 },
-        xAxis: {
-          type: 'category',
-          data: dates,
-          axisLine: { lineStyle: { color: '#dcdcdc' } },
-          axisLabel: { color: '#666' },
-        },
-        yAxis: {
-          type: 'value',
-          scale: true,
-          axisLabel: {
-            formatter: `{value}${activeMetric.value.unit}`,
-            color: '#666',
-          },
-          splitLine: { lineStyle: { color: '#f0f0f0' } },
-        },
-        series: [
-          {
-            name: activeMetric.value.name,
-            type: 'line',
-            data: values,
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 6,
-            itemStyle: { color: '#0d706d' },
-            lineStyle: { width: 3, color: '#0d706d' },
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(13, 112, 109, 0.28)' },
-                { offset: 1, color: 'rgba(13, 112, 109, 0.02)' },
-              ]),
-            },
-          },
-        ],
       },
-      true,
-    );
-    chartInstance.resize();
-  });
+      grid: { left: 52, right: 24, top: 24, bottom: 28 },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLine: { lineStyle: { color: '#dcdcdc' } },
+        axisLabel: { color: '#666' },
+      },
+      yAxis: {
+        type: 'value',
+        scale: true,
+        axisLabel: {
+          formatter: `{value}${activeMetric.value.unit}`,
+          color: '#666',
+        },
+        splitLine: { lineStyle: { color: '#f0f0f0' } },
+      },
+      series: [
+        {
+          name: activeMetric.value.name,
+          type: 'line',
+          data: values,
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 6,
+          itemStyle: { color: '#0d706d' },
+          lineStyle: { width: 3, color: '#0d706d' },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(13, 112, 109, 0.28)' },
+              { offset: 1, color: 'rgba(13, 112, 109, 0.02)' },
+            ]),
+          },
+        },
+      ],
+    },
+    true,
+  );
+  chartInstance.resize();
 }
 
-// 加载万得数据
-async function loadWindData(force = false) {
-  windLoading.value = true;
+function applyMacroBundle(bundle: {
+  pmi: MacroSeries | null;
+  cpi: MacroSeries | null;
+  ppi: MacroSeries | null;
+  gdp: MacroSeries | null;
+}) {
+  if (bundle.pmi) growthPmi.value = bundle.pmi;
+  if (bundle.cpi) cpiMetric.value = bundle.cpi;
+  if (bundle.ppi) ppiMetric.value = bundle.ppi;
+  if (bundle.gdp) gdpMetric.value = bundle.gdp;
+  return [bundle.pmi, bundle.cpi, bundle.ppi, bundle.gdp].filter(Boolean).length;
+}
+
+async function fetchAndApplyMacro(force: boolean) {
   try {
-    // 1. 获取 PMI
-    const pmiList = await fetchWindEdb('中国官方制造业PMI', 8, force).catch(() => []);
-    if (pmiList.length) {
-      growthPmi.value = pmiList[0];
+    const bundle = await fetchMacroBundle(force);
+    const okCount = applyMacroBundle(bundle);
+    if (okCount > 0) {
+      macroState.value = 'ok';
+      macroSyncTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      macroErrorMsg.value = okCount < 4 ? '部分指标未同步' : '';
     } else {
-      growthPmi.value = {
-        code: 'M0017126',
-        name: '制造业PMI',
-        unit: '%',
-        source: '国家统计局',
-        freq: '月',
-        updateDate: '最新',
-        dates: ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'],
-        values: [50.4, 50.3, 50.0, 50.3, 49.2, 49.8],
-        latestValue: 49.8,
-        previousValue: 49.2,
-        change: 0.6,
-      };
+      macroState.value = 'error';
+      macroErrorMsg.value = '宏观数据未同步';
+      macroSyncTime.value = '';
     }
-
-    // 2. 获取 CPI
-    const cpiList = await fetchWindEdb('中国CPI当月同比', 8, force).catch(() => []);
-    if (cpiList.length) {
-      cpiMetric.value = cpiList[0];
-    } else {
-      cpiMetric.value = {
-        code: 'M0000612',
-        name: 'CPI:当月同比',
-        unit: '%',
-        source: '国家统计局',
-        freq: '月',
-        updateDate: '最新',
-        dates: ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07'],
-        values: [0.1, 0.3, 0.3, 0.2, 0.5],
-        latestValue: 0.5,
-        previousValue: 0.2,
-        change: 0.3,
-      };
+  } catch (e) {
+    if (!growthPmi.value && !cpiMetric.value && !ppiMetric.value && !gdpMetric.value) {
+      macroState.value = 'error';
+      macroErrorMsg.value = e instanceof Error ? e.message : '东财数据中心不可用';
     }
-
-    // 3. 获取 M2
-    const m2List = await fetchWindEdb('中国M2同比', 8, force).catch(() => []);
-    if (m2List.length) {
-      m2Metric.value = m2List[0];
-    } else {
-      m2Metric.value = {
-        code: 'M0001385',
-        name: 'M2:同比',
-        unit: '%',
-        source: '中国人民银行',
-        freq: '月',
-        updateDate: '最新',
-        dates: ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07'],
-        values: [8.3, 8.0, 7.8, 8.0, 8.0],
-        latestValue: 8.0,
-        previousValue: 8.0,
-        change: 0,
-      };
-    }
-
-    // 4. 获取权威新闻
-    const news = await fetchWindNews('中国央行 货币政策 最新', 4, force).catch(() => []);
-    if (news.length) {
-      windNewsList.value = news;
-    } else {
-      windNewsList.value = [
-        {
-          title: '中国人民银行发布《2026年第二季度中国货币政策执行报告》',
-          date: '2026-08-12',
-          content:
-            '继续实施好适度宽松的货币政策。保持流动性充裕和社会融资条件相对宽松，引导社会融资规模同经济增长相匹配。',
-          relevance: 0.94,
-          url: '',
-        },
-      ];
-    }
-
-    windSyncTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   } finally {
-    windLoading.value = false;
+    macroLoading.value = false;
   }
 }
 
-function refreshWindData() {
-  loadWindData(true);
-  MessagePlugin.success('已触发万得数据实时刷新');
+async function loadMacroData(force = false) {
+  if (!force) {
+    const cached = peekMacroBundle();
+    const n = applyMacroBundle(cached);
+    if (n > 0) {
+      macroState.value = 'ok';
+      macroLoading.value = false;
+      void fetchAndApplyMacro(true);
+      return;
+    }
+  }
+  macroLoading.value = true;
+  macroState.value = 'loading';
+  macroErrorMsg.value = '';
+  await fetchAndApplyMacro(force);
+}
+
+function refreshMacroData() {
+  loadMacroData(true);
 }
 
 // 核心指数估值逻辑
@@ -1590,14 +1549,18 @@ function openValChartModal(item: IndexValuationItem) {
   valChartModalVisible.value = true;
 }
 
-function renderValuationChart() {
-  nextTick(() => {
+async function renderValuationChart() {
+  await nextTick(async () => {
     if (!valChartEl.value || !selectedValuation.value) return;
+    const echarts = await loadEcharts();
     if (!valChartInstance) {
       valChartInstance = echarts.init(valChartEl.value);
     }
-    const seriesData = generateValuationHistorySeries(selectedValuation.value, valChartPeriod.value);
     const item = selectedValuation.value;
+    // 优先中证官网真实 PE 历史；失败时回退确定性示意序列
+    const real = await fetchIndexPeHistory(item.code, valChartPeriod.value).catch(() => null);
+    const seriesData = real ?? generateValuationHistorySeries(item, valChartPeriod.value);
+    const sourceNote = real ? '数据源：中证指数有限公司' : '示意序列（非真实历史）';
 
     valChartInstance.setOption(
       {
@@ -1608,6 +1571,7 @@ function renderValuationChart() {
             return `<div style="font-size:12px;line-height:1.6">
               <strong>${p.name}</strong><br/>
               PE(TTM): <strong>${p.value}</strong><br/>
+              ${sourceNote}<br/>
               当前最新: ${item.pe} (${item.pePercentile}%分位)<br/>
               20% 机会线: ${item.peStats.p20}<br/>
               50% 价值中枢: ${item.peStats.p50}<br/>
@@ -1690,7 +1654,7 @@ function quickAddValuationTodo(item: IndexValuationItem) {
 }
 
 onMounted(() => {
-  loadWindData();
+  loadMacroData();
   loadValuations();
   invest.refreshMacroEvents();
   invest.refreshIndustryFocus();
@@ -1775,6 +1739,15 @@ onUnmounted(() => {
       border-radius: 50%;
       background: var(--guanlan-gain, #16815f);
       animation: pulse 2s infinite;
+    }
+
+    .edb-dot.is-down {
+      background: var(--td-text-color-placeholder, #5e6c76);
+      animation: none;
+    }
+
+    &.edb-status:has(.edb-dot.is-down) {
+      color: var(--td-text-color-secondary, #4f5d67);
     }
   }
 }
