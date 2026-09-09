@@ -4,6 +4,7 @@
  * 10Y 国债收益率暂无免费实时源，前端以「静态参考」标注。
  */
 import { fetchOk, withRetry } from './http.ts';
+import { marketGet, marketPut } from './market-cache';
 
 export interface MacroSeries {
   code: string;
@@ -21,22 +22,10 @@ export interface MacroSeries {
 
 type DcRow = Record<string, unknown>;
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_PREFIX = 'invest-em-dc:';
-const mem = new Map<string, { at: number; rows: DcRow[] }>();
 
 function cacheKey(report: string, pageSize: number) {
   return `${CACHE_PREFIX}${report}:${pageSize}`;
-}
-
-function readCached(report: string, pageSize: number): DcRow[] | null {
-  const hit = mem.get(cacheKey(report, pageSize));
-  if (!hit || Date.now() - hit.at > CACHE_TTL_MS) return null;
-  return hit.rows;
-}
-
-function writeCached(report: string, pageSize: number, rows: DcRow[]) {
-  mem.set(cacheKey(report, pageSize), { at: Date.now(), rows });
 }
 
 function dcUrl(report: string, pageSize = 12): string {
@@ -45,14 +34,14 @@ function dcUrl(report: string, pageSize = 12): string {
 
 async function dcRows(report: string, pageSize = 12, force = false): Promise<DcRow[]> {
   if (!force) {
-    const hit = readCached(report, pageSize);
-    if (hit) return hit;
+    const hit = await marketGet<DcRow[]>(cacheKey(report, pageSize));
+    if (hit?.length) return hit;
   }
   const res = await withRetry(() => fetchOk(dcUrl(report, pageSize), { cache: 'no-store' }));
   const json = (await res.json()) as { result?: { data?: unknown } };
   const data = (json.result as { data?: unknown } | null)?.data;
   const rows = Array.isArray(data) ? (data as DcRow[]) : [];
-  if (rows.length) writeCached(report, pageSize, rows);
+  if (rows.length) marketPut(cacheKey(report, pageSize), rows);
   return rows;
 }
 
@@ -148,12 +137,18 @@ export async function fetchGdpSeries(pageSize = 12, force = false): Promise<Macr
   return parseGdp(await dcRows('RPT_ECONOMY_GDP', pageSize, force));
 }
 
-export function peekMacroBundle() {
+export async function peekMacroBundle() {
+  const [pmi, cpi, ppi, gdp] = await Promise.all([
+    marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_PMI', 12)),
+    marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_CPI', 12)),
+    marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_PPI', 12)),
+    marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_GDP', 12)),
+  ]);
   return {
-    pmi: parsePmi(readCached('RPT_ECONOMY_PMI', 12) || []),
-    cpi: parseCpi(readCached('RPT_ECONOMY_CPI', 12) || []),
-    ppi: parsePpi(readCached('RPT_ECONOMY_PPI', 12) || []),
-    gdp: parseGdp(readCached('RPT_ECONOMY_GDP', 12) || []),
+    pmi: parsePmi(pmi || []),
+    cpi: parseCpi(cpi || []),
+    ppi: parsePpi(ppi || []),
+    gdp: parseGdp(gdp || []),
   };
 }
 

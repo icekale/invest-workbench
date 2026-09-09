@@ -1,8 +1,10 @@
 /**
  * 万得 Wind AI FinMarket 客户端接口服务
  * 走 /wind/ 反向代理（服务端注入 API Key），支持 MCP 标准 JSON-RPC 调用。
- * 内置缓存机制，避免频繁重复调用消耗 API 额度。
+ * 宏观结果缓存在 /sync/cache（SQLite，6h）。
  */
+
+import { marketGet, marketPut } from './market-cache';
 
 export interface WindMetricMeta {
   code: string;
@@ -36,18 +38,6 @@ export interface WindNewsItem {
 }
 
 const CACHE_PREFIX = 'wind-cache-v1-';
-const DEFAULT_TTL_MS = 6 * 3600 * 1000; // 6 小时缓存
-const mem = new Map<string, { ts: number; data: unknown }>();
-
-function readMem<T>(key: string): T | null {
-  const hit = mem.get(key) as { ts: number; data: T } | undefined;
-  if (!hit || Date.now() - hit.ts >= DEFAULT_TTL_MS) return null;
-  return hit.data;
-}
-
-function writeMem(key: string, data: unknown) {
-  mem.set(key, { ts: Date.now(), data });
-}
 
 function parseSseOrJson(text: string): Record<string, unknown> {
   const trimmed = text.trim();
@@ -136,7 +126,7 @@ async function callWindMcp(serverType: string, toolName: string, args: Record<st
 export async function fetchWindEdb(question: string, observation = 8, force = false): Promise<WindMetric[]> {
   const cacheKey = `${CACHE_PREFIX}edb-${question}-${observation}`;
   if (!force) {
-    const cached = readMem<WindMetric[]>(cacheKey);
+    const cached = await marketGet<WindMetric[]>(cacheKey);
     if (cached?.length) return cached;
   }
 
@@ -191,7 +181,7 @@ export async function fetchWindEdb(question: string, observation = 8, force = fa
     });
   }
 
-  if (list.length > 0) writeMem(cacheKey, list);
+  if (list.length > 0) marketPut(cacheKey, list);
   return list;
 }
 
@@ -201,7 +191,7 @@ export async function fetchWindEdb(question: string, observation = 8, force = fa
 export async function fetchWindNews(query: string, topK = 4, force = false): Promise<WindNewsItem[]> {
   const cacheKey = `${CACHE_PREFIX}news-${query}-${topK}`;
   if (!force) {
-    const cached = readMem<WindNewsItem[]>(cacheKey);
+    const cached = await marketGet<WindNewsItem[]>(cacheKey);
     if (cached?.length) return cached;
   }
 
@@ -223,6 +213,6 @@ export async function fetchWindNews(query: string, topK = 4, force = false): Pro
     url: String(item.url || ''),
   }));
 
-  if (list.length > 0) writeMem(cacheKey, list);
+  if (list.length > 0) marketPut(cacheKey, list);
   return list;
 }

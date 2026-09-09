@@ -42,7 +42,11 @@ export function setSyncCreds(user: string, pass: string) {
   sqlReady = false;
 }
 
-function authHeader(): string {
+export function hasSyncCreds() {
+  return Boolean(creds.user && creds.pass);
+}
+
+export function authHeader(): string {
   return basicToken(creds.user, creds.pass);
 }
 

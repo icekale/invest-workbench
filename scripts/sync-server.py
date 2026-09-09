@@ -16,10 +16,13 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 DB_PATH = os.environ.get("SYNC_DB", "/data/invest.db")
 PORT = int(os.environ.get("PORT", "3003"))
 MAX_BODY = 8 * 1024 * 1024
+CACHE_MAX = 512 * 1024
+CACHE_TTL = 6 * 3600
 PBKDF2_ROUNDS = 120_000
 USER_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 LOCK = threading.Lock()
@@ -111,6 +114,11 @@ def connect(path: str | None = None) -> sqlite3.Connection:
             key TEXT NOT NULL,
             body TEXT NOT NULL,
             PRIMARY KEY (user, key)
+        );
+        CREATE TABLE IF NOT EXISTS market_cache (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL,
+            exp INTEGER NOT NULL
         );
         """
     )
@@ -375,6 +383,35 @@ def list_transactions(conn: sqlite3.Connection, user: str) -> list[dict]:
     ]
 
 
+def cache_key_of(path: str) -> str | None:
+    k = (parse_qs(urlparse(path).query).get("k") or [""])[0]
+    if not k or len(k) > 200:
+        return None
+    return k
+
+
+def get_market_cache(conn: sqlite3.Connection, k: str) -> str | None:
+    row = conn.execute("SELECT v, exp FROM market_cache WHERE k=?", (k,)).fetchone()
+    if not row:
+        return None
+    v, exp = row
+    if int(exp) < int(time.time()):
+        conn.execute("DELETE FROM market_cache WHERE k=?", (k,))
+        conn.commit()
+        return None
+    return str(v)
+
+
+def put_market_cache(conn: sqlite3.Connection, k: str, v: str) -> None:
+    now = int(time.time())
+    conn.execute(
+        "INSERT INTO market_cache(k, v, exp) VALUES(?,?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, exp=excluded.exp",
+        (k, v, now + CACHE_TTL),
+    )
+    conn.execute("DELETE FROM market_cache WHERE exp < ?", (now,))
+    conn.commit()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -408,11 +445,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self._path()
-        if path not in ("/sync", "/sync/holdings", "/sync/transactions"):
+        if path not in ("/sync", "/sync/holdings", "/sync/transactions", "/sync/cache"):
             return self._send(404, b'{"error":"not found"}')
         user = self._user()
         if not user:
             return self._unauth()
+        if path == "/sync/cache":
+            k = cache_key_of(self.path)
+            if not k:
+                return self._send(400, b'{"error":"bad key"}')
+            with LOCK:
+                conn = connect()
+                try:
+                    v = get_market_cache(conn, k)
+                finally:
+                    conn.close()
+            if v is None:
+                return self._send(204, b"")
+            return self._send(200, v.encode())
         with LOCK:
             conn = connect()
             try:
@@ -430,11 +480,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode())
 
     def do_PUT(self) -> None:  # noqa: N802
-        if self._path() != "/sync":
+        path = self._path()
+        if path not in ("/sync", "/sync/cache"):
             return self._send(404, b'{"error":"not found"}')
         user = self._user()
         if not user:
             return self._unauth()
+        if path == "/sync/cache":
+            k = cache_key_of(self.path)
+            if not k:
+                return self._send(400, b'{"error":"bad key"}')
+            n = int(self.headers.get("Content-Length") or 0)
+            if n <= 0 or n > CACHE_MAX:
+                return self._send(413, b'{"error":"too large"}')
+            raw = self.rfile.read(n)
+            try:
+                json.loads(raw)
+            except Exception:
+                return self._send(400, b'{"error":"invalid json"}')
+            with LOCK:
+                conn = connect()
+                try:
+                    put_market_cache(conn, k, raw.decode())
+                finally:
+                    conn.close()
+            return self._send(200, b'{"ok":true}')
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
             return self._send(413, b'{"error":"too large"}')
@@ -528,6 +598,11 @@ def selftest() -> None:
     assert list_holdings(conn, "bob")[0]["code"] == "sz159915"
     n = conn.execute("SELECT COUNT(*) FROM holdings WHERE user='xiong'").fetchone()[0]
     assert n == 1
+    put_market_cache(conn, "wind:pmi", "[1,2]")
+    assert get_market_cache(conn, "wind:pmi") == "[1,2]"
+    conn.execute("UPDATE market_cache SET exp=1 WHERE k='wind:pmi'")
+    conn.commit()
+    assert get_market_cache(conn, "wind:pmi") is None
     conn.close()
 
     # legacy blob → xiong

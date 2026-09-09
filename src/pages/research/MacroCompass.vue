@@ -511,7 +511,7 @@ async function fetchAndApplyMacro(force: boolean) {
 
 async function loadMacroData(force = false) {
   if (!force) {
-    const cached = peekMacroBundle();
+    const cached = await peekMacroBundle();
     const n = applyMacroBundle(cached);
     if (n > 0) {
       macroState.value = 'ok';
