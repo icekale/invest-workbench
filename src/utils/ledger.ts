@@ -13,6 +13,12 @@ import type {
 } from '@/types/invest';
 import type { Quote } from '@/utils/quote';
 
+/** 佣金：股票万 0.8，ETF 万 0.5。无最低佣金。 */
+export function tradeFee(account: AccountId, amount: number): number {
+  const rate = account === 'etf' ? 0.00005 : 0.00008;
+  return Number((Math.max(0, amount) * rate).toFixed(2));
+}
+
 /**
  * 导入文本/CSV解析器：
  * 支持表头或无表头，常见列：日期,账户(股票/ETF),代码,名称,买卖,成交价,成交量,手续费(可选),备注(可选)
@@ -81,7 +87,6 @@ export function parseTransactionsCsv(text: string): {
     const side = rawSide === '卖出' || rawSide === 'sell' || rawSide === 'S' ? 'sell' : 'buy';
     const price = Number.parseFloat(rawPrice);
     const quantity = Number.parseFloat(rawQty);
-    const fee = rawFee ? Number.parseFloat(rawFee) : 0;
 
     if (Number.isNaN(price) || price <= 0 || Number.isNaN(quantity) || quantity <= 0) {
       errors.push(`第 ${idx + (hasHeader ? 2 : 1)} 行价格或数量无效：${line}`);
@@ -89,6 +94,8 @@ export function parseTransactionsCsv(text: string): {
     }
 
     const amount = Number((price * quantity).toFixed(2));
+    const parsedFee = rawFee ? Number.parseFloat(rawFee) : NaN;
+    const fee = Number.isFinite(parsedFee) ? parsedFee : tradeFee(account, amount);
 
     rows.push({
       id: `tx_${Date.now()}_${idx}`,
@@ -100,7 +107,7 @@ export function parseTransactionsCsv(text: string): {
       price,
       quantity,
       amount,
-      fee: Number.isNaN(fee) ? 0 : fee,
+      fee,
       note: rawNote || '',
     });
   });

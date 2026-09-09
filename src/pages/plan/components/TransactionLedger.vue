@@ -190,12 +190,12 @@
 </template>
 <script setup lang="ts">
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
 import { todayCN } from '@/utils/date';
-import { calculateLedger, parseTransactionsCsv } from '@/utils/ledger';
+import { calculateLedger, parseTransactionsCsv, tradeFee } from '@/utils/ledger';
 
 defineOptions({ name: 'TransactionLedger' });
 
@@ -221,9 +221,16 @@ const formData = reactive({
   side: 'buy' as TradeSide,
   price: 10,
   quantity: 100,
-  fee: 5,
+  fee: tradeFee('stock', 10 * 100),
   note: '',
 });
+
+watch(
+  () => [formData.account, formData.price, formData.quantity] as const,
+  () => {
+    formData.fee = tradeFee(formData.account, formData.price * formData.quantity);
+  },
+);
 
 const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
 const accountTx = computed(() => invest.transactions.filter((tx) => tx.account === accountView.value));
@@ -258,7 +265,6 @@ const columns = [
   { colKey: 'quantity', title: '数量', width: 95 },
   { colKey: 'amount', title: '成交额', width: 110 },
   { colKey: 'fee', title: '费用', width: 80 },
-  { colKey: 'note', title: '备注', ellipsis: true },
   { colKey: 'op', title: '操作', width: 60 },
 ];
 
@@ -278,7 +284,7 @@ function openAddDialog() {
   formData.name = '';
   formData.price = 10;
   formData.quantity = 100;
-  formData.fee = 5;
+  formData.fee = tradeFee(formData.account, 10 * 100);
   formData.note = '';
   addOpen.value = true;
 }

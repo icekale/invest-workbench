@@ -31,7 +31,7 @@ import { fetchLiveMacroEvents } from '@/utils/calendar';
 import { scheduleCloudPush, setHydrating } from '@/utils/cloud-sync';
 import { todayCN } from '@/utils/date';
 import { fetchLiveIndustryCatalysts } from '@/utils/industry';
-import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
+import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts, tradeFee } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
 
@@ -259,13 +259,13 @@ export const useInvestStore = defineStore('invest', {
       const code = normalizeCode(params.code);
       const date = params.date || todayCN();
       const note = params.note?.trim() || '';
-      const fee = Math.max(0, Number((params.fee ?? 0).toFixed(2)));
 
       if (!price || price <= 0 || !quantity || quantity <= 0) {
         throw new Error('成交单价与成交数量必须大于 0');
       }
 
       const amount = Number((price * quantity).toFixed(2));
+      const fee = Math.max(0, Number((params.fee ?? tradeFee(account, amount)).toFixed(2)));
       const currentCash = this.cash[account] || 0;
 
       if (side === 'buy') {

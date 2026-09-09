@@ -154,6 +154,12 @@
           </div>
           <div class="preview-grid">
             <div class="grid-item">
+              <span class="g-lbl">佣金（{{ form.account === 'etf' ? '万0.5' : '万0.8' }}）</span>
+              <span class="g-val">
+                ¥{{ estimatedFee.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+              </span>
+            </div>
+            <div class="grid-item">
               <span class="g-lbl">成交后剩余现金</span>
               <span class="g-val" :class="{ danger: estimatedRemainingCash < 0 }">
                 ¥{{
@@ -201,6 +207,7 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
+import { tradeFee } from '@/utils/ledger';
 import { fetchQuotes, normalizeCode } from '@/utils/quote';
 
 defineOptions({ name: 'TradeDialog' });
@@ -352,11 +359,13 @@ function fillLivePrice() {
 
 // 交易金额
 const tradeAmount = computed(() => Number((form.price * form.quantity).toFixed(2)));
+const estimatedFee = computed(() => tradeFee(form.account, tradeAmount.value));
+const feeRate = computed(() => (form.account === 'etf' ? 0.00005 : 0.00008));
 
-// 最大可买股数 (按整百股向下取整)
+// 最大可买股数 (按整百股向下取整，预留佣金)
 const maxBuyQuantity = computed(() => {
   if (form.price <= 0 || availableCash.value <= 0) return 0;
-  const raw = Math.floor(availableCash.value / form.price);
+  const raw = Math.floor(availableCash.value / (form.price * (1 + feeRate.value)));
   return Math.floor(raw / 100) * 100;
 });
 
@@ -388,7 +397,7 @@ function applyRatio(ratio: number) {
       return;
     }
     const targetAmount = availableCash.value * ratio;
-    const rawQty = Math.floor(targetAmount / form.price);
+    const rawQty = Math.floor(targetAmount / (form.price * (1 + feeRate.value)));
     const roundQty = Math.floor(rawQty / 100) * 100;
     form.quantity = Math.max(100, roundQty);
   } else {
@@ -409,9 +418,9 @@ function applyRatio(ratio: number) {
 // 预计剩余现金
 const estimatedRemainingCash = computed(() => {
   if (form.side === 'buy') {
-    return availableCash.value - tradeAmount.value;
+    return availableCash.value - tradeAmount.value - estimatedFee.value;
   }
-  return availableCash.value + tradeAmount.value;
+  return availableCash.value + tradeAmount.value - estimatedFee.value;
 });
 
 // 预计变动后持仓股数
@@ -430,14 +439,14 @@ const estimatedNewCost = computed(() => {
   if (!current) return form.price;
   const totalQty = current.quantity + form.quantity;
   if (totalQty <= 0) return null;
-  return (current.cost * current.quantity + tradeAmount.value) / totalQty;
+  return (current.cost * current.quantity + tradeAmount.value + estimatedFee.value) / totalQty;
 });
 
 // 校验交易合法性
 const isTradeValid = computed(() => {
   if (!form.code || form.price <= 0 || form.quantity <= 0) return false;
   if (form.side === 'buy') {
-    return tradeAmount.value <= availableCash.value;
+    return tradeAmount.value + estimatedFee.value <= availableCash.value;
   }
   return existingHolding.value !== null && form.quantity <= existingHolding.value.quantity;
 });
@@ -450,7 +459,7 @@ function pnlColor(val: number) {
 
 async function submitTrade() {
   if (!isTradeValid.value) {
-    if (form.side === 'buy' && tradeAmount.value > availableCash.value) {
+    if (form.side === 'buy' && tradeAmount.value + estimatedFee.value > availableCash.value) {
       MessagePlugin.error('可用现金不足，无法买入');
       return;
     }

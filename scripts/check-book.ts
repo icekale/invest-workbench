@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 
 import { allocation, healthScore, risks, shortCode, sparkSeries, summarize } from '../src/utils/book.ts';
-import { calculateLedger, parseTransactionsCsv, recalculateHoldingsFromTransactions } from '../src/utils/ledger.ts';
+import {
+  calculateLedger,
+  parseTransactionsCsv,
+  recalculateHoldingsFromTransactions,
+  tradeFee,
+} from '../src/utils/ledger.ts';
 
 const empty = summarize([], 100);
 assert.equal(empty.mv, 0);
@@ -44,6 +49,8 @@ assert.equal(under[0].tone, 'warn');
 assert.match(under[0].extra, /^\+/);
 
 assert.equal(shortCode('sh510300'), '510300');
+assert.equal(tradeFee('stock', 10_000), 0.8);
+assert.equal(tradeFee('etf', 10_000), 0.5);
 
 // 校验台账解析、持仓加权成本重算与换手率计算
 const csvSample = `日期,账户,代码,名称,买卖,成交价,成交量,手续费
