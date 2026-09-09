@@ -1,6 +1,6 @@
 /**
  * 宏观数据源：东方财富 datacenter（经 /em-dc/ 反代）。
- * 免费替代万得 EDB：PMI / CPI / PPI / GDP，以及新增人民币贷款（社融主项）。
+ * 免费替代万得 EDB：PMI / CPI / PPI / GDP。社融全表走 /sync/afre（央行 xlsx）。
  */
 import { fetchOk, withRetry } from './http.ts';
 import { marketGet, marketPut } from './market-cache';
@@ -136,31 +136,18 @@ export async function fetchGdpSeries(pageSize = 12, force = false): Promise<Macr
   return parseGdp(await dcRows('RPT_ECONOMY_GDP', pageSize, force));
 }
 
-export function parseRmbLoan(rows: DcRow[]): MacroSeries | null {
-  return buildSeries(
-    { code: 'EM_RMB_LOAN', name: '新增人民币贷款', unit: '亿元', source: '人民银行', freq: '月', key: 'RMB_LOAN' },
-    rows,
-  );
-}
-
-export async function fetchRmbLoanSeries(pageSize = 12, force = false): Promise<MacroSeries | null> {
-  return parseRmbLoan(await dcRows('RPT_ECONOMY_RMB_LOAN', pageSize, force));
-}
-
 export async function peekMacroBundle() {
-  const [pmi, cpi, ppi, gdp, loan] = await Promise.all([
+  const [pmi, cpi, ppi, gdp] = await Promise.all([
     marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_PMI', 12)),
     marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_CPI', 12)),
     marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_PPI', 12)),
     marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_GDP', 12)),
-    marketGet<DcRow[]>(cacheKey('RPT_ECONOMY_RMB_LOAN', 12)),
   ]);
   return {
     pmi: parsePmi(pmi || []),
     cpi: parseCpi(cpi || []),
     ppi: parsePpi(ppi || []),
     gdp: parseGdp(gdp || []),
-    loan: parseRmbLoan(loan || []),
   };
 }
 
@@ -170,11 +157,10 @@ export async function fetchMacroBundle(force = false) {
     fetchCpiSeries(12, force),
     fetchPpiSeries(12, force),
     fetchGdpSeries(12, force),
-    fetchRmbLoanSeries(12, force),
   ]);
   const pick = (i: number) => {
     const r = settled[i];
     return r.status === 'fulfilled' ? r.value : null;
   };
-  return { pmi: pick(0), cpi: pick(1), ppi: pick(2), gdp: pick(3), loan: pick(4) };
+  return { pmi: pick(0), cpi: pick(1), ppi: pick(2), gdp: pick(3) };
 }

@@ -165,42 +165,81 @@
           </div>
         </t-col>
 
-        <!-- 支柱 4: 流动性 · 新增人民币贷款（社融主项） -->
+        <!-- 支柱 4: 流动性 · 社融全表 -->
         <t-col :xs="12" :sm="6" :xl="3">
-          <div class="edb-pillar-card" @click="openMetricChart('loan')">
+          <div class="edb-pillar-card" @click="openMetricChart('afre')">
             <div class="pillar-top">
-              <span class="pillar-label">流动性 · 社融主项</span>
-              <t-tag v-if="!loanMetric" size="small" variant="light">未同步</t-tag>
+              <span class="pillar-label">流动性 · 社融全表</span>
+              <t-tag v-if="!afreMetric" size="small" variant="light">未同步</t-tag>
               <t-tag
                 v-else
                 size="small"
-                :theme="(loanMetric.latestValue ?? 0) >= 0 ? 'danger' : 'warning'"
+                :theme="(afreMetric.latestValue ?? 0) >= 0 ? 'danger' : 'warning'"
                 variant="light"
               >
-                {{ (loanMetric.latestValue ?? 0) >= 0 ? '信用扩张' : '信贷回落' }}
+                {{ (afreMetric.latestValue ?? 0) >= 0 ? '信用扩张' : '信用回落' }}
               </t-tag>
             </div>
             <div class="pillar-main">
-              <span class="pillar-name">{{ loanMetric?.name || '新增人民币贷款' }}</span>
+              <span class="pillar-name">{{ afreMetric?.name || '社会融资规模增量' }}</span>
               <div class="pillar-val-row">
-                <span class="pillar-val">{{ loanMetric?.latestValue ?? '—' }}</span>
-                <span v-if="loanMetric" class="pillar-unit">{{ loanMetric.unit }}</span>
+                <span class="pillar-val">{{ afreMetric?.latestValue ?? '—' }}</span>
+                <span v-if="afreMetric" class="pillar-unit">{{ afreMetric.unit }}</span>
                 <span
-                  v-if="loanMetric?.change != null"
+                  v-if="afreMetric?.change != null"
                   class="pillar-change"
-                  :class="loanMetric.change >= 0 ? 'is-up' : 'is-down'"
+                  :class="afreMetric.change >= 0 ? 'is-up' : 'is-down'"
                 >
-                  {{ loanMetric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(loanMetric.change) }}
+                  {{ afreMetric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(afreMetric.change) }}
                 </span>
               </div>
             </div>
             <div class="pillar-sub">
-              <span>{{ loanMetric?.source || '数据未同步' }}</span>
-              <span v-if="loanMetric" class="chart-link">趋势图 →</span>
+              <span>{{ afreMetric?.source || '数据未同步' }}</span>
+              <span v-if="afreMetric" class="chart-link">趋势图 →</span>
             </div>
           </div>
         </t-col>
       </t-row>
+
+      <div class="afre-table-wrap">
+        <div class="afre-caption">社会融资规模增量 · 亿元 · 未公布月份已剔除</div>
+        <p v-if="afreErrorMsg" class="sync-time-hint" style="color: var(--td-error-color)">{{ afreErrorMsg }}</p>
+        <table v-else-if="afreRows.length" class="afre-table">
+          <thead>
+            <tr>
+              <th>月份</th>
+              <th>社融增量</th>
+              <th>人民币贷款</th>
+              <th>外币贷款</th>
+              <th>委托贷款</th>
+              <th>信托贷款</th>
+              <th>未贴现承兑</th>
+              <th>企业债</th>
+              <th>政府债</th>
+              <th>股票</th>
+              <th>ABS</th>
+              <th>核销</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in afreRows" :key="r.month">
+              <td>{{ r.month }}</td>
+              <td>{{ fmtAfre(r.afre_total) }}</td>
+              <td>{{ fmtAfre(r.rmb_loans) }}</td>
+              <td>{{ fmtAfre(r.fx_loans) }}</td>
+              <td>{{ fmtAfre(r.entrusted_loans) }}</td>
+              <td>{{ fmtAfre(r.trust_loans) }}</td>
+              <td>{{ fmtAfre(r.undiscounted_bankers_acceptance) }}</td>
+              <td>{{ fmtAfre(r.corporate_bonds) }}</td>
+              <td>{{ fmtAfre(r.government_bonds) }}</td>
+              <td>{{ fmtAfre(r.equity_financing) }}</td>
+              <td>{{ fmtAfre(r.abs_by_depository) }}</td>
+              <td>{{ fmtAfre(r.loans_written_off) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </t-card>
 
     <!-- 万得指标下钻历史曲线弹窗 (ECharts) -->
@@ -322,6 +361,8 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
+import type { AfreRow } from '@/utils/afre';
+import { afreToSeries, fetchAfre } from '@/utils/afre';
 import { loadEcharts } from '@/utils/load-echarts';
 import type { MacroSeries } from '@/utils/macro-cn';
 import { fetchMacroBundle, peekMacroBundle } from '@/utils/macro-cn';
@@ -339,7 +380,9 @@ const growthPmi = ref<MacroSeries | null>(null);
 const cpiMetric = ref<MacroSeries | null>(null);
 const ppiMetric = ref<MacroSeries | null>(null);
 const gdpMetric = ref<MacroSeries | null>(null);
-const loanMetric = ref<MacroSeries | null>(null);
+const afreMetric = ref<MacroSeries | null>(null);
+const afreRows = ref<AfreRow[]>([]);
+const afreErrorMsg = ref('');
 
 const chartModalVisible = ref(false);
 const activeMetric = ref<MacroSeries | null>(null);
@@ -404,7 +447,11 @@ function submitMacroModal() {
   macroModalVisible.value = false;
 }
 
-function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'loan') {
+function fmtAfre(n: number) {
+  return n.toLocaleString('zh-CN');
+}
+
+function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'afre') {
   if (type === 'pmi') {
     activeMetric.value = growthPmi.value;
   } else if (type === 'cpi') {
@@ -414,7 +461,7 @@ function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'loan') {
   } else if (type === 'gdp') {
     activeMetric.value = gdpMetric.value;
   } else {
-    activeMetric.value = loanMetric.value;
+    activeMetric.value = afreMetric.value;
   }
   if (!activeMetric.value) return;
   chartModalVisible.value = true;
@@ -482,14 +529,12 @@ function applyMacroBundle(bundle: {
   cpi: MacroSeries | null;
   ppi: MacroSeries | null;
   gdp: MacroSeries | null;
-  loan?: MacroSeries | null;
 }) {
   if (bundle.pmi) growthPmi.value = bundle.pmi;
   if (bundle.cpi) cpiMetric.value = bundle.cpi;
   if (bundle.ppi) ppiMetric.value = bundle.ppi;
   if (bundle.gdp) gdpMetric.value = bundle.gdp;
-  if (bundle.loan) loanMetric.value = bundle.loan;
-  return [bundle.pmi, bundle.cpi, bundle.ppi, bundle.gdp, bundle.loan].filter(Boolean).length;
+  return [bundle.pmi, bundle.cpi, bundle.ppi, bundle.gdp].filter(Boolean).length;
 }
 
 async function fetchAndApplyMacro(force: boolean) {
@@ -499,14 +544,14 @@ async function fetchAndApplyMacro(force: boolean) {
     if (okCount > 0) {
       macroState.value = 'ok';
       macroSyncTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      macroErrorMsg.value = okCount < 5 ? '部分指标未同步' : '';
+      macroErrorMsg.value = okCount < 4 ? '部分指标未同步' : '';
     } else {
       macroState.value = 'error';
       macroErrorMsg.value = '宏观数据未同步';
       macroSyncTime.value = '';
     }
   } catch (e) {
-    if (!growthPmi.value && !cpiMetric.value && !ppiMetric.value && !gdpMetric.value && !loanMetric.value) {
+    if (!growthPmi.value && !cpiMetric.value && !ppiMetric.value && !gdpMetric.value) {
       macroState.value = 'error';
       macroErrorMsg.value = e instanceof Error ? e.message : '东财数据中心不可用';
     }
@@ -532,8 +577,20 @@ async function loadMacroData(force = false) {
   await fetchAndApplyMacro(force);
 }
 
+async function loadAfre() {
+  afreErrorMsg.value = '';
+  try {
+    const rows = await fetchAfre();
+    afreRows.value = [...rows].sort((a, b) => b.month.localeCompare(a.month));
+    afreMetric.value = afreToSeries(rows);
+  } catch (e) {
+    afreErrorMsg.value = e instanceof Error ? e.message : '社融全表不可用';
+  }
+}
+
 function refreshMacroData() {
   loadMacroData(true);
+  void loadAfre();
 }
 
 function onResize() {
@@ -542,6 +599,7 @@ function onResize() {
 
 onMounted(() => {
   loadMacroData();
+  void loadAfre();
   window.addEventListener('resize', onResize);
 });
 

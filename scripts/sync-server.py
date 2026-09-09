@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-user SQLite book. GET/PUT /sync, GET /sync/holdings|transactions.
+"""Per-user SQLite book. GET/PUT /sync, GET /sync/holdings|transactions|afre|cache.
 
 # ponytail: global db lock, per-user locks if concurrent writers matter.
 """
@@ -15,8 +15,12 @@ import sqlite3
 import sys
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
+from xml.etree import ElementTree as ET
 
 DB_PATH = os.environ.get("SYNC_DB", "/data/invest.db")
 PORT = int(os.environ.get("PORT", "3003"))
@@ -422,6 +426,194 @@ def put_market_cache(conn: sqlite3.Connection, k: str, v: str, ttl: int | None =
     conn.commit()
 
 
+PBC_ORIGIN = "https://www.pbc.gov.cn"
+PBC_INDEX = f"{PBC_ORIGIN}/diaochatongjisi/116219/116319/index.html"
+AFRE_CACHE_KEY = "pbc:afre"
+XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+AFRE_FIELDS = (
+    "afre_total",
+    "rmb_loans",
+    "fx_loans",
+    "entrusted_loans",
+    "trust_loans",
+    "undiscounted_bankers_acceptance",
+    "corporate_bonds",
+    "government_bonds",
+    "equity_financing",
+    "abs_by_depository",
+    "loans_written_off",
+)
+
+
+def parse_afre_month(raw) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).replace("\xa0", "").strip()
+    m = re.match(r"^(\d{4})\.(\d{1,2})$", s)
+    if not m:
+        return None
+    year, month = int(m.group(1)), int(m.group(2))
+    # Excel eats 2026.10 → 2026.1; real January is 2026.01
+    if month == 1 and not s.endswith(".01"):
+        month = 10
+    if not 1 <= month <= 12:
+        return None
+    return f"{year}-{month:02d}"
+
+
+def parse_afre_num(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        n = float(raw)
+        if n != n:
+            return None
+        return int(n) if n == int(n) else n
+    s = str(raw).replace("\xa0", "").replace(",", "").strip()
+    if not s or s in "-—":
+        return None
+    n = float(s)
+    return int(n) if n == int(n) else n
+
+
+def parse_afre_grid(grid: list[list]) -> list[dict]:
+    header_idx = next(
+        (i for i, row in enumerate(grid) if str((row or [None])[0] or "").replace("\xa0", "").strip() == "月份"),
+        None,
+    )
+    if header_idx is None:
+        raise ValueError("no 月份 header")
+    header = grid[header_idx]
+    title = str((header[1] if len(header) > 1 else "") or "")
+    if "存量" in title and "增量" not in title:
+        raise ValueError("got 存量 not 增量")
+    out: list[dict] = []
+    for row in grid[header_idx + 3 :]:
+        if not row:
+            continue
+        month = parse_afre_month(row[0] if row else None)
+        if not month:
+            continue
+        nums = [parse_afre_num(row[i] if i < len(row) else None) for i in range(1, 12)]
+        if nums[0] is None:
+            continue
+        item = {"month": month}
+        for key, val in zip(AFRE_FIELDS, nums):
+            if val is None:
+                break
+            item[key] = val
+        else:
+            out.append(item)
+    return out
+
+
+def _xlsx_colrow(ref: str) -> tuple[int, int]:
+    m = re.match(r"([A-Z]+)(\d+)", ref or "")
+    if not m:
+        return 0, 0
+    col = 0
+    for ch in m.group(1):
+        col = col * 26 + ord(ch) - 64
+    return col, int(m.group(2))
+
+
+def xlsx_to_grid(content: bytes) -> list[list]:
+    z = zipfile.ZipFile(BytesIO(content))
+    ss: dict[int, str] = {}
+    if "xl/sharedStrings.xml" in z.namelist():
+        root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+        for i, si in enumerate(root.findall(f"{XLSX_NS}si")):
+            ss[i] = "".join(t.text or "" for t in si.iter(f"{XLSX_NS}t"))
+    sheet = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+    cells: dict[int, dict[int, object]] = {}
+    for c in sheet.findall(f".//{XLSX_NS}c"):
+        col, row = _xlsx_colrow(c.get("r") or "")
+        if not row or not col:
+            continue
+        t = c.get("t")
+        v = c.find(f"{XLSX_NS}v")
+        isel = c.find(f"{XLSX_NS}is")
+        if t == "s" and v is not None and v.text:
+            val: object = ss.get(int(v.text), "")
+        elif t == "inlineStr" and isel is not None:
+            val = "".join(x.text or "" for x in isel.iter(f"{XLSX_NS}t"))
+        elif v is not None and v.text:
+            val = v.text
+        else:
+            val = None
+        cells.setdefault(row, {})[col] = val
+    if not cells:
+        return []
+    max_row = max(cells)
+    grid: list[list] = []
+    for r in range(1, max_row + 1):
+        row = cells.get(r, {})
+        grid.append([row.get(c) for c in range(1, 13)])
+    return grid
+
+
+def parse_afre_xlsx(content: bytes) -> list[dict]:
+    return parse_afre_grid(xlsx_to_grid(content))
+
+
+def pbc_abs(href: str) -> str:
+    href = href.strip()
+    if href.startswith("http"):
+        return href
+    if href.startswith("//"):
+        return "https:" + href
+    if not href.startswith("/"):
+        href = "/" + href
+    return PBC_ORIGIN + href
+
+
+def pbc_get(url: str) -> bytes:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0", "Referer": PBC_INDEX})
+    with urlopen(req, timeout=20) as r:
+        return r.read()
+
+
+def pbc_html(url: str) -> str:
+    raw = pbc_get(url)
+    for enc in ("utf-8", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", "replace")
+
+
+def latest_afre_xlsx_url() -> str:
+    # ponytail: xlsx only; xlrd if PBC reverts to .xls
+    q = r"['\"]"
+    index = pbc_html(PBC_INDEX)
+    years = [(int(y), href) for href, y in re.findall(rf"href={q}([^'\"]+){q}[^>]*>\s*(\d{{4}})年统计数据", index)]
+    if not years:
+        raise RuntimeError("pbc: no year index")
+    years.sort()
+    year_html = pbc_html(pbc_abs(years[-1][1]))
+    topic = re.search(rf"href={q}([^'\"]+){q}[^>]*>\s*社会融资规模", year_html)
+    if not topic:
+        raise RuntimeError("pbc: no 社融 topic")
+    html = pbc_html(pbc_abs(topic.group(1)))
+    m = re.search(
+        rf"社会融资规模增量统计表[\s\S]{{0,1200}}?href={q}([^'\"]+attachDir[^'\"]+\.xlsx){q}",
+        html,
+    )
+    if not m:
+        raise RuntimeError("pbc: no 增量 xlsx")
+    return pbc_abs(m.group(1))
+
+
+def fetch_pbc_afre() -> list[dict]:
+    rows = parse_afre_xlsx(pbc_get(latest_afre_xlsx_url()))
+    if not rows:
+        raise RuntimeError("pbc: empty 社融")
+    return rows
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -455,11 +647,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self._path()
-        if path not in ("/sync", "/sync/holdings", "/sync/transactions", "/sync/cache"):
+        if path not in ("/sync", "/sync/holdings", "/sync/transactions", "/sync/cache", "/sync/afre"):
             return self._send(404, b'{"error":"not found"}')
         user = self._user()
         if not user:
             return self._unauth()
+        if path == "/sync/afre":
+            with LOCK:
+                conn = connect()
+                try:
+                    v = get_market_cache(conn, AFRE_CACHE_KEY)
+                finally:
+                    conn.close()
+            if v is None:
+                try:
+                    rows = fetch_pbc_afre()
+                except Exception as e:
+                    return self._send(502, json.dumps({"error": str(e)[:200]}, ensure_ascii=False).encode())
+                raw = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+                with LOCK:
+                    conn = connect()
+                    try:
+                        put_market_cache(conn, AFRE_CACHE_KEY, raw)
+                    finally:
+                        conn.close()
+                v = raw
+            return self._send(200, v.encode())
         if path == "/sync/cache":
             k = cache_key_of(self.path)
             if not k:
@@ -616,6 +829,19 @@ def selftest() -> None:
     put_market_cache(conn, "short", "[]", 60)
     exp = conn.execute("SELECT exp FROM market_cache WHERE k='short'").fetchone()[0]
     assert 50 <= int(exp) - int(time.time()) <= 60
+    assert parse_afre_month("2026.01") == "2026-01"
+    assert parse_afre_month("2026.1") == "2026-10"
+    assert parse_afre_month("2026.10") == "2026-10"
+    grid = [[None] * 12 for _ in range(4)]
+    grid[0][0] = "月份"
+    grid[0][1] = "社会融资规模增量"
+    grid[3] = ["2026.01", 72185, 49016, 468, -192, -4, 6293, 5033, 9764, 291, -99, 355]
+    grid.append(["2026.1"] + [None] * 11)
+    afre_rows = parse_afre_grid(grid)
+    assert len(afre_rows) == 1
+    assert afre_rows[0]["month"] == "2026-01"
+    assert afre_rows[0]["afre_total"] == 72185
+    assert afre_rows[0]["loans_written_off"] == 355
     conn.close()
 
     # legacy blob → xiong
