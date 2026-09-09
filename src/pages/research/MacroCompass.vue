@@ -203,13 +203,18 @@
       </t-row>
 
       <div class="afre-table-wrap">
-        <div class="afre-caption">社会融资规模增量 · 亿元 · 未公布月份已剔除</div>
-        <p v-if="afreErrorMsg" class="sync-time-hint" style="color: var(--td-error-color)">{{ afreErrorMsg }}</p>
-        <table v-else-if="afreRows.length" class="afre-table">
+        <div class="afre-caption">
+          <button type="button" :class="{ 'is-on': afreTab === 'flow' }" @click="afreTab = 'flow'">增量</button>
+          <button type="button" :class="{ 'is-on': afreTab === 'stock' }" @click="afreTab = 'stock'">存量</button>
+          <span>{{ afreTab === 'flow' ? '亿元' : '万亿元' }} · 未公布月份已剔除</span>
+        </div>
+        <p v-if="afreViewError" class="sync-time-hint" style="color: var(--td-error-color)">{{ afreViewError }}</p>
+        <table v-else-if="afreViewRows.length" class="afre-table">
           <thead>
             <tr>
               <th>月份</th>
-              <th>社融增量</th>
+              <th>{{ afreTab === 'flow' ? '社融增量' : '社融存量' }}</th>
+              <th v-if="afreTab === 'stock'">同比%</th>
               <th>人民币贷款</th>
               <th>外币贷款</th>
               <th>委托贷款</th>
@@ -223,9 +228,10 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in afreRows" :key="r.month">
+            <tr v-for="r in afreViewRows" :key="r.month">
               <td>{{ r.month }}</td>
               <td>{{ fmtAfre(r.afre_total) }}</td>
+              <td v-if="afreTab === 'stock'">{{ r.yoy ?? '—' }}</td>
               <td>{{ fmtAfre(r.rmb_loans) }}</td>
               <td>{{ fmtAfre(r.fx_loans) }}</td>
               <td>{{ fmtAfre(r.entrusted_loans) }}</td>
@@ -358,7 +364,7 @@
 <script setup lang="ts">
 import type { ECharts } from 'echarts/core';
 import { MessagePlugin } from 'tdesign-vue-next';
-import { nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AfreRow } from '@/utils/afre';
@@ -382,7 +388,12 @@ const ppiMetric = ref<MacroSeries | null>(null);
 const gdpMetric = ref<MacroSeries | null>(null);
 const afreMetric = ref<MacroSeries | null>(null);
 const afreRows = ref<AfreRow[]>([]);
+const afreStockRows = ref<AfreRow[]>([]);
 const afreErrorMsg = ref('');
+const afreStockErrorMsg = ref('');
+const afreTab = ref<'flow' | 'stock'>('flow');
+const afreViewRows = computed(() => (afreTab.value === 'stock' ? afreStockRows.value : afreRows.value));
+const afreViewError = computed(() => (afreTab.value === 'stock' ? afreStockErrorMsg.value : afreErrorMsg.value));
 
 const chartModalVisible = ref(false);
 const activeMetric = ref<MacroSeries | null>(null);
@@ -448,7 +459,9 @@ function submitMacroModal() {
 }
 
 function fmtAfre(n: number) {
-  return n.toLocaleString('zh-CN');
+  return n.toLocaleString('zh-CN', {
+    maximumFractionDigits: afreTab.value === 'stock' ? 2 : 0,
+  });
 }
 
 function openMetricChart(type: 'pmi' | 'cpi' | 'ppi' | 'gdp' | 'afre') {
@@ -579,12 +592,18 @@ async function loadMacroData(force = false) {
 
 async function loadAfre() {
   afreErrorMsg.value = '';
-  try {
-    const rows = await fetchAfre();
-    afreRows.value = [...rows].sort((a, b) => b.month.localeCompare(a.month));
-    afreMetric.value = afreToSeries(rows);
-  } catch (e) {
-    afreErrorMsg.value = e instanceof Error ? e.message : '社融全表不可用';
+  afreStockErrorMsg.value = '';
+  const [flow, stock] = await Promise.allSettled([fetchAfre('flow'), fetchAfre('stock')]);
+  if (flow.status === 'fulfilled') {
+    afreRows.value = [...flow.value].sort((a, b) => b.month.localeCompare(a.month));
+    afreMetric.value = afreToSeries(flow.value);
+  } else {
+    afreErrorMsg.value = flow.reason instanceof Error ? flow.reason.message : '社融增量不可用';
+  }
+  if (stock.status === 'fulfilled') {
+    afreStockRows.value = [...stock.value].sort((a, b) => b.month.localeCompare(a.month));
+  } else {
+    afreStockErrorMsg.value = stock.reason instanceof Error ? stock.reason.message : '社融存量不可用';
   }
 }
 

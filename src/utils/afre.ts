@@ -15,17 +15,22 @@ export interface AfreRow {
   equity_financing: number;
   abs_by_depository: number;
   loans_written_off: number;
+  yoy?: number | null;
 }
 
-export async function fetchAfre(): Promise<AfreRow[]> {
-  const hit = await marketGet<AfreRow[]>('pbc:afre', MARKET_TTL_MS);
+export type AfreKind = 'flow' | 'stock';
+
+export async function fetchAfre(kind: AfreKind = 'flow'): Promise<AfreRow[]> {
+  const key = kind === 'stock' ? 'pbc:afre-stock' : 'pbc:afre';
+  const hit = await marketGet<AfreRow[]>(key, MARKET_TTL_MS);
   if (hit?.length) return hit;
   if (!hasSyncCreds()) throw new Error('未登录');
-  const res = await fetch('/sync/afre', { headers: { Authorization: authHeader() } });
+  const q = kind === 'stock' ? '?kind=stock' : '';
+  const res = await fetch(`/sync/afre${q}`, { headers: { Authorization: authHeader() } });
   if (!res.ok) throw new Error(`社融 ${res.status}`);
   const rows = (await res.json()) as AfreRow[];
   if (!Array.isArray(rows) || !rows.length) throw new Error('社融全表为空');
-  marketPut('pbc:afre', rows, MARKET_TTL_MS);
+  marketPut(key, rows, MARKET_TTL_MS);
   return rows;
 }
 

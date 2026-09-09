@@ -429,6 +429,7 @@ def put_market_cache(conn: sqlite3.Connection, k: str, v: str, ttl: int | None =
 PBC_ORIGIN = "https://www.pbc.gov.cn"
 PBC_INDEX = f"{PBC_ORIGIN}/diaochatongjisi/116219/116319/index.html"
 AFRE_CACHE_KEY = "pbc:afre"
+AFRE_STOCK_CACHE_KEY = "pbc:afre-stock"
 XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 AFRE_FIELDS = (
     "afre_total",
@@ -443,6 +444,19 @@ AFRE_FIELDS = (
     "abs_by_depository",
     "loans_written_off",
 )
+STOCK_LABELS = (
+    ("社会融资规模存量", "afre_total"),
+    ("人民币贷款", "rmb_loans"),
+    ("外币贷款", "fx_loans"),
+    ("委托贷款", "entrusted_loans"),
+    ("信托贷款", "trust_loans"),
+    ("未贴现银行承兑汇票", "undiscounted_bankers_acceptance"),
+    ("企业债券", "corporate_bonds"),
+    ("政府债券", "government_bonds"),
+    ("非金融企业境内股票", "equity_financing"),
+    ("存款类金融机构资产支持证券", "abs_by_depository"),
+    ("贷款核销", "loans_written_off"),
+)
 
 
 def parse_afre_month(raw) -> str | None:
@@ -456,6 +470,26 @@ def parse_afre_month(raw) -> str | None:
     # Excel eats 2026.10 → 2026.1; real January is 2026.01
     if month == 1 and not s.endswith(".01"):
         month = 10
+    if not 1 <= month <= 12:
+        return None
+    return f"{year}-{month:02d}"
+
+
+def parse_stock_month(raw, prev: str | None) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).replace("\xa0", "").strip()
+    m = re.match(r"^(\d{4})\.(\d{1,2})$", s)
+    if not m:
+        return None
+    year, month = int(m.group(1)), int(m.group(2))
+    # 存量表头常写成 2026.1；若前一月是 9 月则视为 10 月，否则是 1 月
+    if month == 1 and not s.endswith(".01"):
+        if prev:
+            py, pm = prev.split("-")
+            month = 10 if int(py) == year and int(pm) == 9 else 1
+        else:
+            month = 1
     if not 1 <= month <= 12:
         return None
     return f"{year}-{month:02d}"
@@ -509,6 +543,63 @@ def parse_afre_grid(grid: list[list]) -> list[dict]:
     return out
 
 
+def parse_afre_stock_grid(grid: list[list]) -> list[dict]:
+    month_idx = next(
+        (
+            i
+            for i, row in enumerate(grid)
+            if len(row) > 1 and re.match(r"^\d{4}\.\d{1,2}$", str(row[1] or "").replace("\xa0", "").strip())
+        ),
+        None,
+    )
+    if month_idx is None:
+        raise ValueError("no 存量月份")
+    months: list[tuple[int, str]] = []
+    prev = None
+    header = grid[month_idx]
+    for c in range(1, len(header), 2):
+        month = parse_stock_month(header[c], prev)
+        if not month:
+            continue
+        months.append((c, month))
+        prev = month
+    series: dict[str, list] = {}
+    for row in grid[month_idx + 1 :]:
+        lab = str((row or [None])[0] or "").replace("\xa0", "").replace(" ", "").strip()
+        if not lab or lab.startswith("注") or lab.startswith("项目"):
+            continue
+        for prefix, key in STOCK_LABELS:
+            if prefix.replace(" ", "") in lab and key not in series:
+                series[key] = row
+                break
+    if any(key not in series for _, key in STOCK_LABELS):
+        raise ValueError("存量缺列")
+    out: list[dict] = []
+    for c, month in months:
+        total_row = series["afre_total"]
+        total = parse_afre_num(total_row[c] if c < len(total_row) else None)
+        if total is None:
+            continue
+        item = {
+            "month": month,
+            "afre_total": total,
+            "yoy": parse_afre_num(total_row[c + 1] if c + 1 < len(total_row) else None),
+        }
+        ok = True
+        for _, key in STOCK_LABELS:
+            if key == "afre_total":
+                continue
+            row = series[key]
+            val = parse_afre_num(row[c] if c < len(row) else None)
+            if val is None:
+                ok = False
+                break
+            item[key] = val
+        if ok:
+            out.append(item)
+    return out
+
+
 def _xlsx_colrow(ref: str) -> tuple[int, int]:
     m = re.match(r"([A-Z]+)(\d+)", ref or "")
     if not m:
@@ -547,15 +638,21 @@ def xlsx_to_grid(content: bytes) -> list[list]:
     if not cells:
         return []
     max_row = max(cells)
+    max_col = max((max(row) for row in cells.values() if row), default=12)
+    max_col = min(max(max_col, 12), 40)
     grid: list[list] = []
     for r in range(1, max_row + 1):
         row = cells.get(r, {})
-        grid.append([row.get(c) for c in range(1, 13)])
+        grid.append([row.get(c) for c in range(1, max_col + 1)])
     return grid
 
 
 def parse_afre_xlsx(content: bytes) -> list[dict]:
     return parse_afre_grid(xlsx_to_grid(content))
+
+
+def parse_afre_stock_xlsx(content: bytes) -> list[dict]:
+    return parse_afre_stock_grid(xlsx_to_grid(content))
 
 
 def pbc_abs(href: str) -> str:
@@ -585,7 +682,7 @@ def pbc_html(url: str) -> str:
     return raw.decode("utf-8", "replace")
 
 
-def latest_afre_xlsx_url() -> str:
+def latest_afre_xlsx_urls() -> tuple[str, str]:
     # ponytail: xlsx only; xlrd if PBC reverts to .xls
     q = r"['\"]"
     index = pbc_html(PBC_INDEX)
@@ -598,20 +695,30 @@ def latest_afre_xlsx_url() -> str:
     if not topic:
         raise RuntimeError("pbc: no 社融 topic")
     html = pbc_html(pbc_abs(topic.group(1)))
-    m = re.search(
+    flow = re.search(
         rf"社会融资规模增量统计表[\s\S]{{0,1200}}?href={q}([^'\"]+attachDir[^'\"]+\.xlsx){q}",
         html,
     )
-    if not m:
+    stock = re.search(
+        rf"社会融资规模存量统计表[\s\S]{{0,1200}}?href={q}([^'\"]+attachDir[^'\"]+\.xlsx){q}",
+        html,
+    )
+    if not flow:
         raise RuntimeError("pbc: no 增量 xlsx")
-    return pbc_abs(m.group(1))
+    if not stock:
+        raise RuntimeError("pbc: no 存量 xlsx")
+    return pbc_abs(flow.group(1)), pbc_abs(stock.group(1))
 
 
-def fetch_pbc_afre() -> list[dict]:
-    rows = parse_afre_xlsx(pbc_get(latest_afre_xlsx_url()))
-    if not rows:
-        raise RuntimeError("pbc: empty 社融")
-    return rows
+def fetch_pbc_afre_pair() -> tuple[list[dict], list[dict]]:
+    flow_url, stock_url = latest_afre_xlsx_urls()
+    flow = parse_afre_xlsx(pbc_get(flow_url))
+    stock = parse_afre_stock_xlsx(pbc_get(stock_url))
+    if not flow:
+        raise RuntimeError("pbc: empty 社融增量")
+    if not stock:
+        raise RuntimeError("pbc: empty 社融存量")
+    return flow, stock
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -653,25 +760,31 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             return self._unauth()
         if path == "/sync/afre":
+            kind = (parse_qs(urlparse(self.path).query).get("kind") or ["flow"])[0]
+            if kind != "stock":
+                kind = "flow"
             with LOCK:
                 conn = connect()
                 try:
-                    v = get_market_cache(conn, AFRE_CACHE_KEY)
+                    flow_v = get_market_cache(conn, AFRE_CACHE_KEY)
+                    stock_v = get_market_cache(conn, AFRE_STOCK_CACHE_KEY)
                 finally:
                     conn.close()
-            if v is None:
+            if flow_v is None or stock_v is None:
                 try:
-                    rows = fetch_pbc_afre()
+                    flow, stock = fetch_pbc_afre_pair()
                 except Exception as e:
                     return self._send(502, json.dumps({"error": str(e)[:200]}, ensure_ascii=False).encode())
-                raw = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+                flow_v = json.dumps(flow, ensure_ascii=False, separators=(",", ":"))
+                stock_v = json.dumps(stock, ensure_ascii=False, separators=(",", ":"))
                 with LOCK:
                     conn = connect()
                     try:
-                        put_market_cache(conn, AFRE_CACHE_KEY, raw)
+                        put_market_cache(conn, AFRE_CACHE_KEY, flow_v)
+                        put_market_cache(conn, AFRE_STOCK_CACHE_KEY, stock_v)
                     finally:
                         conn.close()
-                v = raw
+            v = stock_v if kind == "stock" else flow_v
             return self._send(200, v.encode())
         if path == "/sync/cache":
             k = cache_key_of(self.path)
@@ -842,6 +955,31 @@ def selftest() -> None:
     assert afre_rows[0]["month"] == "2026-01"
     assert afre_rows[0]["afre_total"] == 72185
     assert afre_rows[0]["loans_written_off"] == 355
+    assert parse_stock_month("2026.1", None) == "2026-01"
+    assert parse_stock_month("2026.1", "2026-09") == "2026-10"
+    assert parse_stock_month("2026.10", "2026-09") == "2026-10"
+    stock_grid = [
+        ["社会融资规模存量统计表"],
+        [None, "2026.1", None, "2026.2", None, "2026.10"],
+        ["项目", "存量", "增速", "存量", "增速", "存量", "增速"],
+        ["社会融资规模存量", 449.11, 8.2, 451.4, 8.2, None, None],
+        ["人民币贷款", 273.3, 6.1, 274.15, 6.1, None, None],
+        ["外币贷款", 1.09, -12.1, 1.08, -11, None, None],
+        ["委托贷款", 11.3, 0.2, 11.28, 0.3, None, None],
+        ["信托贷款", 4.67, 7, 4.7, 8.5, None, None],
+        ["未贴现银行承兑汇票", 2.78, 6.7, 2.6, 12.9, None, None],
+        ["企业债券", 34.69, 6.1, 34.84, 6.2, None, None],
+        ["政府债券", 95.9, 17.3, 97.3, 16.6, None, None],
+        ["非金融企业境内股票", 12.23, 3.9, 12.27, 4.2, None, None],
+        ["存款类金融机构资产支持证券", 0.69, -11, 0.68, -8.5, None, None],
+        ["贷款核销", 11.45, 14.7, 11.48, 14.5, None, None],
+    ]
+    stock_rows = parse_afre_stock_grid(stock_grid)
+    assert len(stock_rows) == 2
+    assert stock_rows[0]["month"] == "2026-01"
+    assert stock_rows[0]["yoy"] == 8.2
+    assert stock_rows[0]["rmb_loans"] == 273.3
+    assert stock_rows[1]["month"] == "2026-02"
     conn.close()
 
     # legacy blob → xiong
