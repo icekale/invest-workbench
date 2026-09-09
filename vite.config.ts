@@ -128,6 +128,11 @@ export default ({ mode }: ConfigEnv): UserConfig => {
             });
           },
         },
+        '/llm': {
+          target: 'http://127.0.0.1:8096',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/llm/, ''),
+        },
       },
     },
 
