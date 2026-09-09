@@ -1,6 +1,7 @@
 # OS specific files
 .DS_Store
 .superpowers/
+.worktrees/
 
 # dependencies manager
 node_modules/
