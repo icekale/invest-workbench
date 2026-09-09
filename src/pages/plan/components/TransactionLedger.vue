@@ -22,7 +22,7 @@
           <div class="kpi-value num-hero" :style="{ color: pnlColor(summary.realizedPnL) }">
             {{ signed(summary.realizedPnL) }}
           </div>
-          <div class="kpi-tip">佣金与税费 ¥{{ summary.totalFee.toFixed(2) }}</div>
+          <div class="kpi-tip">卖出回收减持仓成本</div>
         </t-card>
       </t-col>
       <t-col :xs="6" :sm="6" :xl="3">
@@ -95,13 +95,20 @@
             </t-tag>
           </template>
           <template #name="{ row }">
-            <span class="symbol-name">{{ row.name }}</span>
-            <span class="symbol-code">{{ shortCode(row.code) }}</span>
+            <div class="dual-cell">
+              <div class="dual-cell__main">{{ row.name }}</div>
+              <div class="dual-cell__sub">{{ shortCode(row.code) }}</div>
+            </div>
           </template>
-          <template #price="{ row }">¥{{ Number(row.price).toFixed(2) }}</template>
-          <template #quantity="{ row }">{{ Number(row.quantity).toLocaleString('zh-CN') }}</template>
-          <template #amount="{ row }">{{ money(row.amount) }}</template>
-          <template #fee="{ row }">¥{{ Number(row.fee || 0).toFixed(2) }}</template>
+          <template #px="{ row }">
+            <div class="dual-cell dual-cell--right">
+              <div class="dual-cell__main tabular-nums">¥{{ Number(row.price).toFixed(2) }}</div>
+              <div class="dual-cell__sub tabular-nums">{{ Number(row.quantity).toLocaleString('zh-CN') }}</div>
+            </div>
+          </template>
+          <template #amount="{ row }">
+            <span class="tabular-nums">{{ money(row.amount) }}</span>
+          </template>
           <template #op="{ row }">
             <t-popconfirm content="确定删除此条流水？" @confirm="invest.removeTransaction(row.id)">
               <t-link theme="danger" hover="color">删除</t-link>
@@ -147,9 +154,6 @@
         <t-form-item label="成交数量">
           <t-input-number v-model="formData.quantity" :min="1" :step="100" style="width: 100%" />
         </t-form-item>
-        <t-form-item label="佣金税费">
-          <t-input-number v-model="formData.fee" :min="0" :decimal-places="2" style="width: 100%" />
-        </t-form-item>
         <t-form-item label="交易备注">
           <t-input v-model="formData.note" placeholder="如 逢低分批建仓 / 止盈减仓" />
         </t-form-item>
@@ -190,7 +194,7 @@
 </template>
 <script setup lang="ts">
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
@@ -221,16 +225,8 @@ const formData = reactive({
   side: 'buy' as TradeSide,
   price: 10,
   quantity: 100,
-  fee: tradeFee('stock', 10 * 100),
   note: '',
 });
-
-watch(
-  () => [formData.account, formData.price, formData.quantity] as const,
-  () => {
-    formData.fee = tradeFee(formData.account, formData.price * formData.quantity);
-  },
-);
 
 const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
 const accountTx = computed(() => invest.transactions.filter((tx) => tx.account === accountView.value));
@@ -258,14 +254,12 @@ const filteredTransactions = computed(() => {
 });
 
 const columns = [
-  { colKey: 'date', title: '成交日期', width: 105 },
-  { colKey: 'side', title: '方向', width: 70 },
-  { colKey: 'name', title: '标的', minWidth: 120 },
-  { colKey: 'price', title: '单价', width: 95 },
-  { colKey: 'quantity', title: '数量', width: 95 },
-  { colKey: 'amount', title: '成交额', width: 110 },
-  { colKey: 'fee', title: '费用', width: 80 },
-  { colKey: 'op', title: '操作', width: 60 },
+  { colKey: 'date', title: '成交日期', width: 112 },
+  { colKey: 'side', title: '方向', width: 72 },
+  { colKey: 'name', title: '名称/代码', minWidth: 160 },
+  { colKey: 'px', title: '单价/数量', width: 120, align: 'right' as const },
+  { colKey: 'amount', title: '成交额', width: 120, align: 'right' as const },
+  { colKey: 'op', title: '操作', width: 72, align: 'center' as const },
 ];
 
 const money = (n: number | null) => (n == null ? '—' : `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
@@ -284,7 +278,6 @@ function openAddDialog() {
   formData.name = '';
   formData.price = 10;
   formData.quantity = 100;
-  formData.fee = tradeFee(formData.account, 10 * 100);
   formData.note = '';
   addOpen.value = true;
 }
@@ -317,7 +310,7 @@ function saveSingleTransaction() {
     side: formData.side,
     price: formData.price,
     quantity: formData.quantity,
-    fee: formData.fee,
+    fee: tradeFee(formData.account, formData.price * formData.quantity),
     note: formData.note.trim(),
   });
 
@@ -416,21 +409,32 @@ function handleApplyHoldings() {
   margin-bottom: 14px;
 }
 
-.symbol-name {
-  font-weight: 500;
-  color: var(--guanlan-ink);
-  margin-right: 6px;
-}
-
-.symbol-code {
-  font-size: 12px;
-  color: var(--guanlan-muted);
-}
-
 .table-wrap {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
+}
+
+.table-wrap :deep(.t-table__header th) {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.dual-cell {
+  line-height: 1.25;
+}
+
+.dual-cell--right {
+  text-align: right;
+}
+
+.dual-cell__main {
+  font-weight: 600;
+}
+
+.dual-cell__sub {
+  font-size: 11px;
+  color: var(--guanlan-muted);
 }
 
 .import-actions {

@@ -154,12 +154,6 @@
           </div>
           <div class="preview-grid">
             <div class="grid-item">
-              <span class="g-lbl">佣金（{{ form.account === 'etf' ? '万0.5' : '万0.8' }}）</span>
-              <span class="g-val">
-                ¥{{ estimatedFee.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-              </span>
-            </div>
-            <div class="grid-item">
               <span class="g-lbl">成交后剩余现金</span>
               <span class="g-val" :class="{ danger: estimatedRemainingCash < 0 }">
                 ¥{{
