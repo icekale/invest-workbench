@@ -35,6 +35,7 @@ import { fetchLiveIndustryCatalysts } from '@/utils/industry';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts, tradeFee } from '@/utils/ledger';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
+import { defaultScenario } from '@/utils/scenario';
 
 function persist() {
   scheduleCloudPush();
@@ -438,23 +439,14 @@ export const useInvestStore = defineStore('invest', {
     },
     patchPriceScenario(
       code: string,
-      patch: Partial<Pick<PriceScenario, 'note'>> & {
+      patch: Partial<Pick<PriceScenario, 'note' | 'metric' | 'ref'>> & {
         bear?: Partial<PriceScenario['bear']>;
         base?: Partial<PriceScenario['base']>;
         bull?: Partial<PriceScenario['bull']>;
       },
     ) {
       const i = this.priceScenarios.findIndex((s) => s.code === code);
-      const cur =
-        i >= 0
-          ? this.priceScenarios[i]
-          : {
-              code,
-              bear: { growth: -0.05, multiple: 12 },
-              base: { growth: 0.08, multiple: 15 },
-              bull: { growth: 0.15, multiple: 18 },
-              note: '',
-            };
+      const cur = i >= 0 ? this.priceScenarios[i] : defaultScenario(code);
       const next: PriceScenario = {
         ...cur,
         ...patch,

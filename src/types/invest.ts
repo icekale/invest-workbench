@@ -17,6 +17,8 @@ export interface Holding {
   thesisId: string;
 }
 
+export type ScenarioMetric = 'eps' | 'bvps';
+
 export interface ScenarioLeg {
   growth: number;
   multiple: number;
@@ -24,6 +26,8 @@ export interface ScenarioLeg {
 
 export interface PriceScenario {
   code: string;
+  metric?: ScenarioMetric;
+  ref?: number | null;
   bear: ScenarioLeg;
   base: ScenarioLeg;
   bull: ScenarioLeg;

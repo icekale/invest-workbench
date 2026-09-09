@@ -51,8 +51,8 @@ assert.equal(under[0].tone, 'warn');
 assert.match(under[0].extra, /^\+/);
 
 assert.equal(shortCode('sh510300'), '510300');
-assert.equal(scenarioTarget(100, 15, 0, 15), 100);
-assert.equal(scenarioTarget(100, 15, 0.1, 15), 110);
+assert.equal(scenarioTarget(87.191027496382, -0.05, 12), 993.98);
+assert.equal(scenarioTarget(100 / 15, 0.1, 15), 110);
 assert.equal(scenarioUpside(100, 80), -0.2);
 assert.equal(tradeFee('stock', 10_000), 0.8);
 assert.equal(tradeFee('etf', 10_000), 0.5);

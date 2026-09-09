@@ -161,7 +161,7 @@
 
     <t-card title="三情景目标价">
       <template #actions>
-        <span class="card-cap">目标价 = 现价 × (1+增长率) × (目标倍数 / 当前PE，缺省 15)</span>
+        <span class="card-cap">目标价 = 参考值 × (1+增长率) × 目标倍数；参考值默认 = 现价 ÷ 当前PE/PB</span>
       </template>
       <t-empty v-if="!activeRows.length" description="暂无持仓，无法测算目标价" />
       <div v-else class="scen-wrap">
@@ -169,6 +169,8 @@
           <thead>
             <tr>
               <th rowspan="2" class="col-name">标的</th>
+              <th rowspan="2">参考指标</th>
+              <th rowspan="2">参考值</th>
               <th colspan="4" class="hd-bear">保守情景</th>
               <th colspan="4" class="hd-base">基准情景</th>
               <th colspan="4" class="hd-bull">乐观情景</th>
@@ -186,6 +188,25 @@
                   {{ shortCode(row.code) }}
                   <template v-if="row.last != null"> · ¥{{ px(row.last) }}</template>
                 </div>
+              </td>
+              <td class="num-cell">
+                <t-select
+                  size="small"
+                  :value="scenOf(row.code).metric || 'eps'"
+                  :options="metricOpts"
+                  @change="(v) => setMetric(row.code, String(v))"
+                />
+              </td>
+              <td class="num-cell ref-cell">
+                <t-input-number
+                  size="small"
+                  theme="normal"
+                  :decimal-places="2"
+                  :step="0.1"
+                  :min="0"
+                  :value="refOf(row) ?? undefined"
+                  @change="(v) => invest.patchPriceScenario(row.code, { ref: Number(v) || null })"
+                />
               </td>
               <template v-for="key in scenKeys" :key="key">
                 <td class="num-cell" :class="`td-${key}`">
@@ -210,7 +231,7 @@
                     @change="(v) => setLeg(row.code, key, 'multiple', Number(v))"
                   />
                 </td>
-                <td class="num-cell px" :class="`td-${key}`">{{ money(targetOf(row, key)) }}</td>
+                <td class="num-cell px" :class="`td-${key}`">{{ targetTxt(targetOf(row, key)) }}</td>
                 <td class="num-cell space" :class="`td-${key}`" :style="{ color: pnlColor(upsideOf(row, key)) }">
                   {{ fmtSignedPct(upsideOf(row, key)) }}
                 </td>
@@ -237,7 +258,7 @@ import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
 import type { PriceScenario, TodoStatus, TradeSide } from '@/types/invest';
 import { allocation, summarize } from '@/utils/book';
-import { fmtSignedPct, SCENARIO_DEFAULTS, scenarioTarget, scenarioUpside } from '@/utils/scenario';
+import { fmtSignedPct, impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
@@ -247,6 +268,10 @@ const invest = useInvestStore();
 const accountView = ref<'stock' | 'etf'>('stock');
 const holdView = ref<'list' | 'weight'>('list');
 const scenKeys = ['bear', 'base', 'bull'] as const;
+const metricOpts = [
+  { label: '隐含EPS', value: 'eps' },
+  { label: '隐含BVPS', value: 'bvps' },
+];
 const subHeads = [
   '增长率',
   '目标倍数',
@@ -336,6 +361,8 @@ function weightOf(mv: number | null) {
 }
 
 const money = (n: number | null) => (n == null ? '—' : `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
+const targetTxt = (n: number | null) =>
+  n == null ? '—' : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (n: number | null) =>
   n == null ? '—' : `${n >= 0 ? '+' : '-'}¥${Math.abs(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
 const pct = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${(n * 100).toFixed(2)}%`);
@@ -363,14 +390,9 @@ const todoCols = [
   { colKey: 'op', title: '', width: 100 },
 ];
 function scenOf(code: string): PriceScenario {
-  return (
-    invest.priceScenarios.find((s) => s.code === code) || {
-      code,
-      bear: { ...SCENARIO_DEFAULTS.bear },
-      base: { ...SCENARIO_DEFAULTS.base },
-      bull: { ...SCENARIO_DEFAULTS.bull },
-      note: '',
-    }
+  return mergeScenario(
+    code,
+    invest.priceScenarios.find((s) => s.code === code),
   );
 }
 
@@ -378,13 +400,24 @@ function setLeg(code: string, key: (typeof scenKeys)[number], field: 'growth' | 
   invest.patchPriceScenario(code, { [key]: { [field]: Number.isFinite(value) ? value : 0 } });
 }
 
-function peOf(code: string) {
-  return invest.quotes[code]?.pe ?? null;
+function setMetric(code: string, value: string) {
+  invest.patchPriceScenario(code, { metric: value === 'bvps' ? 'bvps' : 'eps', ref: null });
+}
+
+function liveMultiple(code: string, metric: 'eps' | 'bvps') {
+  const q = invest.quotes[code];
+  return (metric === 'bvps' ? q?.pb : q?.pe) ?? null;
+}
+
+function refOf(row: { code: string; last: number | null }) {
+  const s = scenOf(row.code);
+  if (s.ref != null && s.ref > 0) return s.ref;
+  return impliedRef(row.last, liveMultiple(row.code, s.metric || 'eps'));
 }
 
 function targetOf(row: { code: string; last: number | null }, key: (typeof scenKeys)[number]) {
   const leg = scenOf(row.code)[key];
-  return scenarioTarget(row.last, peOf(row.code), leg.growth, leg.multiple);
+  return scenarioTarget(refOf(row), leg.growth, leg.multiple);
 }
 
 function upsideOf(row: { code: string; last: number | null }, key: (typeof scenKeys)[number]) {
@@ -617,13 +650,13 @@ function toggleTodo(id: string, status: TodoStatus) {
 }
 
 .scen-wrap {
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   overflow-x: auto;
 }
 
 .scen-table {
-  width: 100%;
-  min-width: 1080px;
+  width: auto;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -688,6 +721,14 @@ function toggleTodo(id: string, status: TodoStatus) {
 
 .num-cell.px {
   font-weight: 600;
+}
+
+.ref-cell :deep(.t-input-number) {
+  color: #2f5bdc;
+}
+
+.scen-table :deep(.t-select) {
+  width: 112px;
 }
 
 .col-note {
