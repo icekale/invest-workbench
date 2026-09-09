@@ -52,7 +52,6 @@
     <t-card title="投资组合持仓">
       <div class="hold-toolbar">
         <t-radio-group v-model="accountView" variant="default-filled" size="small">
-          <t-radio-button value="all">聚合</t-radio-button>
           <t-radio-button value="stock">股票账户</t-radio-button>
           <t-radio-button value="etf">ETF 账户</t-radio-button>
         </t-radio-group>
@@ -90,11 +89,6 @@
               <span class="stock-name">{{ row.name }}</span>
               <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
             </t-space>
-          </template>
-          <template #account="{ row }">
-            <t-tag size="small" variant="outline" :theme="row.account === 'stock' ? 'primary' : 'default'">
-              {{ row.account === 'stock' ? '股票' : 'ETF' }}
-            </t-tag>
           </template>
           <template #quantity="{ row }">{{ row.quantity?.toLocaleString('zh-CN') }}</template>
           <template #cost="{ row }">¥{{ row.cost?.toFixed(2) }}</template>
@@ -239,7 +233,7 @@ defineOptions({ name: 'ReviewIndex' });
 
 const invest = useInvestStore();
 const filter = ref<'all' | ThesisStatus>('all');
-const accountView = ref<'all' | 'stock' | 'etf'>('all');
+const accountView = ref<'stock' | 'etf'>('stock');
 const holdView = ref<'list' | 'weight'>('list');
 const topic = ref('');
 const conclusion = ref('');
@@ -271,24 +265,14 @@ const weekLogs = computed(() => {
 });
 const habitPct = computed(() => Math.min(100, Math.round((weekLogs.value / 3) * 100)));
 
-const activeRows = computed(() => {
-  if (accountView.value === 'stock') return invest.stockRows;
-  if (accountView.value === 'etf') return invest.etfRows;
-  return [...invest.stockRows, ...invest.etfRows];
-});
-const activeCash = computed(() => {
-  if (accountView.value === 'stock') return invest.cash.stock;
-  if (accountView.value === 'etf') return invest.cash.etf;
-  return invest.cash.stock + invest.cash.etf;
-});
+const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
+const activeCash = computed(() => (accountView.value === 'etf' ? invest.cash.etf : invest.cash.stock));
 const bookTotal = computed(() => {
   const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
   return mv + Math.max(0, activeCash.value);
 });
 const allocItems = computed(() => allocation(activeRows.value, activeCash.value));
-const accountLabel = computed(() =>
-  accountView.value === 'stock' ? '股票账户' : accountView.value === 'etf' ? 'ETF 账户' : '聚合',
-);
+const accountLabel = computed(() => (accountView.value === 'etf' ? 'ETF 账户' : '股票账户'));
 
 const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
 function colorOf(name: string) {
@@ -318,18 +302,14 @@ const healthClass = (val: number) => {
   return 'health-dot--alert';
 };
 
-const cols = computed(() => {
-  const list = [
-    { colKey: 'name', title: '名称 / 代码' },
-    ...(accountView.value === 'all' ? [{ colKey: 'account', title: '账户', width: 80 }] : []),
-    { colKey: 'quantity', title: '持仓量', width: 100 },
-    { colKey: 'cost', title: '持仓成本', width: 100 },
-    { colKey: 'mv', title: '市值', width: 120 },
-    { colKey: 'weight', title: '占比', width: 80 },
-    { colKey: 'pnl', title: '浮动盈亏' },
-  ];
-  return list;
-});
+const cols = [
+  { colKey: 'name', title: '名称 / 代码' },
+  { colKey: 'quantity', title: '持仓量', width: 100 },
+  { colKey: 'cost', title: '持仓成本', width: 100 },
+  { colKey: 'mv', title: '市值', width: 120 },
+  { colKey: 'weight', title: '占比', width: 80 },
+  { colKey: 'pnl', title: '浮动盈亏' },
+];
 const logCols = [
   { colKey: 'date', title: '日期', width: 100 },
   { colKey: 'topic', title: '主题' },
