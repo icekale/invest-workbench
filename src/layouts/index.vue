@@ -67,10 +67,21 @@ const onEsc = (e: KeyboardEvent) => {
   if (e.key === 'Escape') settingStore.mobileNavOpen = false;
 };
 
+function prefetchPages() {
+  window.setTimeout(() => {
+    void import('@/pages/dashboard/index.vue');
+    void import('@/pages/research/index.vue');
+    void import('@/pages/review/index.vue');
+    void import('@/pages/plan/index.vue');
+    void import('@/pages/funds/recommend.vue');
+  }, 200);
+}
+
 onMounted(() => {
   appendNewRoute();
   window.addEventListener('keydown', onEsc);
   void bindCloudSync(useInvestStore());
+  prefetchPages();
 });
 
 onUnmounted(() => {
@@ -84,7 +95,7 @@ watch(
   () => {
     appendNewRoute();
     settingStore.mobileNavOpen = false;
-    document.querySelector(`.${prefix}-layout`)?.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector(`.${prefix}-layout`)?.scrollTo({ top: 0 });
   },
 );
 

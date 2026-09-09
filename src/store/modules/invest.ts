@@ -269,6 +269,7 @@ export const useInvestStore = defineStore('invest', {
       writeUserLS(LS_CASH, this.cash);
     },
     async refreshQuotes() {
+      if (this.quoteAt && Date.now() - this.quoteAt < 15_000 && Object.keys(this.quotes).length) return;
       this.quoteLoading = true;
       this.quoteError = '';
       const codes = [...new Set([...this.holdings.map((h) => h.code), ...indexes])];

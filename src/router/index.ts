@@ -83,11 +83,7 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.VITE_BASE_URL || '/'),
   routes: allRoutes,
   scrollBehavior() {
-    return {
-      el: '#app',
-      top: 0,
-      behavior: 'smooth',
-    };
+    return { top: 0 };
   },
 });
 
