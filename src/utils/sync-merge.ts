@@ -107,6 +107,7 @@ export interface BookSnap {
   todos?: { id: string; [k: string]: unknown }[];
   theses?: { id: string; [k: string]: unknown }[];
   journal?: { id: string; [k: string]: unknown }[];
+  priceScenarios?: { code: string; [k: string]: unknown }[];
   opportunities?: { id: string; [k: string]: unknown }[];
   watchlist?: string[];
   customPortfolios?: { id: string; [k: string]: unknown }[];
@@ -130,6 +131,7 @@ export function emptySnap(): BookSnap {
     todos: [],
     theses: [],
     journal: [],
+    priceScenarios: [],
     opportunities: [],
     watchlist: [],
     customPortfolios: [],
@@ -189,6 +191,11 @@ export function threeWaySnapshot(
     b: b.journal || [],
     l: l.journal || [],
     r: r.journal || [],
+  });
+  const priceScenarios = take('priceScenarios', (x) => String((x as { code?: string }).code || ''), {
+    b: b.priceScenarios || [],
+    l: l.priceScenarios || [],
+    r: r.priceScenarios || [],
   });
   const opportunities = take('opportunities', (x) => String(x.id), {
     b: b.opportunities || [],
@@ -260,6 +267,7 @@ export function threeWaySnapshot(
     todos,
     theses,
     journal,
+    priceScenarios,
     opportunities,
     watchlist: watchMerged.items.map((x) => x.id),
     customPortfolios,
@@ -280,6 +288,7 @@ const LIST_KEY: Record<string, (row: Record<string, unknown>) => string> = {
   todos: (x) => String(x.id || ''),
   theses: (x) => String(x.id || ''),
   journal: (x) => String(x.id || ''),
+  priceScenarios: (x) => String(x.code || ''),
   opportunities: (x) => String(x.id || ''),
   customPortfolios: (x) => String(x.id || ''),
   navSnapshots: (x) => String(x.date || ''),

@@ -16,6 +16,7 @@ import type {
   NavSnapshot,
   Opportunity,
   Prefs,
+  PriceScenario,
   Thesis,
   ThesisStatus,
   TodoStatus,
@@ -90,6 +91,7 @@ export const useInvestStore = defineStore('invest', {
     watchlist: [] as string[],
     journal: [] as JournalEntry[],
     theses: [] as Thesis[],
+    priceScenarios: [] as PriceScenario[],
     cash: { stock: 0, etf: 0 },
     opportunities: [] as Opportunity[],
     transactions: [] as Transaction[],
@@ -429,6 +431,38 @@ export const useInvestStore = defineStore('invest', {
       this.theses = [row, ...this.theses];
       persist();
     },
+    patchPriceScenario(
+      code: string,
+      patch: Partial<Pick<PriceScenario, 'note'>> & {
+        bear?: Partial<PriceScenario['bear']>;
+        base?: Partial<PriceScenario['base']>;
+        bull?: Partial<PriceScenario['bull']>;
+      },
+    ) {
+      const i = this.priceScenarios.findIndex((s) => s.code === code);
+      const cur =
+        i >= 0
+          ? this.priceScenarios[i]
+          : {
+              code,
+              bear: { growth: -0.05, multiple: 12 },
+              base: { growth: 0.08, multiple: 15 },
+              bull: { growth: 0.15, multiple: 18 },
+              note: '',
+            };
+      const next: PriceScenario = {
+        ...cur,
+        ...patch,
+        bear: { ...cur.bear, ...patch.bear },
+        base: { ...cur.base, ...patch.base },
+        bull: { ...cur.bull, ...patch.bull },
+      };
+      const copy = this.priceScenarios.slice();
+      if (i >= 0) copy[i] = next;
+      else copy.push(next);
+      this.priceScenarios = copy;
+      persist();
+    },
     addOpportunity(row: Omit<Opportunity, 'id'>) {
       this.opportunities = [{ ...row, id: `o${Date.now()}` }, ...this.opportunities];
       persist();
@@ -635,6 +669,7 @@ export const useInvestStore = defineStore('invest', {
         this.watchlist = [];
         this.journal = [];
         this.theses = [];
+        this.priceScenarios = [];
         this.cash = { stock: 0, etf: 0 };
         this.opportunities = [];
         this.transactions = [];
@@ -665,6 +700,7 @@ export const useInvestStore = defineStore('invest', {
         todos: this.todos,
         theses: this.theses,
         journal: this.journal,
+        priceScenarios: this.priceScenarios,
         opportunities: this.opportunities,
         prefs: this.prefs,
         transactions: this.transactions,
@@ -693,6 +729,7 @@ export const useInvestStore = defineStore('invest', {
       if (Array.isArray(data.todos)) this.todos = data.todos;
       if (Array.isArray(data.theses)) this.theses = data.theses;
       if (Array.isArray(data.journal)) this.journal = data.journal;
+      if (Array.isArray(data.priceScenarios)) this.priceScenarios = data.priceScenarios;
       if (Array.isArray(data.opportunities)) this.opportunities = data.opportunities;
       if (data.prefs && typeof data.prefs === 'object') this.prefs = { ...this.prefs, ...data.prefs };
       if (Array.isArray(data.watchlist)) this.watchlist = data.watchlist;

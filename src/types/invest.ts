@@ -17,6 +17,19 @@ export interface Holding {
   thesisId: string;
 }
 
+export interface ScenarioLeg {
+  growth: number;
+  multiple: number;
+}
+
+export interface PriceScenario {
+  code: string;
+  bear: ScenarioLeg;
+  base: ScenarioLeg;
+  bull: ScenarioLeg;
+  note: string;
+}
+
 export interface MacroWeather {
   cycle: string;
   sentiment: '偏多' | '中性' | '谨慎' | '防守' | string;

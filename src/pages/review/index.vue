@@ -67,17 +67,29 @@
       </div>
       <t-empty v-if="!activeRows.length" description="暂无持仓数据" />
       <div v-else-if="holdView === 'weight'" class="weight-view">
+        <div v-if="drillL1" class="weight-back">
+          <t-link hover="color" @click="drillL1 = null">返回一级</t-link>
+          <span>{{ drillL1 }}</span>
+        </div>
         <div class="weight-stack" role="img" :aria-label="`${accountLabel}持仓占比`">
           <span
             v-for="a in allocItems"
             :key="a.name"
             class="weight-seg"
+            :class="{ clickable: canDrill(a.name) }"
             :style="{ width: `${(a.pct * 100).toFixed(2)}%`, background: colorOf(a.name) }"
             :title="`${a.name} ${(a.pct * 100).toFixed(1)}%`"
+            @click="onAllocClick(a.name)"
           />
         </div>
         <div class="weight-rows">
-          <div v-for="a in allocItems" :key="a.name" class="weight-row">
+          <div
+            v-for="a in allocItems"
+            :key="a.name"
+            class="weight-row"
+            :class="{ clickable: canDrill(a.name) }"
+            @click="onAllocClick(a.name)"
+          >
             <span class="dot" :style="{ background: colorOf(a.name) }" />
             <span class="w-name">{{ a.name }}</span>
             <div class="w-bar">
@@ -147,154 +159,120 @@
       </t-table>
     </t-card>
 
-    <!-- 下半部分：投资论点与复盘日志 -->
-    <t-row :gutter="[16, 16]">
-      <!-- 投资论点 -->
-      <t-col :xs="12" :xl="6">
-        <t-card title="投资论点">
-          <template #actions>
-            <t-button size="small" theme="primary" @click="thOpen = true">记论点</t-button>
-          </template>
-          <div class="thesis-header-actions">
-            <t-radio-group v-model="filter" variant="default-filled">
-              <t-radio-button value="all">全部 ({{ invest.theses.length }})</t-radio-button>
-              <t-radio-button value="valid">运行中</t-radio-button>
-              <t-radio-button value="watch">待复核</t-radio-button>
-              <t-radio-button value="invalid">已作废</t-radio-button>
-            </t-radio-group>
-          </div>
-
-          <t-empty v-if="!theses.length" description="暂无该分类下的投资论点" style="padding: 24px 0" />
-          <t-list v-else split>
-            <t-list-item v-for="t in theses" :key="t.id">
-              <div class="thesis-item">
-                <div class="thesis-body">
-                  <div class="thesis-title-line">
-                    <strong>{{ t.title }}</strong>
-                    <t-tag v-if="t.code" size="small" variant="light">{{ shortCode(t.code) }}</t-tag>
-                  </div>
-                  <p class="thesis-desc">{{ t.body }}</p>
+    <t-card title="三情景目标价">
+      <template #actions>
+        <span class="card-cap">目标价 = 现价 × (1+增长率) × (目标倍数 / 当前PE，缺省 15)</span>
+      </template>
+      <t-empty v-if="!activeRows.length" description="暂无持仓，无法测算目标价" />
+      <div v-else class="scen-wrap">
+        <table class="scen-table">
+          <thead>
+            <tr>
+              <th rowspan="2" class="col-name">标的</th>
+              <th colspan="4" class="hd-bear">保守情景</th>
+              <th colspan="4" class="hd-base">基准情景</th>
+              <th colspan="4" class="hd-bull">乐观情景</th>
+              <th rowspan="2" class="col-note">关键假设与风险</th>
+            </tr>
+            <tr>
+              <th v-for="h in subHeads" :key="h" class="sub-h">{{ h }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in activeRows" :key="row.code">
+              <td class="col-name">
+                <div class="scen-name">{{ row.name }}</div>
+                <div class="scen-sub">
+                  {{ shortCode(row.code) }}
+                  <template v-if="row.last != null"> · ¥{{ px(row.last) }}</template>
                 </div>
-                <div class="thesis-ctrls">
-                  <t-select
-                    :value="t.status"
-                    :options="statusOpts"
+              </td>
+              <template v-for="key in scenKeys" :key="key">
+                <td class="num-cell" :class="`td-${key}`">
+                  <t-input-number
                     size="small"
-                    style="width: 96px"
-                    @change="(v) => invest.setThesisStatus(t.id, String(v) as ThesisStatus)"
+                    theme="normal"
+                    :decimal-places="1"
+                    :step="1"
+                    :value="scenOf(row.code)[key].growth * 100"
+                    suffix="%"
+                    @change="(v) => setLeg(row.code, key, 'growth', Number(v) / 100)"
                   />
-                  <t-popconfirm content="确定删除此条投资论点？" @confirm="invest.removeThesis(t.id)">
-                    <t-button size="small" variant="text" theme="danger">删除</t-button>
-                  </t-popconfirm>
-                </div>
-              </div>
-            </t-list-item>
-          </t-list>
-        </t-card>
-      </t-col>
-
-      <!-- 复盘日志 -->
-      <t-col :xs="12" :xl="6">
-        <t-card title="复盘日志">
-          <template #actions>
-            <span class="card-cap">目标每周 ≥3 篇</span>
-          </template>
-          <div class="journal-progress">
-            <div class="journal-progress-label">
-              <span>本周达成度</span>
-              <strong>{{ weekLogs }} / 3 次</strong>
-            </div>
-            <t-progress :percentage="habitPct" :color="habitPct >= 100 ? 'var(--guanlan-accent)' : undefined" />
-          </div>
-
-          <!-- 日志列表 -->
-          <t-empty v-if="!invest.journal.length" description="还没有写过复盘日志" style="padding: 16px 0" />
-          <div v-else class="table-wrap" style="max-height: 280px; overflow-y: auto">
-            <t-table :data="invest.journal" :columns="logCols" row-key="id" size="small">
-              <template #op="{ row }">
-                <t-popconfirm content="删除这条日志？" @confirm="invest.removeJournal(row.id)">
-                  <t-link theme="danger" hover="color">删</t-link>
-                </t-popconfirm>
+                </td>
+                <td class="num-cell" :class="`td-${key}`">
+                  <t-input-number
+                    size="small"
+                    theme="normal"
+                    :decimal-places="2"
+                    :step="1"
+                    :min="0"
+                    :value="scenOf(row.code)[key].multiple"
+                    @change="(v) => setLeg(row.code, key, 'multiple', Number(v))"
+                  />
+                </td>
+                <td class="num-cell px" :class="`td-${key}`">{{ money(targetOf(row, key)) }}</td>
+                <td class="num-cell space" :class="`td-${key}`" :style="{ color: pnlColor(upsideOf(row, key)) }">
+                  {{ fmtSignedPct(upsideOf(row, key)) }}
+                </td>
               </template>
-            </t-table>
-          </div>
-
-          <!-- 写一条 -->
-          <div class="journal-form-card">
-            <div class="journal-form-title">记一条决策或反思</div>
-            <t-form class="journal-form" @submit.prevent="saveLog">
-              <t-form-item label="主题" style="margin-bottom: 8px">
-                <t-input v-model="topic" placeholder="例：减仓高估值成长，加仓红利底仓" @enter="saveLog" />
-              </t-form-item>
-              <t-form-item label="结论" style="margin-bottom: 8px">
-                <t-input v-model="conclusion" placeholder="例：严守纪律，不追高" @enter="saveLog" />
-              </t-form-item>
-              <div class="journal-form-btn">
-                <t-button theme="primary" :disabled="!topic.trim()" @click="saveLog">写一条</t-button>
-              </div>
-            </t-form>
-          </div>
-        </t-card>
-      </t-col>
-    </t-row>
-
-    <!-- 记录论点弹窗 -->
-    <t-dialog
-      v-model:visible="thOpen"
-      header="记录投资论点"
-      width="min(560px, 94vw)"
-      :confirm-btn="{ content: '保存论点', theme: 'primary' }"
-      :on-confirm="saveThesis"
-    >
-      <t-form style="margin-top: 12px">
-        <t-form-item label="论点核心">
-          <t-input v-model="th.title" placeholder="例：长江电力：确定性充沛的长期自由现金流" @enter="saveThesis" />
-        </t-form-item>
-        <t-form-item label="关联标的">
-          <t-input v-model="th.code" placeholder="sh600900 / 510300（可选）" @enter="saveThesis" />
-        </t-form-item>
-        <t-form-item label="核心论点">
-          <t-textarea
-            v-model="th.body"
-            :autosize="{ minRows: 4, maxRows: 8 }"
-            placeholder="写下买入的逻辑前提、估值底线、关键催化剂与卖出条件..."
-          />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+              <td class="col-note">
+                <t-input
+                  size="small"
+                  :value="scenOf(row.code).note"
+                  placeholder="估值中枢、核心变量与风险"
+                  @change="(v) => invest.patchPriceScenario(row.code, { note: String(v || '') })"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </t-card>
   </t-space>
 </template>
 <script setup lang="ts">
-import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
-import type { ThesisStatus, TodoStatus, TradeSide } from '@/types/invest';
+import type { PriceScenario, TodoStatus, TradeSide } from '@/types/invest';
 import { allocation, summarize } from '@/utils/book';
-import { bareCode, fetchSwL1 } from '@/utils/sw-industry';
+import { fmtSignedPct, SCENARIO_DEFAULTS, scenarioTarget, scenarioUpside } from '@/utils/scenario';
+import type { SwClass } from '@/utils/sw-industry';
+import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
 defineOptions({ name: 'ReviewIndex' });
 
 const invest = useInvestStore();
-const filter = ref<'all' | ThesisStatus>('all');
 const accountView = ref<'stock' | 'etf'>('stock');
 const holdView = ref<'list' | 'weight'>('list');
-const topic = ref('');
-const conclusion = ref('');
-const thOpen = ref(false);
-const th = reactive({ title: '', code: '', body: '' });
+const scenKeys = ['bear', 'base', 'bull'] as const;
+const subHeads = [
+  '增长率',
+  '目标倍数',
+  '目标价',
+  '空间',
+  '增长率',
+  '目标倍数',
+  '目标价',
+  '空间',
+  '增长率',
+  '目标倍数',
+  '目标价',
+  '空间',
+];
 
-const swL1 = ref<Record<string, string>>({});
+const swMap = ref<Record<string, SwClass>>({});
+const drillL1 = ref<string | null>(null);
 
-async function loadSwL1() {
+async function loadSw() {
   const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
   if (!codes.length) {
-    swL1.value = {};
+    swMap.value = {};
     return;
   }
   try {
-    swL1.value = await fetchSwL1(codes);
+    swMap.value = await fetchSwClass(codes);
   } catch {
     /* 上游失败时仍用 tag */
   }
@@ -302,7 +280,7 @@ async function loadSwL1() {
 
 onMounted(() => {
   invest.refreshQuotes();
-  void loadSwL1();
+  void loadSw();
 });
 watch(
   () =>
@@ -310,35 +288,39 @@ watch(
       .filter((h) => h.account === 'stock')
       .map((h) => h.code)
       .join(','),
-  () => void loadSwL1(),
+  () => void loadSw(),
 );
+watch(accountView, () => {
+  drillL1.value = null;
+});
 
 const stock = computed(() => summarize(invest.stockRows, invest.cash.stock));
 const etf = computed(() => summarize(invest.etfRows, invest.cash.etf));
-const theses = computed(() =>
-  filter.value === 'all' ? invest.theses : invest.theses.filter((t) => t.status === filter.value),
-);
-const weekLogs = computed(() => {
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - now.getDay());
-  const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
-  return invest.journal.filter((j) => j.date >= key).length;
-});
-const habitPct = computed(() => Math.min(100, Math.round((weekLogs.value / 3) * 100)));
-
 const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
 const activeCash = computed(() => (accountView.value === 'etf' ? invest.cash.etf : invest.cash.stock));
 const bookTotal = computed(() => {
   const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
   return mv + Math.max(0, activeCash.value);
 });
-const allocItems = computed(() =>
-  allocation(activeRows.value, activeCash.value, [], (p) => {
-    if (accountView.value === 'etf') return p.tag || p.name;
-    return swL1.value[bareCode(p.code)] || p.tag || p.name;
-  }),
-);
+const allocItems = computed(() => {
+  if (accountView.value === 'etf') return allocation(activeRows.value, activeCash.value);
+  if (drillL1.value) {
+    const sub = activeRows.value.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
+    return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));
+  }
+  return allocation(activeRows.value, activeCash.value, [], (p) => swGroupOf(p, swMap.value, 'l1'));
+});
+function canDrill(name: string) {
+  return (
+    accountView.value === 'stock' &&
+    !drillL1.value &&
+    name !== '现金' &&
+    Object.values(swMap.value).some((c) => c.l1 === name)
+  );
+}
+function onAllocClick(name: string) {
+  if (canDrill(name)) drillL1.value = name;
+}
 const accountLabel = computed(() => (accountView.value === 'etf' ? 'ETF 账户' : '股票账户'));
 
 const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
@@ -380,27 +362,37 @@ const todoCols = [
   { colKey: 'status', title: '状态', width: 88 },
   { colKey: 'op', title: '', width: 100 },
 ];
-const logCols = [
-  { colKey: 'date', title: '日期', width: 100 },
-  { colKey: 'topic', title: '主题' },
-  { colKey: 'conclusion', title: '结论' },
-  { colKey: 'op', title: '操作', width: 60 },
-];
-const statusOpts = [
-  { label: '运行中', value: 'valid' },
-  { label: '待更新', value: 'watch' },
-  { label: '已作废', value: 'invalid' },
-];
+function scenOf(code: string): PriceScenario {
+  return (
+    invest.priceScenarios.find((s) => s.code === code) || {
+      code,
+      bear: { ...SCENARIO_DEFAULTS.bear },
+      base: { ...SCENARIO_DEFAULTS.base },
+      bull: { ...SCENARIO_DEFAULTS.bull },
+      note: '',
+    }
+  );
+}
 
-function saveLog() {
-  if (!topic.value.trim()) {
-    MessagePlugin.warning('请填写复盘主题');
-    return;
-  }
-  invest.addJournal(topic.value.trim(), conclusion.value.trim());
-  topic.value = '';
-  conclusion.value = '';
-  MessagePlugin.success('已写入复盘日志');
+function setLeg(code: string, key: (typeof scenKeys)[number], field: 'growth' | 'multiple', value: number) {
+  invest.patchPriceScenario(code, { [key]: { [field]: Number.isFinite(value) ? value : 0 } });
+}
+
+function peOf(code: string) {
+  return invest.quotes[code]?.pe ?? null;
+}
+
+function targetOf(row: { code: string; last: number | null }, key: (typeof scenKeys)[number]) {
+  const leg = scenOf(row.code)[key];
+  return scenarioTarget(row.last, peOf(row.code), leg.growth, leg.multiple);
+}
+
+function upsideOf(row: { code: string; last: number | null }, key: (typeof scenKeys)[number]) {
+  return scenarioUpside(row.last, targetOf(row, key));
+}
+
+function px(n: number) {
+  return n < 10 ? n.toFixed(3) : n.toFixed(2);
 }
 
 function tradeRow(row: { code: string; name: string; last: number | null; quantity: number }, side: TradeSide) {
@@ -416,20 +408,6 @@ function tradeRow(row: { code: string; name: string; last: number | null; quanti
 
 function toggleTodo(id: string, status: TodoStatus) {
   invest.setTodoStatus(id, status === 'open' ? 'done' : 'open');
-}
-
-function saveThesis() {
-  if (!th.title.trim() || !th.body.trim()) {
-    MessagePlugin.warning('标题和论点必填');
-    return false;
-  }
-  invest.addThesis(th.title.trim(), th.code.trim(), th.body.trim());
-  thOpen.value = false;
-  th.title = '';
-  th.code = '';
-  th.body = '';
-  MessagePlugin.success('已保存投资论点');
-  return true;
 }
 </script>
 <style scoped>
@@ -566,6 +544,14 @@ function saveThesis() {
   gap: 14px;
 }
 
+.weight-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--guanlan-muted);
+}
+
 .weight-stack {
   display: flex;
   height: 12px;
@@ -577,6 +563,11 @@ function saveThesis() {
 .weight-seg {
   height: 100%;
   min-width: 2px;
+}
+
+.weight-seg.clickable,
+.weight-row.clickable {
+  cursor: pointer;
 }
 
 .weight-rows {
@@ -625,88 +616,85 @@ function saveThesis() {
   color: var(--guanlan-ink);
 }
 
-.thesis-header-actions {
-  margin-bottom: 12px;
-}
-
-.thesis-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.scen-wrap {
   width: 100%;
+  overflow-x: auto;
 }
 
-.thesis-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.thesis-title-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--guanlan-ink);
-}
-
-.thesis-desc {
-  margin: 6px 0 0;
-  color: var(--guanlan-muted);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.thesis-ctrls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-}
-
-.journal-progress {
-  padding: 12px 14px;
-  background: var(--guanlan-surface-soft);
-  border-radius: 8px;
-  margin-bottom: 14px;
-}
-
-.journal-progress-label {
-  display: flex;
-  justify-content: space-between;
+.scen-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
   font-size: 12px;
-  color: var(--guanlan-muted);
-  margin-bottom: 6px;
 }
 
-.journal-progress-label strong {
-  color: var(--guanlan-ink);
+.scen-table th,
+.scen-table td {
+  border: 1px solid var(--guanlan-line, #e6eaed);
+  padding: 6px 8px;
+  vertical-align: middle;
 }
 
-.journal-form-card {
-  margin-top: 16px;
-  padding: 14px;
-  background: var(--guanlan-surface-soft);
-  border-radius: 8px;
-  border: 1px solid var(--guanlan-line);
+.scen-table thead th {
+  font-weight: 500;
+  text-align: center;
+  background: #f4f7fa;
 }
 
-.journal-form-title {
-  font-size: 14px;
+.hd-bear {
+  background: #f7f1e4;
+}
+
+.hd-base {
+  background: #e8eef6;
+}
+
+.hd-bull {
+  background: #e7f3ea;
+}
+
+.td-bear {
+  background: #fbf8f1;
+}
+
+.td-base {
+  background: #f4f7fb;
+}
+
+.td-bull {
+  background: #f3f9f4;
+}
+
+.scen-table .col-name {
+  text-align: left;
+  min-width: 120px;
+}
+
+.scen-name {
   font-weight: 600;
   color: var(--guanlan-ink);
-  margin-bottom: 10px;
 }
 
-.journal-form-btn {
-  display: flex;
-  justify-content: flex-end;
+.scen-sub {
+  font-size: 11px;
+  color: var(--guanlan-muted);
 }
 
-@media (width >= 768px) {
-  .thesis-item {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
-  }
+.num-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.num-cell.px {
+  font-weight: 600;
+}
+
+.col-note {
+  min-width: 180px;
+}
+
+.scen-table :deep(.t-input-number) {
+  width: 88px;
 }
 </style>

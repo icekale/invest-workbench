@@ -5,6 +5,7 @@ export interface Quote {
   changePct: number;
   change?: number;
   lastClose?: number;
+  pe?: number;
 }
 
 export interface HoldingInput {
@@ -30,6 +31,7 @@ export function parseTencentBody(text: string): Map<string, Quote> {
     const lastClose = Number(fields[4]);
     const change = Number(fields[31]);
     const changePct = Number(fields[32]);
+    const pe = Number(fields[39]);
     if (!Number.isFinite(price)) continue;
     out.set(m[1].toLowerCase(), {
       code: m[1].toLowerCase(),
@@ -38,6 +40,7 @@ export function parseTencentBody(text: string): Map<string, Quote> {
       changePct: Number.isFinite(changePct) ? changePct : 0,
       change: Number.isFinite(change) ? change : Number.isFinite(lastClose) && lastClose > 0 ? price - lastClose : 0,
       lastClose: Number.isFinite(lastClose) ? lastClose : undefined,
+      pe: Number.isFinite(pe) && pe > 0 ? pe : undefined,
     });
   }
   return out;

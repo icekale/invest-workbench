@@ -7,7 +7,8 @@ import {
   recalculateHoldingsFromTransactions,
   tradeFee,
 } from '../src/utils/ledger.ts';
-import { swL1FromF100, toSecid } from '../src/utils/sw-industry.ts';
+import { scenarioTarget, scenarioUpside } from '../src/utils/scenario.ts';
+import { swGroupOf, swL1FromF100, toSecid } from '../src/utils/sw-industry.ts';
 
 const empty = summarize([], 100);
 assert.equal(empty.mv, 0);
@@ -50,6 +51,9 @@ assert.equal(under[0].tone, 'warn');
 assert.match(under[0].extra, /^\+/);
 
 assert.equal(shortCode('sh510300'), '510300');
+assert.equal(scenarioTarget(100, 15, 0, 15), 100);
+assert.equal(scenarioTarget(100, 15, 0.1, 15), 110);
+assert.equal(scenarioUpside(100, 80), -0.2);
 assert.equal(tradeFee('stock', 10_000), 0.8);
 assert.equal(tradeFee('etf', 10_000), 0.5);
 
@@ -83,5 +87,13 @@ assert.equal(toSecid('sh600519'), '1.600519');
 assert.equal(toSecid('sz300750'), '0.300750');
 const bySw = allocation([row], 2000, [], () => '银行');
 assert.equal(bySw[0].name, '银行');
+const sw = { '000001': { l1: '银行', l2: '银行Ⅱ' } };
+assert.equal(swGroupOf(row, sw, 'l1'), '银行');
+assert.equal(swGroupOf(row, sw, 'l2'), '银行Ⅱ');
+const l1Alloc = allocation([row], 2000, [], (p) => swGroupOf(p, sw, 'l1'));
+assert.equal(l1Alloc[0].name, '银行');
+const l2Alloc = allocation([row], 0, [], (p) => swGroupOf(p, sw, 'l2'));
+assert.equal(l2Alloc[0].name, '银行Ⅱ');
+assert.equal(l2Alloc.length, 1);
 
 console.log('check-book ok');
