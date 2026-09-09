@@ -1,17 +1,10 @@
-import 'nprogress/nprogress.css'; // progress bar style
-
-import NProgress from 'nprogress'; // progress bar
 import { MessagePlugin } from 'tdesign-vue-next';
 import type { RouteRecordRaw } from 'vue-router';
 
 import router from '@/router';
 import { getPermissionStore, useUserStore } from '@/store';
 
-NProgress.configure({ showSpinner: false });
-
 router.beforeEach(async (to, from, next) => {
-  NProgress.start();
-
   const permissionStore = getPermissionStore();
   const { whiteListRouters } = permissionStore;
 
@@ -42,19 +35,14 @@ router.beforeEach(async (to, from, next) => {
         path: '/login',
         query: { redirect: to.fullPath },
       });
-      NProgress.done();
     }
+  } else if (whiteListRouters.includes(to.path)) {
+    next();
   } else {
-    /* white list router */
-    if (whiteListRouters.includes(to.path)) {
-      next();
-    } else {
-      next({
-        path: '/login',
-        query: { redirect: to.fullPath },
-      });
-    }
-    NProgress.done();
+    next({
+      path: '/login',
+      query: { redirect: to.fullPath },
+    });
   }
 });
 
@@ -66,5 +54,4 @@ router.afterEach((to) => {
     userStore.logout();
     permissionStore.restoreRoutes();
   }
-  NProgress.done();
 });

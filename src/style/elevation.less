@@ -44,9 +44,6 @@
 }
 
 .tdesign-starter-content-layout {
-  /* 一次入场：内容带微升淡入，尊重系统减弱动态 */
-  animation: board-enter 0.24s cubic-bezier(0, 0, 0.15, 1) both;
-
   .t-card {
     border: 1px solid var(--td-component-border);
     border-radius: var(--td-radius-medium);
@@ -72,24 +69,6 @@
   .t-table th {
     font-weight: 400;
     color: var(--td-text-color-secondary);
-  }
-}
-
-@keyframes board-enter {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tdesign-starter-content-layout {
-    animation: none;
   }
 }
 
