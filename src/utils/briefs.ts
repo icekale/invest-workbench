@@ -2,7 +2,7 @@ import type { MacroBrief } from '@/types/invest';
 
 import { fetchOk, withRetry } from './http.ts';
 
-const LIVE_URL = 'https://api-one-wscn.awtmt.com/apiv1/content/lives/pc?channel=global-channel&limit=30';
+const LIVE_URL = '/wscn/apiv1/content/lives/pc?channel=global-channel&limit=30';
 const STRONG = /央行|CPI|PPI|PMI|社融|LPR|降准|降息|MLF|逆回购|政治局|国务院|FOMC|非农|GDP|M2|社零|SHIBOR|国债|财政/;
 const SKIP = /早餐|提醒：日内请重点关注/;
 

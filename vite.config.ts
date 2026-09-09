@@ -95,6 +95,29 @@ export default ({ mode }: ConfigEnv): UserConfig => {
           target: 'http://127.0.0.1:3003',
           changeOrigin: true,
         },
+        '/wscn': {
+          target: 'https://api-one-wscn.awtmt.com',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/wscn/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Host', 'api-one-wscn.awtmt.com');
+              req.setHeader('Referer', 'https://wallstreetcn.com/');
+            });
+          },
+        },
+        '/xgb': {
+          target: 'https://flash-api.xuangubao.cn',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/xgb/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Host', 'flash-api.xuangubao.cn');
+              req.setHeader('Referer', 'https://xuangubao.cn/');
+              req.setHeader('Accept', 'application/json');
+            });
+          },
+        },
         '/szse': {
           target: 'https://www.szse.cn',
           changeOrigin: true,

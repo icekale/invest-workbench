@@ -157,7 +157,7 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
   const timeoutId = setTimeout(() => controller.abort(), 6000);
 
   try {
-    const res = await fetch(`https://api-one-wscn.awtmt.com/apiv1/finance/macrodatas?start=${now}&end=${end}`, {
+    const res = await fetch(`/wscn/apiv1/finance/macrodatas?start=${now}&end=${end}`, {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);

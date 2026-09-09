@@ -21,6 +21,8 @@
     | `/em/*` | `https://fundmobapi.eastmoney.com` | 带 Referer `fund.eastmoney.com` |
     | `/sina/*` | `https://hq.sinajs.cn` | 带 Referer `finance.sina.com.cn`（新浪备用行情） |
     | `/szse/*` | `https://www.szse.cn` | 深交所交易日历（备用数据源） |
+    | `/wscn/*` | `https://api-one-wscn.awtmt.com` | 华尔街见闻快讯/宏观日历 |
+    | `/xgb/*` | `https://flash-api.xuangubao.cn` | 选股宝板块异动 |
     | `/em-dc/*` | `https://datacenter-web.eastmoney.com` | 东财数据中心宏观报表（PMI/CPI/PPI/GDP） |
     | `/csindex/*` | `https://www.csindex.com.cn` | 中证指数 PE 历史真实曲线 |
     | `/sync` | `invest-sync:3003` | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
@@ -39,7 +41,7 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 
 ## 持仓 SQLite 同步
 
-容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。两端同时改同一标的时弹窗选本机或云端。浏览器 localStorage 键为 `invest-v2-*::用户名`，同步用三方合并（冲突留本地）。
+容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。账本只信 SQLite。慢数据（宏观）走 `/sync/cache`（6h）。
 
 加用户（VPS）：
 

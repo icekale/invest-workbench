@@ -73,7 +73,7 @@ interface XuangubaoPlateDetail {
  */
 export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
   try {
-    const res = await fetch('https://flash-api.xuangubao.cn/api/surge_stock/plates', {
+    const res = await fetch('/xgb/api/surge_stock/plates', {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -90,7 +90,7 @@ export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
     // 批量抓取前 15 个核心题材板块的行情与领涨标的
     const targetItems = validItems.slice(0, 15);
     const pids = targetItems.map((i) => i.id).join(',');
-    const detailUrl = `https://flash-api.xuangubao.cn/api/plate/data?plates=${pids}&fields=plate_id,plate_name,fund_flow,rise_count,fall_count,limit_up_count,core_avg_pcp,top_n_stocks`;
+    const detailUrl = `/xgb/api/plate/data?plates=${pids}&fields=plate_id,plate_name,fund_flow,rise_count,fall_count,limit_up_count,core_avg_pcp,top_n_stocks`;
 
     let detailsMap: Record<string, XuangubaoPlateDetail> = {};
     try {
