@@ -567,6 +567,7 @@ function renderLine() {
   const chartDotBorder = cssVar('--td-bg-color-container', '#fff');
   chart.setOption(
     {
+      animation: false,
       color: [lineGreen],
       tooltip: {
         trigger: 'axis',
