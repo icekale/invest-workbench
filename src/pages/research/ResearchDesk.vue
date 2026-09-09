@@ -595,8 +595,8 @@ function openIndustryTarget(ind: IndustryFocus, tgt: IndustryFocus['keyTargets']
 }
 
 onMounted(() => {
-  invest.refreshMacroBriefs();
-  invest.refreshMacroEvents();
-  invest.refreshIndustryFocus();
+  if (!invest.macroBriefsLastUpdated) void invest.refreshMacroBriefs();
+  if (!invest.macroEventsLastUpdated) void invest.refreshMacroEvents();
+  if (!invest.industryFocusLastUpdated) void invest.refreshIndustryFocus();
 });
 </script>

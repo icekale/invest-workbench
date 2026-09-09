@@ -602,7 +602,6 @@ async function loadMacroData(force = false) {
     if (n > 0) {
       macroState.value = 'ok';
       macroLoading.value = false;
-      void fetchAndApplyMacro(true);
       return;
     }
   }
