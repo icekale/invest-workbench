@@ -8,7 +8,7 @@
       <div class="stage-body">
         <div class="stage-quote-group">
           <h1 class="stage-title">观水有术，必观其澜</h1>
-          <p class="stage-subtitle">股票账户与 ETF 账户分开看</p>
+          <p class="stage-subtitle">股票 / ETF 分账</p>
         </div>
         <div class="stage-art">
           <wave-illustration />
