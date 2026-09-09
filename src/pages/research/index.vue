@@ -39,6 +39,7 @@
     </t-radio-group>
 
     <div v-show="tab === 'macro'" class="research-pane">
+      <briefing-card :written="writtenKeys" @retry="bootBriefing(true)" @commit="commitBriefingTodo" />
       <macro-compass />
       <etf-radar />
     </div>
@@ -53,14 +54,27 @@
 <script setup lang="ts">
 import './research.less';
 
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
+import type { BriefingTodoDraft } from '@/types/invest';
+import {
+  alreadyOpen,
+  buildFactPack,
+  ensureTodayBriefing,
+  QUOTE_WAIT_MS,
+  todoDraftKey,
+  type FactPackInput,
+  type HoldingSlice,
+} from '@/utils/briefing';
+import { todayCN } from '@/utils/date';
+import { MessagePlugin } from 'tdesign-vue-next';
 
+import BriefingCard from './BriefingCard.vue';
 import EtfRadar from './EtfRadar.vue';
 import MacroCompass from './MacroCompass.vue';
 import ResearchDesk from './ResearchDesk.vue';
-import { bargainCount, macroState } from './state';
+import { bargainCount, briefing, briefingStatus, macroState, valuationItems } from './state';
 import ValuationRadar from './ValuationRadar.vue';
 
 defineOptions({ name: 'ResearchIndex' });
@@ -71,6 +85,11 @@ const invest = useInvestStore();
 const tab = ref<Tab>('macro');
 const seen = reactive({ desk: false });
 const openTodos = computed(() => invest.todos.filter((t) => t.status === 'open'));
+const writtenKeys = computed(() => {
+  const s = new Set<string>();
+  for (const t of invest.todos) if (t.status === 'open') s.add(todoDraftKey(t));
+  return s;
+});
 
 watch(tab, (v) => {
   if (v === 'desk') seen.desk = true;
@@ -79,4 +98,74 @@ watch(tab, (v) => {
 function openTab(next: Tab) {
   tab.value = next;
 }
+
+function factInput(): FactPackInput {
+  const holdings: HoldingSlice[] = invest.enriched.map((h) => ({
+    account: h.account,
+    code: h.code,
+    name: h.name,
+    quantity: h.quantity,
+    cost: h.cost,
+    marketValue: h.marketValue ?? null,
+    pnl: h.pnl ?? null,
+    pnlPct: h.pnlPct ?? null,
+    health: h.health,
+    action: h.action,
+  }));
+  return {
+    date: todayCN(),
+    weather: invest.macroWeather,
+    indicators: invest.macroIndicators,
+    events: invest.macroEvents,
+    valuation: valuationItems.value.map((v) => ({
+      name: v.name,
+      code: v.code,
+      pe: v.pe,
+      percentile: v.pePercentile,
+      advice: v.advice,
+    })),
+    holdings,
+    cash: invest.cash,
+    todos: invest.todos,
+    alerts: invest.activeAlerts,
+  };
+}
+
+async function waitQuotes() {
+  const start = Date.now();
+  while (invest.quoteLoading && Date.now() - start < QUOTE_WAIT_MS) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
+async function bootBriefing(force = false) {
+  if (typeof localStorage === 'undefined') return;
+  briefingStatus.value = 'loading';
+  if (!force) await waitQuotes();
+  const result = await ensureTodayBriefing({
+    pack: buildFactPack(factInput()),
+    storage: localStorage,
+    today: todayCN(),
+    force,
+  });
+  briefing.value = result.briefing;
+  briefingStatus.value = result.status === 'ready' ? 'ready' : 'fail';
+}
+
+function commitBriefingTodo(todo: BriefingTodoDraft) {
+  if (alreadyOpen(invest.todos, todo)) return;
+  invest.addTodo({
+    account: todo.account,
+    code: todo.code,
+    name: todo.name,
+    side: todo.side,
+    quantity: todo.quantity || 0,
+    reason: todo.reason,
+  });
+  MessagePlugin.success('已写入待办');
+}
+
+onMounted(() => {
+  void bootBriefing(false);
+});
 </script>

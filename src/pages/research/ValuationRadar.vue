@@ -298,7 +298,7 @@ import { loadEcharts } from '@/utils/load-echarts';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
 import { fetchIndexPeHistory, fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
 
-import { bargainCount } from './state';
+import { bargainCount, valuationItems } from './state';
 import { todoDialogVisible, todoForm } from './todo';
 
 const valLoading = ref(false);
@@ -331,6 +331,7 @@ async function loadValuations() {
   valLoading.value = true;
   try {
     valList.value = await fetchIndexValuations();
+    valuationItems.value = valList.value;
     bargainCount.value = valList.value.filter((v) => v.pePercentile < 40).length;
   } catch (e) {
     console.error('加载估值数据失败:', e);
