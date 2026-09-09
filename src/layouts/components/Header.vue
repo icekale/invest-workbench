@@ -12,7 +12,6 @@
       <template #operations>
         <div class="operations-container">
           <span class="guanlan-topbar-date">{{ dateStr }}</span>
-          <search-box :layout="layout" />
           <t-dropdown :min-column-width="120" trigger="click">
             <template #dropdown>
               <t-dropdown-item class="operations-dropdown-container-item" @click="handleLogout">
@@ -46,7 +45,6 @@ import { useUserStore } from '@/store';
 import type { MenuRoute, ModeType } from '@/types/interface';
 
 import MenuContent from './MenuContent.vue';
-import SearchBox from './Search.vue';
 
 const { theme, layout, menu, isFixed, isCompact } = defineProps({
   theme: {
