@@ -1,48 +1,49 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
-    <span style="color: var(--td-text-color-secondary)">
-      持仓结构、投资论点与复盘日志一体归因，检视决策与执行闭环。
-    </span>
-
-    <!-- 顶栏 KPI 卡片带 -->
     <t-row :gutter="[16, 16]">
-      <t-col :xs="12" :xl="4">
-        <t-card title="稳健复利组合" subtitle="股票账户">
+      <t-col :xs="12" :xl="6">
+        <t-card title="股票账户">
           <div class="kpi-num num-hero">{{ money(stock.mv) }}</div>
           <div class="kpi-foot">
             <span class="pnl-span" :style="{ color: pnlColor(stock.pnl) }">
               盈亏 {{ signed(stock.pnl) }}<template v-if="stock.pnlPct != null"> ({{ pct(stock.pnlPct) }})</template>
             </span>
-            <span class="dot-split">·</span>
-            <span class="health-span">
-              <span class="health-dot" :class="healthClass(stockHealth.total)" />
-              健康 {{ stockHealth.total }}
-            </span>
+          </div>
+          <div class="cash-row">
+            <span>现金</span>
+            <t-input-number
+              :value="invest.cash.stock"
+              :min="0"
+              :step="10000"
+              :decimal-places="0"
+              theme="column"
+              size="small"
+              class="cash-stepper"
+              @change="(v) => invest.setCash('stock', Number(v) || 0)"
+            />
           </div>
         </t-card>
       </t-col>
-      <t-col :xs="12" :xl="4">
-        <t-card title="宽基 + 红利底仓" subtitle="ETF 账户">
+      <t-col :xs="12" :xl="6">
+        <t-card title="ETF 账户">
           <div class="kpi-num num-hero">{{ money(etf.mv) }}</div>
           <div class="kpi-foot">
             <span class="pnl-span" :style="{ color: pnlColor(etf.pnl) }">
               盈亏 {{ signed(etf.pnl) }}<template v-if="etf.pnlPct != null"> ({{ pct(etf.pnlPct) }})</template>
             </span>
-            <span class="dot-split">·</span>
-            <span class="health-span">
-              <span class="health-dot" :class="healthClass(etfHealth.total)" />
-              健康 {{ etfHealth.total }}
-            </span>
           </div>
-        </t-card>
-      </t-col>
-      <t-col :xs="12" :xl="4">
-        <t-card title="机会储备 & 复盘习惯" subtitle="执行闭环">
-          <div class="kpi-num num-hero">{{ invest.opportunities.length }} <span class="kpi-unit">只机会</span></div>
-          <div class="kpi-foot">
-            <span>均分 {{ avgScore }}</span>
-            <span class="dot-split">·</span>
-            <span>本周复盘 {{ weekLogs }}/3</span>
+          <div class="cash-row">
+            <span>现金</span>
+            <t-input-number
+              :value="invest.cash.etf"
+              :min="0"
+              :step="10000"
+              :decimal-places="0"
+              theme="column"
+              size="small"
+              class="cash-stepper"
+              @change="(v) => invest.setCash('etf', Number(v) || 0)"
+            />
           </div>
         </t-card>
       </t-col>
@@ -100,8 +101,46 @@
               <span v-if="row.pnlPct != null" class="pnl-pct">({{ pct(row.pnlPct) }})</span>
             </div>
           </template>
+          <template #op="{ row }">
+            <t-space :size="4">
+              <t-link theme="danger" hover="color" @click="tradeRow(row, 'buy')">买</t-link>
+              <t-link theme="success" hover="color" @click="tradeRow(row, 'sell')">卖</t-link>
+            </t-space>
+          </template>
         </t-table>
       </div>
+    </t-card>
+
+    <transaction-ledger :account="accountView" />
+
+    <t-card v-if="invest.todos.length" title="待办">
+      <t-table :data="invest.todos" :columns="todoCols" row-key="id" size="small" hover>
+        <template #name="{ row }">
+          <span class="todo-name">{{ row.name }}</span>
+          <span class="todo-code">{{ row.code || '—' }}</span>
+        </template>
+        <template #side="{ row }">
+          <t-tag size="small" :theme="row.side === 'buy' ? 'danger' : 'success'" variant="light">
+            {{ row.side === 'buy' ? '买' : '卖' }}
+          </t-tag>
+        </template>
+        <template #quantity="{ row }">{{ Number(row.quantity).toLocaleString() }}</template>
+        <template #status="{ row }">
+          <t-tag size="small" :theme="row.status === 'open' ? 'warning' : 'success'" variant="outline">
+            {{ row.status === 'open' ? '待执行' : '已完成' }}
+          </t-tag>
+        </template>
+        <template #op="{ row }">
+          <t-space :size="8">
+            <t-link theme="primary" hover="color" @click="toggleTodo(row.id, row.status)">
+              {{ row.status === 'open' ? '完成' : '重开' }}
+            </t-link>
+            <t-popconfirm content="删除待办？" @confirm="invest.removeTodo(row.id)">
+              <t-link theme="danger" hover="color">删除</t-link>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
     </t-card>
 
     <!-- 下半部分：投资论点与复盘日志 -->
@@ -225,9 +264,10 @@
 import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
-import type { ThesisStatus } from '@/types/invest';
-import { allocation, healthScore, summarize } from '@/utils/book';
+import type { ThesisStatus, TodoStatus, TradeSide } from '@/types/invest';
+import { allocation, summarize } from '@/utils/book';
 
 defineOptions({ name: 'ReviewIndex' });
 
@@ -246,13 +286,6 @@ onMounted(() => {
 
 const stock = computed(() => summarize(invest.stockRows, invest.cash.stock));
 const etf = computed(() => summarize(invest.etfRows, invest.cash.etf));
-const stockHealth = computed(() => healthScore(invest.stockRows, invest.theses, invest.journal, invest.cash.stock));
-const etfHealth = computed(() => healthScore(invest.etfRows, invest.theses, invest.journal, invest.cash.etf));
-const avgScore = computed(() => {
-  const list = invest.opportunities;
-  if (!list.length) return 0;
-  return Math.round(list.reduce((s, o) => s + o.score, 0) / list.length);
-});
 const theses = computed(() =>
   filter.value === 'all' ? invest.theses : invest.theses.filter((t) => t.status === filter.value),
 );
@@ -296,12 +329,6 @@ const pnlColor = (n: number | null) => {
 };
 const shortCode = (c: string) => c.replace(/^(sh|sz|bj)/i, '');
 
-const healthClass = (val: number) => {
-  if (val >= 80) return 'health-dot--good';
-  if (val >= 60) return 'health-dot--warn';
-  return 'health-dot--alert';
-};
-
 const cols = [
   { colKey: 'name', title: '名称 / 代码' },
   { colKey: 'quantity', title: '持仓量', width: 100 },
@@ -309,6 +336,15 @@ const cols = [
   { colKey: 'mv', title: '市值', width: 120 },
   { colKey: 'weight', title: '占比', width: 80 },
   { colKey: 'pnl', title: '浮动盈亏' },
+  { colKey: 'op', title: '交易', width: 72 },
+];
+const todoCols = [
+  { colKey: 'name', title: '标的' },
+  { colKey: 'side', title: '方向', width: 64 },
+  { colKey: 'quantity', title: '数量', width: 90 },
+  { colKey: 'reason', title: '原因' },
+  { colKey: 'status', title: '状态', width: 88 },
+  { colKey: 'op', title: '', width: 100 },
 ];
 const logCols = [
   { colKey: 'date', title: '日期', width: 100 },
@@ -331,6 +367,21 @@ function saveLog() {
   topic.value = '';
   conclusion.value = '';
   MessagePlugin.success('已写入复盘日志');
+}
+
+function tradeRow(row: { code: string; name: string; last: number | null; quantity: number }, side: TradeSide) {
+  invest.openTradeModal({
+    account: accountView.value,
+    side,
+    code: row.code,
+    name: row.name,
+    price: row.last || 0,
+    quantity: side === 'sell' ? Math.min(100, row.quantity) : 100,
+  });
+}
+
+function toggleTodo(id: string, status: TodoStatus) {
+  invest.setTodoStatus(id, status === 'open' ? 'done' : 'open');
 }
 
 function saveThesis() {
@@ -374,6 +425,31 @@ function saveThesis() {
   margin-top: 8px;
   font-size: 12px;
   color: var(--guanlan-muted);
+}
+
+.cash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--guanlan-muted);
+}
+
+.cash-stepper {
+  width: 140px;
+}
+
+.todo-name {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.todo-code {
+  font-family: var(--td-font-family-mono);
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #4f5d67);
 }
 
 .dot-split {

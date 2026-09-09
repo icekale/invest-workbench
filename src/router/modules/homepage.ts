@@ -1,4 +1,4 @@
-import { ChartIcon, EditIcon, LayersIcon, PreciseMonitorIcon, SearchIcon } from 'tdesign-icons-vue-next';
+import { ChartIcon, LayersIcon, PreciseMonitorIcon, SearchIcon } from 'tdesign-icons-vue-next';
 import { shallowRef } from 'vue';
 import type { RouteRecordRaw } from 'vue-router';
 
@@ -67,23 +67,11 @@ export default [
   },
   {
     path: '/plan',
-    component: LAYOUT,
-    name: 'plan',
-    redirect: '/plan/index',
-    meta: {
-      title: { zh_CN: '账户与数据', en_US: 'Accounts' },
-      icon: shallowRef(EditIcon),
-      orderNo: 3,
-      single: true,
-    },
-    children: [
-      {
-        path: 'index',
-        name: 'PlanIndex',
-        component: () => import('@/pages/plan/index.vue'),
-        meta: { title: { zh_CN: '账户与数据', en_US: 'Accounts' } },
-      },
-    ],
+    redirect: '/review/index',
+  },
+  {
+    path: '/plan/index',
+    redirect: '/review/index',
   },
   {
     path: '/funds',

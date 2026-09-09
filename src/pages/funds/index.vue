@@ -451,7 +451,9 @@
       <t-col :xs="12" :xl="5">
         <t-card title="决策待办清单">
           <template #actions>
-            <t-button size="small" variant="text" theme="primary" @click="router.push('/plan')"> 调仓计划 → </t-button>
+            <t-button size="small" variant="text" theme="primary" @click="router.push('/review')">
+              调仓计划 →
+            </t-button>
           </template>
           <div v-if="openTodos.length" class="todo-list">
             <div v-for="t in openTodos" :key="t.id" class="todo-item">
@@ -490,7 +492,7 @@
           </div>
           <t-empty v-else description="当前无待执行买卖项，可在机会池中生成" style="padding: 24px 0">
             <template #action>
-              <t-button size="small" theme="primary" variant="outline" @click="router.push('/plan')">
+              <t-button size="small" theme="primary" variant="outline" @click="router.push('/review')">
                 查看调仓计划
               </t-button>
             </template>

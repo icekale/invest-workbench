@@ -18,7 +18,7 @@
           <template #icon><t-icon name="chart" /></template>
           记录复盘
         </t-button>
-        <t-button variant="outline" size="small" @click="router.push('/plan')">
+        <t-button variant="outline" size="small" @click="router.push('/review')">
           <template #icon><t-icon name="edit" /></template>
           持仓台账
         </t-button>

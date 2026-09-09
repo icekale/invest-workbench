@@ -72,7 +72,6 @@ function prefetchPages() {
     void import('@/pages/dashboard/index.vue');
     void import('@/pages/research/index.vue');
     void import('@/pages/review/index.vue');
-    void import('@/pages/plan/index.vue');
     void import('@/pages/funds/recommend.vue');
   }, 200);
 }

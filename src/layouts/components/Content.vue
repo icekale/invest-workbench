@@ -21,7 +21,6 @@ const ALIVE = [
   'DashboardIndex',
   'ResearchIndex',
   'ReviewIndex',
-  'PlanIndex',
   'FundsRecommend',
   'FundsDatabase',
   'FundsPortfolios',
