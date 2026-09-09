@@ -13,7 +13,7 @@ import type {
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
 
-export const BRIEFING_MODEL = 'grok-3';
+export const BRIEFING_MODEL = 'gemini-3.8-flash-high';
 export const FAIL_COOLDOWN_MS = 10 * 60 * 1000;
 export const QUOTE_WAIT_MS = 8000;
 const FAIL_AT_KEY = 'invest-briefing-fail-at';
