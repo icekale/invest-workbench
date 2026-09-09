@@ -238,20 +238,31 @@
       <t-col :xs="12" :xl="4">
         <t-space direction="vertical" :size="16" style="width: 100%">
           <t-card class="gl-mod" title="资产配置">
-            <template #actions><span class="card-cap">目标 / 当前</span></template>
+            <template #actions>
+              <t-link v-if="drillL1" hover="color" @click="drillL1 = null">返回一级</t-link>
+              <span v-else class="card-cap">目标 / 当前</span>
+            </template>
             <t-empty v-if="!alloc.length" description="还没有市值" />
             <div v-else class="alloc">
-              <div class="donut" :style="{ background: donutBg }" role="img" :aria-label="`已投资 ${investedPct}%`">
+              <div class="donut" :style="{ background: donutBg }" role="img" :aria-label="donutLabel">
                 <div class="donut-hole">
-                  <b>{{ investedPct }}%</b>
-                  <span>已投资</span>
+                  <b>{{ donutPct }}%</b>
+                  <span>{{ drillL1 || '已投资' }}</span>
                 </div>
               </div>
               <div class="legend">
-                <div v-for="a in allocView" :key="a.name" class="leg-row">
+                <div
+                  v-for="a in allocView"
+                  :key="a.name"
+                  class="leg-row"
+                  :class="{ clickable: canDrill(a.name) }"
+                  @click="onAllocClick(a.name)"
+                >
                   <span class="dot" :style="{ background: a.color }" />
                   <span class="leg-name">{{ a.name }}</span>
-                  <span v-if="hasTarget" class="leg-num muted">{{ a.target == null ? '—' : pctInt(a.target) }}</span>
+                  <span v-if="hasTarget && !drillL1" class="leg-num muted">{{
+                    a.target == null ? '—' : pctInt(a.target)
+                  }}</span>
                   <span class="leg-num">{{ pctInt(a.pct) }}</span>
                 </div>
               </div>
@@ -301,6 +312,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import { allocation, healthNote, healthScore, risks, shortCode, sparkSeries, summarize } from '@/utils/book';
+import type { SwClass } from '@/utils/sw-industry';
+import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
 interface Row {
   code: string;
@@ -368,9 +381,51 @@ const pnlColor = (n: number | null) => {
 const account = computed(() => (props.title.includes('ETF') ? 'etf' : 'stock'));
 const targets = computed(() => planTargets.filter((t) => t.account === account.value));
 const stats = computed(() => summarize(props.rows, props.cash));
-const alloc = computed(() => allocation(props.rows, props.cash, targets.value));
-const hasTarget = computed(() => alloc.value.some((a) => a.target != null));
+const swMap = ref<Record<string, SwClass>>({});
+const drillL1 = ref<string | null>(null);
+async function loadSw() {
+  if (account.value !== 'stock') return;
+  const codes = props.rows.map((r) => r.code);
+  if (!codes.length) {
+    swMap.value = {};
+    return;
+  }
+  try {
+    swMap.value = await fetchSwClass(codes);
+  } catch {
+    /* 上游失败时仍用 tag */
+  }
+}
+const alloc = computed(() => {
+  if (account.value === 'etf') return allocation(props.rows, props.cash, targets.value);
+  if (drillL1.value) {
+    const sub = props.rows.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
+    return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));
+  }
+  return allocation(props.rows, props.cash, targets.value, (p) => swGroupOf(p, swMap.value, 'l1'));
+});
+const hasTarget = computed(() => !drillL1.value && alloc.value.some((a) => a.target != null));
 const investedPct = computed(() => Math.round((stats.value.pos ?? 0) * 100));
+const parentShare = computed(() => {
+  if (!drillL1.value) return stats.value.pos ?? 0;
+  const full = allocation(props.rows, props.cash, [], (p) => swGroupOf(p, swMap.value, 'l1'));
+  return full.find((a) => a.name === drillL1.value)?.pct ?? 0;
+});
+const donutPct = computed(() => (drillL1.value ? Math.round(parentShare.value * 100) : investedPct.value));
+function canDrill(name: string) {
+  return (
+    account.value === 'stock' &&
+    !drillL1.value &&
+    name !== '现金' &&
+    Object.values(swMap.value).some((c) => c.l1 === name)
+  );
+}
+function onAllocClick(name: string) {
+  if (canDrill(name)) drillL1.value = name;
+}
+const donutLabel = computed(() =>
+  drillL1.value ? `${drillL1.value} ${donutPct.value}%` : `已投资 ${investedPct.value}%`,
+);
 const allocView = computed(() => {
   let colorI = 0;
   return alloc.value.map((a) => ({
@@ -569,8 +624,15 @@ function renderLine() {
 }
 
 useResizeObserver(lineEl, () => renderLine());
-onMounted(renderLine);
+onMounted(() => {
+  renderLine();
+  void loadSw();
+});
 watch(series, renderLine);
+watch(
+  () => props.rows.map((r) => r.code).join(','),
+  () => void loadSw(),
+);
 onUnmounted(() => {
   chart?.dispose();
   chart = null;
@@ -689,6 +751,10 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   min-height: 28px;
+}
+
+.leg-row.clickable {
+  cursor: pointer;
 }
 
 .dot {

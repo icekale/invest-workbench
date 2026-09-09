@@ -71,16 +71,33 @@ export function toSecid(code: string): string | null {
   return pre === 'sh' ? `1.${id}` : `0.${id}`;
 }
 
+export interface SwClass {
+  l1: string;
+  l2: string;
+}
+
 interface UlistRow {
   f12?: string;
   f100?: string;
 }
 
-export async function fetchSwL1(codes: string[]): Promise<Record<string, string>> {
+const memo: Record<string, SwClass> = {};
+
+export function swGroupOf(
+  p: { code: string; tag?: string; name: string },
+  sw: Record<string, SwClass>,
+  level: 'l1' | 'l2',
+): string {
+  const c = sw[bareCode(p.code)];
+  if (level === 'l2') return c?.l2 || p.tag || p.name;
+  return c?.l1 || p.tag || p.name;
+}
+
+export async function fetchSwClass(codes: string[]): Promise<Record<string, SwClass>> {
   const ids = [...new Set(codes.map(toSecid).filter((x): x is string => !!x))];
-  const out: Record<string, string> = {};
-  for (let i = 0; i < ids.length; i += 80) {
-    const q = ids.slice(i, i + 80).join(',');
+  const miss = ids.filter((id) => !memo[id.slice(id.indexOf('.') + 1)]);
+  for (let i = 0; i < miss.length; i += 80) {
+    const q = miss.slice(i, i + 80).join(',');
     const res = await fetch(`/push2/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f100&secids=${q}`, {
       cache: 'no-store',
     });
@@ -89,9 +106,15 @@ export async function fetchSwL1(codes: string[]): Promise<Record<string, string>
     const diff = json.data?.diff;
     const rows = Array.isArray(diff) ? diff : diff ? Object.values(diff) : [];
     for (const r of rows) {
-      const l1 = swL1FromF100(String(r.f100 || ''));
-      if (r.f12 && l1) out[r.f12] = l1;
+      const l2 = String(r.f100 || '').trim();
+      const l1 = swL1FromF100(l2);
+      if (r.f12 && l1) memo[r.f12] = { l1, l2 };
     }
+  }
+  const out: Record<string, SwClass> = {};
+  for (const c of codes) {
+    const b = bareCode(c);
+    if (memo[b]) out[b] = memo[b];
   }
   return out;
 }
