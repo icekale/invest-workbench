@@ -720,8 +720,8 @@
 
 /* 产业网格 */
 .industry-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 
   .ind-card {
@@ -729,39 +729,119 @@
     border: 1px solid var(--td-border-level-1-color);
     border-radius: 8px;
     padding: 12px;
+  }
+
+  .ind-card-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ind-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ind-chg-pill,
+  .tgt-chg,
+  .ind-meta .is-up,
+  .ind-meta .is-down {
+    font-weight: 600;
+  }
+
+  .is-up {
+    color: var(--guanlan-gain, #b8433e);
+  }
+
+  .is-down {
+    color: var(--guanlan-loss, #16815f);
+  }
+
+  .ind-chg-pill {
+    font-size: 12px;
+    padding: 1px 6px;
+    border-radius: 4px;
+
+    &.is-up {
+      background: rgb(184 67 62 / 10%);
+    }
+
+    &.is-down {
+      background: rgb(22 129 95 / 10%);
+    }
+  }
+
+  .ind-heat {
+    font-size: 12px;
+    color: var(--td-text-color-secondary);
+  }
+
+  .ind-catalyst-box {
+    font-size: 12px;
+    color: var(--td-text-color-secondary);
+    margin-bottom: 8px;
+
+    .catalyst-tag {
+      background: #fff0ed;
+      color: #d54941;
+      padding: 0 4px;
+      border-radius: 2px;
+      font-size: 10px;
+      margin-right: 4px;
+    }
+  }
+
+  .ind-targets-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .targets-label {
+    font-size: 11px;
+    color: var(--td-text-color-placeholder);
+  }
+
+  .target-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--td-border-level-1-color);
+    border-radius: 4px;
+    background: var(--td-bg-color-container);
+    font: inherit;
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.15s ease;
 
     &:hover {
       border-color: var(--td-brand-color, #0d706d);
     }
+  }
 
-    &-hd {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 6px;
-    }
+  .tgt-type {
+    font-size: 10px;
+    color: var(--td-text-color-placeholder);
+  }
 
-    .ind-catalyst-box {
-      font-size: 11px;
-      color: var(--td-text-color-secondary);
-      margin-bottom: 6px;
+  .ind-card-ft {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
 
-      .catalyst-tag {
-        background: #fff0ed;
-        color: #d54941;
-        padding: 0 4px;
-        border-radius: 2px;
-        font-size: 10px;
-        margin-right: 4px;
-      }
-    }
-
-    .ind-targets-line {
-      font-size: 11px;
-      color: var(--td-text-color-placeholder);
-    }
+  .ind-meta {
+    font-size: 11px;
+    color: var(--td-text-color-placeholder);
   }
 }
 

@@ -56,7 +56,6 @@ export function toMacroBrief(item: WscnLiveItem): MacroBrief | null {
     topic: inferBriefTopic(blob),
     tone: inferBriefTone(blob),
     account: 'all',
-    actionAdvice: '跟踪数据兑现节奏，结合组合仓位与纪律应对。',
   };
 }
 
@@ -83,9 +82,6 @@ export async function fetchLiveMacroBriefs(): Promise<MacroBrief[]> {
   try {
     const res = await withRetry(() => fetchOk(LIVE_URL, { signal: controller.signal }));
     return parseLiveBriefs(await res.json());
-  } catch (err) {
-    console.warn('[briefs] fetchLiveMacroBriefs failed:', err);
-    return [];
   } finally {
     clearTimeout(timer);
   }

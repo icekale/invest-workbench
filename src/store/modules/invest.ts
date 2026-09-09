@@ -60,9 +60,6 @@ const LS_PORT = 'invest-v2-portfolios';
 const LS_TX = 'invest-v2-transactions';
 const LS_MACRO_WEATHER = 'invest-v2-macro-weather';
 const LS_MACRO_INDICATORS = 'invest-v2-macro-indicators';
-const LS_MACRO_BRIEFS = 'invest-v2-macro-briefs';
-const LS_MACRO_EVENTS = 'invest-v2-macro-events';
-const LS_INDUSTRY_FOCUS = 'invest-v2-industry-focus';
 const LS_NAV = 'invest-v2-nav-snapshots';
 const LS_KEYS = [
   LS_HOLD,
@@ -77,9 +74,6 @@ const LS_KEYS = [
   LS_TX,
   LS_MACRO_WEATHER,
   LS_MACRO_INDICATORS,
-  LS_MACRO_BRIEFS,
-  LS_MACRO_EVENTS,
-  LS_INDUSTRY_FOCUS,
   LS_NAV,
 ];
 
@@ -101,6 +95,14 @@ function migrateLegacyKeys(user: string) {
 
 function writeUserLS(key: string, value: unknown) {
   localStorage.setItem(scoped(key), JSON.stringify(value));
+  scheduleCloudPush();
+}
+
+function errText(err: unknown, fallback: string) {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+function persistMacroNotes() {
   scheduleCloudPush();
 }
 
@@ -173,21 +175,18 @@ export const useInvestStore = defineStore('invest', {
     customPortfolios: readLS<CustomPortfolio[]>(LS_PORT, []),
     macroWeather: readLS<MacroWeather>(LS_MACRO_WEATHER, macroWeatherSeed),
     macroIndicators: readLS<MacroIndicator[]>(LS_MACRO_INDICATORS, macroIndicatorsSeed),
-    macroBriefs: readLS<MacroBrief[]>(LS_MACRO_BRIEFS, []).filter(
-      (b) => b.id.startsWith('m_') || b.id.startsWith('live_'),
-    ),
+    macroBriefs: [] as MacroBrief[],
     macroBriefsLoading: false,
     macroBriefsLastUpdated: null as string | null,
-    macroEvents: readLS<MacroEvent[]>(LS_MACRO_EVENTS, []).filter(
-      (e) => e.id.startsWith('ev_') || e.id.startsWith('wscn_'),
-    ),
+    macroBriefsError: '',
+    macroEvents: [] as MacroEvent[],
     macroEventsLoading: false,
     macroEventsLastUpdated: null as string | null,
+    macroEventsError: '',
+    industryFocus: [] as IndustryFocus[],
     industryFocusLoading: false,
     industryFocusLastUpdated: null as string | null,
-    industryFocus: readLS<IndustryFocus[]>(LS_INDUSTRY_FOCUS, []).filter(
-      (i) => i.id.startsWith('ind_') || i.id.startsWith('plate_'),
-    ),
+    industryFocusError: '',
     navSnapshots: readLS<NavSnapshot[]>(LS_NAV, []),
     tradeModal: {
       visible: false,
@@ -546,12 +545,12 @@ export const useInvestStore = defineStore('invest', {
         time: timeStr,
       };
       this.macroBriefs = [row, ...this.macroBriefs];
-      writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
+      persistMacroNotes();
       return row;
     },
     removeMacroBrief(id: string) {
       this.macroBriefs = this.macroBriefs.filter((m) => m.id !== id);
-      writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
+      persistMacroNotes();
     },
     addMacroEvent(event: Omit<MacroEvent, 'id'>) {
       const row: MacroEvent = {
@@ -559,14 +558,14 @@ export const useInvestStore = defineStore('invest', {
         id: `ev_${Date.now()}`,
       };
       this.macroEvents = [row, ...this.macroEvents];
-      writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
+      persistMacroNotes();
       return row;
     },
     async refreshMacroBriefs() {
       this.macroBriefsLoading = true;
+      this.macroBriefsError = '';
       try {
         const liveItems = await fetchLiveMacroBriefs();
-        if (!liveItems.length) return;
         const custom = this.macroBriefs.filter((b) => b.id.startsWith('m_'));
         const seen = new Set(custom.map((b) => b.title));
         const merged = [...custom];
@@ -577,18 +576,17 @@ export const useInvestStore = defineStore('invest', {
         }
         this.macroBriefs = merged;
         this.macroBriefsLastUpdated = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
       } catch (err) {
-        console.warn('[briefs] refreshMacroBriefs failed:', err);
+        this.macroBriefsError = errText(err, '华尔街见闻快讯拉取失败');
       } finally {
         this.macroBriefsLoading = false;
       }
     },
     async refreshMacroEvents() {
       this.macroEventsLoading = true;
+      this.macroEventsError = '';
       try {
         const liveItems = await fetchLiveMacroEvents(30);
-        if (!liveItems.length) return;
         const custom = this.macroEvents.filter((e) => e.id.startsWith('ev_'));
         const seen = new Set(custom.map((e) => e.title));
         const merged = [...custom];
@@ -599,16 +597,15 @@ export const useInvestStore = defineStore('invest', {
         }
         this.macroEvents = merged;
         this.macroEventsLastUpdated = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
       } catch (err) {
-        console.warn('[calendar] refreshMacroEvents failed:', err);
+        this.macroEventsError = errText(err, '华尔街见闻宏观日历拉取失败');
       } finally {
         this.macroEventsLoading = false;
       }
     },
     removeMacroEvent(id: string) {
       this.macroEvents = this.macroEvents.filter((e) => e.id !== id);
-      writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
+      persistMacroNotes();
     },
     addIndustryFocus(ind: Omit<IndustryFocus, 'id' | 'updatedAt'>) {
       const row: IndustryFocus = {
@@ -617,14 +614,14 @@ export const useInvestStore = defineStore('invest', {
         updatedAt: '刚刚新增',
       };
       this.industryFocus = [row, ...this.industryFocus];
-      writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
+      persistMacroNotes();
       return row;
     },
     async refreshIndustryFocus() {
       this.industryFocusLoading = true;
+      this.industryFocusError = '';
       try {
         const liveItems = await fetchLiveIndustryCatalysts();
-        if (!liveItems.length) return;
         const custom = this.industryFocus.filter((i) => i.id.startsWith('ind_'));
         const seen = new Set(custom.map((i) => i.name));
         const merged = [...custom];
@@ -635,16 +632,15 @@ export const useInvestStore = defineStore('invest', {
         }
         this.industryFocus = merged;
         this.industryFocusLastUpdated = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
       } catch (err) {
-        console.warn('Failed to refresh industry focus:', err);
+        this.industryFocusError = errText(err, '选股宝板块异动拉取失败');
       } finally {
         this.industryFocusLoading = false;
       }
     },
     removeIndustryFocus(id: string) {
       this.industryFocus = this.industryFocus.filter((i) => i.id !== id);
-      writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
+      persistMacroNotes();
     },
     convertEventToTodo(event: MacroEvent): boolean {
       const primaryTarget = event.beneficiaries?.[0] || event.title;
@@ -665,7 +661,7 @@ export const useInvestStore = defineStore('invest', {
       this.addOpportunity({
         account,
         name,
-        thesis: `产业景气驱动【${ind.name} · ${ind.cycleStage}】：${ind.catalyst}；投资策略：${ind.tactic}`,
+        thesis: `产业景气驱动【${ind.name}】：${ind.catalyst}`,
         score: Math.min(100, Math.max(50, ind.heat)),
         note: `重点催化：${ind.catalyst.slice(0, 30)}...`,
       });
@@ -740,9 +736,12 @@ export const useInvestStore = defineStore('invest', {
             : { cycle: '', sentiment: '中性', suggestedStockPos: '', suggestedEtfPos: '', updatedAt: '' },
         );
         this.macroIndicators = readLS(LS_MACRO_INDICATORS, keep ? this.macroIndicators : []);
-        this.macroBriefs = readLS(LS_MACRO_BRIEFS, keep ? this.macroBriefs : []);
-        this.macroEvents = readLS(LS_MACRO_EVENTS, keep ? this.macroEvents : []);
-        this.industryFocus = readLS(LS_INDUSTRY_FOCUS, keep ? this.industryFocus : []);
+        this.macroBriefs = this.macroBriefs.filter((b) => b.id.startsWith('live_'));
+        this.macroEvents = this.macroEvents.filter((e) => e.id.startsWith('wscn_'));
+        this.industryFocus = this.industryFocus.filter((i) => i.id.startsWith('plate_'));
+        this.macroBriefsError = '';
+        this.macroEventsError = '';
+        this.industryFocusError = '';
         this.navSnapshots = readLS(LS_NAV, keep ? this.navSnapshots : []);
       } finally {
         setHydrating(false);
@@ -767,9 +766,9 @@ export const useInvestStore = defineStore('invest', {
         customPortfolios: this.customPortfolios,
         macroWeather: this.macroWeather,
         macroIndicators: this.macroIndicators,
-        macroBriefs: this.macroBriefs,
-        macroEvents: this.macroEvents,
-        industryFocus: this.industryFocus,
+        macroBriefs: this.macroBriefs.filter((b) => b.id.startsWith('m_')),
+        macroEvents: this.macroEvents.filter((e) => e.id.startsWith('ev_')),
+        industryFocus: this.industryFocus.filter((i) => i.id.startsWith('ind_')),
       };
     },
     restoreSnapshot(data: any): { success: boolean; message: string; counts?: Record<string, number> } {
@@ -848,16 +847,19 @@ export const useInvestStore = defineStore('invest', {
         writeUserLS(LS_MACRO_INDICATORS, this.macroIndicators);
       }
       if (Array.isArray(data.macroBriefs)) {
-        this.macroBriefs = data.macroBriefs;
-        writeUserLS(LS_MACRO_BRIEFS, this.macroBriefs);
+        const live = this.macroBriefs.filter((b) => b.id.startsWith('live_'));
+        const custom = data.macroBriefs.filter((b: MacroBrief) => b.id.startsWith('m_'));
+        this.macroBriefs = [...custom, ...live];
       }
       if (Array.isArray(data.macroEvents)) {
-        this.macroEvents = data.macroEvents;
-        writeUserLS(LS_MACRO_EVENTS, this.macroEvents);
+        const live = this.macroEvents.filter((e) => e.id.startsWith('wscn_'));
+        const custom = data.macroEvents.filter((e: MacroEvent) => e.id.startsWith('ev_'));
+        this.macroEvents = [...custom, ...live];
       }
       if (Array.isArray(data.industryFocus)) {
-        this.industryFocus = data.industryFocus;
-        writeUserLS(LS_INDUSTRY_FOCUS, this.industryFocus);
+        const live = this.industryFocus.filter((i) => i.id.startsWith('plate_'));
+        const custom = data.industryFocus.filter((i: IndustryFocus) => i.id.startsWith('ind_'));
+        this.industryFocus = [...custom, ...live];
       }
       if (Array.isArray(data.navSnapshots)) {
         this.navSnapshots = data.navSnapshots;

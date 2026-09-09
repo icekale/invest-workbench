@@ -143,9 +143,6 @@ function inferBeneficiaries(title: string): string[] {
   if (/美联储|美元|外围|海外/.test(title)) list.push('恒生科技ETF', '黄金ETF');
   if (/车|新能源|电池|特斯拉/.test(title)) list.push('新能源车ETF', '电池龙头');
 
-  if (!list.length) {
-    list.push('沪深300ETF', '中证A500ETF');
-  }
   return list.slice(0, 3);
 }
 
@@ -197,15 +194,15 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
         const d = new Date(pubDate);
         const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+        const country = (it.country || '').trim();
         results.push({
           id: `wscn_${it.id}`,
           date: dateStr,
           title,
           category: inferCategory(title, it.country),
           level: inferLevel(imp, title),
-          impact: `${it.country ? `${it.country} · ` : ''}${title}。关注对市场流动性、风险偏好及对应行业资产定价的影响。`,
+          impact: country ? `${country} · ${title}` : title,
           beneficiaries: inferBeneficiaries(title),
-          suggestedAction: '跟踪事件兑现节奏，结合自身组合仓位与止盈止损纪律应对。',
           account: 'all',
         });
       }
@@ -215,7 +212,6 @@ export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
     return results.slice(0, 25);
   } catch (err) {
     clearTimeout(timeoutId);
-    console.warn('[calendar] fetchLiveMacroEvents error, using seeded/cached events:', err);
-    return [];
+    throw err instanceof Error ? err : new Error('华尔街见闻宏观日历拉取失败');
   }
 }

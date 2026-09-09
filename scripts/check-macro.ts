@@ -60,6 +60,7 @@ const briefs = parseLiveBriefs({
 assert.equal(briefs.length, 1);
 assert.equal(briefs[0].id, 'live_101');
 assert.equal(briefs[0].topic, '流动性');
+assert.equal(briefs[0].actionAdvice, undefined);
 assert.equal(parseLiveBriefs({ data: {} }).length, 0);
 
 console.log('check-macro ok');

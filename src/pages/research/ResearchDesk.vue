@@ -38,6 +38,12 @@
                 </t-button>
               </t-space>
             </div>
+            <t-alert
+              v-if="invest.macroBriefsError"
+              theme="error"
+              :message="invest.macroBriefsError"
+              style="margin-bottom: 12px"
+            />
 
             <!-- 时间轴研判列表 -->
             <t-timeline v-if="macros.length" mode="same">
@@ -136,6 +142,12 @@
                 </t-space>
               </div>
             </div>
+            <t-alert
+              v-if="invest.macroEventsError"
+              theme="error"
+              :message="invest.macroEventsError"
+              style="margin-bottom: 12px"
+            />
 
             <div v-if="sortedEvents.length" class="events-list">
               <div v-for="ev in sortedEvents" :key="ev.id" class="event-card">
@@ -256,21 +268,77 @@
                 </t-button>
               </t-space>
             </div>
+            <t-alert
+              v-if="invest.industryFocusError"
+              theme="error"
+              :message="invest.industryFocusError"
+              style="margin-bottom: 12px"
+            />
             <div v-if="invest.industryFocus.length" class="industry-grid">
-              <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card" @click="openIndDrawer(ind)">
+              <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card">
                 <div class="ind-card-hd">
-                  <strong class="ind-card-name">{{ ind.name }}</strong>
-                  <t-tag size="small" :theme="ind.trend === 'up' ? 'danger' : 'default'" variant="light">
-                    {{ ind.trend === 'up' ? '景气向上' : '中性平稳' }}
-                  </t-tag>
+                  <div class="ind-title-wrap">
+                    <strong class="ind-card-name">{{ ind.name }}</strong>
+                    <span
+                      v-if="ind.changeRate != null"
+                      class="ind-chg-pill tabular-nums"
+                      :class="ind.changeRate >= 0 ? 'is-up' : 'is-down'"
+                    >
+                      {{ ind.changeRate >= 0 ? '+' : '' }}{{ ind.changeRate }}%
+                    </span>
+                    <t-tag v-if="ind.limitUpCount" size="small" theme="danger" variant="dark">
+                      {{ ind.limitUpCount }}股涨停
+                    </t-tag>
+                    <t-tag size="small" :theme="ind.trend === 'up' ? 'danger' : 'default'" variant="light">
+                      {{ ind.cycleStage }}
+                    </t-tag>
+                  </div>
+                  <span class="ind-heat tabular-nums">景气 {{ ind.heat }}</span>
                 </div>
-                <div class="ind-catalyst-box">
+                <div v-if="ind.catalyst" class="ind-catalyst-box">
                   <span class="catalyst-tag">催化</span>
                   <span class="catalyst-text">{{ ind.catalyst }}</span>
                 </div>
-                <div class="ind-targets-line">
-                  <span class="targets-label">标的池:</span>
-                  <span class="targets-vals">{{ ind.keyTargets.map((t) => t.name).join('、') }}</span>
+                <div v-if="ind.keyTargets.length" class="ind-targets-bar">
+                  <span class="targets-label">领涨 / ETF</span>
+                  <button
+                    v-for="tgt in ind.keyTargets"
+                    :key="tgt.code"
+                    type="button"
+                    class="target-pill"
+                    @click="openIndustryTarget(ind, tgt)"
+                  >
+                    <span>{{ tgt.name }}</span>
+                    <span
+                      v-if="tgt.changePercent != null"
+                      class="tgt-chg tabular-nums"
+                      :class="tgt.changePercent >= 0 ? 'is-up' : 'is-down'"
+                    >
+                      {{ tgt.changePercent >= 0 ? '+' : '' }}{{ tgt.changePercent }}%
+                    </span>
+                    <span class="tgt-type">{{ tgt.type }}</span>
+                  </button>
+                </div>
+                <div class="ind-card-ft">
+                  <span class="ind-meta">
+                    {{ ind.updatedAt }}
+                    <template v-if="ind.fundFlow">
+                      · 主力
+                      <span class="tabular-nums" :class="ind.fundFlow >= 0 ? 'is-up' : 'is-down'">
+                        {{ fmtYi(ind.fundFlow) }}
+                      </span>
+                    </template>
+                  </span>
+                  <t-space :size="8">
+                    <t-button size="small" variant="outline" @click="onConvertIndustry(ind)">存入机会池</t-button>
+                    <t-popconfirm
+                      v-if="ind.id.startsWith('ind_')"
+                      content="确认删除此条产业跟踪？"
+                      @confirm="invest.removeIndustryFocus(ind.id)"
+                    >
+                      <t-button size="small" theme="danger" variant="text">删除</t-button>
+                    </t-popconfirm>
+                  </t-space>
                 </div>
               </div>
             </div>
@@ -380,7 +448,7 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, onMounted, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
-import type { MacroBrief, MacroEvent } from '@/types/invest';
+import type { IndustryFocus, MacroBrief, MacroEvent } from '@/types/invest';
 import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
 
 import { confirmCreateTodo, openCreateTodoDialog, todoDialogVisible, todoForm } from './todo';
@@ -463,7 +531,7 @@ function handleEventTargetClick(targetName: string, ev: MacroEvent) {
   invest.openTradeModal({
     name: targetName,
     account: !ev.account || ev.account === 'all' ? 'stock' : ev.account,
-    note: `会议催化交易【${ev.title}】：${ev.suggestedAction || ev.impact}`,
+    note: `会议催化交易【${ev.title}】：${ev.impact}`,
   });
 }
 
@@ -472,10 +540,14 @@ function onToggleOnlyMajor(val: boolean) {
   localStorage.setItem('invest-only-major-events', String(val));
 }
 
+function fmtYi(n: number) {
+  return `${n >= 0 ? '+' : ''}${(n / 1e8).toFixed(1)}亿`;
+}
+
 async function handleRefreshBriefs() {
   await invest.refreshMacroBriefs();
-  if (!invest.macroBriefs.length) {
-    MessagePlugin.warning('华尔街见闻暂无可用快讯');
+  if (invest.macroBriefsError) {
+    MessagePlugin.error(invest.macroBriefsError);
     return;
   }
   MessagePlugin.success('已同步华尔街见闻宏观快讯');
@@ -483,8 +555,8 @@ async function handleRefreshBriefs() {
 
 async function handleRefreshEvents() {
   await invest.refreshMacroEvents();
-  if (!invest.macroEvents.length) {
-    MessagePlugin.warning('宏观日历暂无数据');
+  if (invest.macroEventsError) {
+    MessagePlugin.error(invest.macroEventsError);
     return;
   }
   MessagePlugin.success('已同步华尔街见闻宏观日历');
@@ -492,8 +564,8 @@ async function handleRefreshEvents() {
 
 async function handleRefreshIndustry() {
   await invest.refreshIndustryFocus();
-  if (!invest.industryFocus.length) {
-    MessagePlugin.warning('选股宝板块异动暂无数据');
+  if (invest.industryFocusError) {
+    MessagePlugin.error(invest.industryFocusError);
     return;
   }
   MessagePlugin.success('已同步选股宝产业风口');
@@ -510,8 +582,18 @@ function openAddToOpportunityFromTodo(t: { name: string; reason: string }) {
   MessagePlugin.success(`已将【${t.name}】存入研究机会池`);
 }
 
-function openIndDrawer(ind: { name: string; catalyst: string }) {
-  MessagePlugin.info(`${ind.name} · 核心催化: ${ind.catalyst}`);
+function onConvertIndustry(ind: IndustryFocus) {
+  invest.convertIndustryToOpportunity(ind);
+  MessagePlugin.success(`已将【${ind.name}】加入机会池`);
+}
+
+function openIndustryTarget(ind: IndustryFocus, tgt: IndustryFocus['keyTargets'][number]) {
+  invest.openTradeModal({
+    code: tgt.code,
+    name: tgt.name,
+    account: ind.account === 'all' ? (tgt.type === 'ETF' ? 'etf' : 'stock') : ind.account,
+    note: `产业配置【${ind.name}】：${ind.catalyst}`,
+  });
 }
 
 onMounted(() => {

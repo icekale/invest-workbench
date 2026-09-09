@@ -44,25 +44,6 @@ function inferCycleStage(limitUpCount: number, changeRate: number): string {
   return '趋势轮动';
 }
 
-function inferTactic(cycleStage: string, limitUpCount: number, name: string): string {
-  if (limitUpCount >= 5) {
-    return '多股涨停确立主线风口，优先顺势跟踪前排龙头，严防高位次日放量分化分歧。';
-  }
-  if (cycleStage === '爆发主升') {
-    return '板块短线动能高涨，顺应资金共振做多前排龙头，注意持仓回撤保护。';
-  }
-  if (cycleStage === '景气上行') {
-    return '行业基本面与产业逻辑顺畅，逢盘中分时回调分批低吸，核心仓位中线持有。';
-  }
-  if (cycleStage === '政策催化') {
-    return '顶层规划与细则驱动，紧盯实质性订单与落地进展，避免盲目追涨冷门跟风标的。';
-  }
-  if (cycleStage === '超跌反弹') {
-    return '估值与情绪位于相对低位，小仓位博弈估值修复，触及止损线果断离场。';
-  }
-  return `紧随${name}细分景气度演进，精选具备核心壁垒与业绩支撑的细分领头羊。`;
-}
-
 interface XuangubaoPlateItem {
   id: number;
   name: string;
@@ -185,7 +166,7 @@ export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
         catalyst: item.description || '',
         category,
         keyTargets,
-        tactic: inferTactic(cycleStage, limitUpCount, name),
+        tactic: '',
         account: isTech ? 'stock' : 'all',
         updatedAt: timeStr,
         source: '选股宝实时题材',
@@ -199,7 +180,6 @@ export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
 
     return list;
   } catch (err) {
-    console.error('Failed to fetch live industry catalysts:', err);
-    return [];
+    throw err instanceof Error ? err : new Error('选股宝板块异动拉取失败');
   }
 }
