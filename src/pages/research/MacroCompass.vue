@@ -4,7 +4,7 @@
       <div class="macro-weather-header">
         <div class="weather-header-left">
           <span class="weather-title">宏观周期罗盘与大类定调</span>
-          <span class="weather-sub">基于万得 EDB 宏观数据与货币政策执行报告综合研判</span>
+          <span class="weather-sub">人工定调 · 下方为统计局 / 央行公开数据</span>
         </div>
         <div class="weather-header-right">
           <t-space :size="8" align="center">
@@ -47,8 +47,7 @@
       </div>
     </t-card>
 
-    <!-- 万得 EDB 宏观四大支柱量化温度计 -->
-    <t-card title="万得 EDB 宏观四大支柱温度计" subtitle="点击任一指标卡片可下钻查看真实历史走势图与分位数">
+    <t-card title="宏观四大支柱" subtitle="PMI / CPI / GDP 来自东财，社融来自央行。点卡片看历史折线">
       <template #actions>
         <t-space :size="8" align="center">
           <span v-if="macroErrorMsg" class="sync-time-hint" style="color: var(--td-error-color)">
@@ -57,7 +56,7 @@
           <span v-else-if="macroSyncTime" class="sync-time-hint">已同步: {{ macroSyncTime }}</span>
           <t-button size="small" variant="outline" theme="primary" :loading="macroLoading" @click="refreshMacroData">
             <template #icon><t-icon name="refresh" /></template>
-            从万得同步
+            重新同步
           </t-button>
         </t-space>
       </template>
@@ -171,13 +170,8 @@
             <div class="pillar-top">
               <span class="pillar-label">流动性 · 社融全表</span>
               <t-tag v-if="!afreMetric" size="small" variant="light">未同步</t-tag>
-              <t-tag
-                v-else
-                size="small"
-                :theme="(afreMetric.latestValue ?? 0) >= 0 ? 'danger' : 'warning'"
-                variant="light"
-              >
-                {{ (afreMetric.latestValue ?? 0) >= 0 ? '信用扩张' : '信用回落' }}
+              <t-tag v-else size="small" :theme="(afreMetric.change ?? 0) >= 0 ? 'danger' : 'warning'" variant="light">
+                {{ (afreMetric.change ?? 0) >= 0 ? '信用扩张' : '信用回落' }}
               </t-tag>
             </div>
             <div class="pillar-main">
@@ -250,10 +244,9 @@
       </div>
     </t-card>
 
-    <!-- 万得指标下钻历史曲线弹窗 (ECharts) -->
     <t-dialog
       v-model:visible="chartModalVisible"
-      :header="activeMetric ? `${activeMetric.name} · 历史走势` : '万得指标走势'"
+      :header="activeMetric ? `${activeMetric.name} · 历史走势` : '指标走势'"
       width="680px"
       :footer="false"
       @opened="renderMetricChart"
@@ -291,10 +284,7 @@
 
         <div ref="metricChartEl" style="height: 320px; width: 100%; margin-top: 16px" />
         <div class="dialog-foot-note">
-          <span
-            >* 数据来源于万得 Wind EDB 金融数据库，经 Caddy
-            安全反向代理直连取数。接口不可用时展示静态示意，非真实数据。</span
-          >
+          <span>* PMI / CPI / PPI / GDP 经东财数据中心；社融为央行公布全表。无数据则留空，不造示意值。</span>
         </div>
       </div>
     </t-dialog>
