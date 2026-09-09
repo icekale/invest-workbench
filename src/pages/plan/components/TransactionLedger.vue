@@ -87,6 +87,7 @@
           row-key="id"
           size="small"
           hover
+          table-layout="auto"
           :pagination="{ pageSize: 10, total: filteredTransactions.length }"
         >
           <template #side="{ row }">
@@ -256,7 +257,7 @@ const filteredTransactions = computed(() => {
 const columns = [
   { colKey: 'date', title: '成交日期', width: 112 },
   { colKey: 'side', title: '方向', width: 72 },
-  { colKey: 'name', title: '名称/代码', minWidth: 160 },
+  { colKey: 'name', title: '名称/代码', width: 200 },
   { colKey: 'px', title: '单价/数量', width: 120, align: 'right' as const },
   { colKey: 'amount', title: '成交额', width: 120, align: 'right' as const },
   { colKey: 'op', title: '操作', width: 72, align: 'center' as const },
@@ -413,6 +414,12 @@ function handleApplyHoldings() {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
+}
+
+.table-wrap :deep(.t-table__content),
+.table-wrap :deep(.t-table table) {
+  width: auto !important;
+  max-width: 100%;
 }
 
 .table-wrap :deep(.t-table__header th) {
