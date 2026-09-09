@@ -50,12 +50,41 @@
 
     <!-- 投资组合全貌 -->
     <t-card title="投资组合持仓">
-      <template #actions>
-        <span class="card-cap">按账户聚合</span>
-      </template>
-      <t-empty v-if="!rows.length" description="暂无持仓数据" />
+      <div class="hold-toolbar">
+        <t-radio-group v-model="accountView" variant="default-filled" size="small">
+          <t-radio-button value="all">聚合</t-radio-button>
+          <t-radio-button value="stock">股票账户</t-radio-button>
+          <t-radio-button value="etf">ETF 账户</t-radio-button>
+        </t-radio-group>
+        <t-radio-group v-model="holdView" variant="default-filled" size="small">
+          <t-radio-button value="list">明细</t-radio-button>
+          <t-radio-button value="weight">持仓占比</t-radio-button>
+        </t-radio-group>
+      </div>
+      <t-empty v-if="!activeRows.length" description="暂无持仓数据" />
+      <div v-else-if="holdView === 'weight'" class="weight-view">
+        <div class="weight-stack" role="img" :aria-label="`${accountLabel}持仓占比`">
+          <span
+            v-for="a in allocItems"
+            :key="a.name"
+            class="weight-seg"
+            :style="{ width: `${(a.pct * 100).toFixed(2)}%`, background: colorOf(a.name) }"
+            :title="`${a.name} ${(a.pct * 100).toFixed(1)}%`"
+          />
+        </div>
+        <div class="weight-rows">
+          <div v-for="a in allocItems" :key="a.name" class="weight-row">
+            <span class="dot" :style="{ background: colorOf(a.name) }" />
+            <span class="w-name">{{ a.name }}</span>
+            <div class="w-bar">
+              <i :style="{ width: `${(a.pct * 100).toFixed(2)}%`, background: colorOf(a.name) }" />
+            </div>
+            <span class="w-pct">{{ (a.pct * 100).toFixed(1) }}%</span>
+          </div>
+        </div>
+      </div>
       <div v-else class="table-wrap">
-        <t-table :data="rows" :columns="cols" row-key="code" size="small" hover>
+        <t-table :data="activeRows" :columns="cols" row-key="code" size="small" hover>
           <template #name="{ row }">
             <t-space align="center" :size="8">
               <span class="stock-name">{{ row.name }}</span>
@@ -70,6 +99,7 @@
           <template #quantity="{ row }">{{ row.quantity?.toLocaleString('zh-CN') }}</template>
           <template #cost="{ row }">¥{{ row.cost?.toFixed(2) }}</template>
           <template #mv="{ row }">{{ money(row.marketValue) }}</template>
+          <template #weight="{ row }">{{ weightOf(row.marketValue) }}</template>
           <template #pnl="{ row }">
             <div class="pnl-cell" :style="{ color: pnlColor(row.pnl) }">
               <span>{{ signed(row.pnl) }}</span>
@@ -203,12 +233,14 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { ThesisStatus } from '@/types/invest';
-import { healthScore, summarize } from '@/utils/book';
+import { allocation, healthScore, summarize } from '@/utils/book';
 
 defineOptions({ name: 'ReviewIndex' });
 
 const invest = useInvestStore();
 const filter = ref<'all' | ThesisStatus>('all');
+const accountView = ref<'all' | 'stock' | 'etf'>('all');
+const holdView = ref<'list' | 'weight'>('list');
 const topic = ref('');
 const conclusion = ref('');
 const thOpen = ref(false);
@@ -234,12 +266,42 @@ const weekLogs = computed(() => {
   const now = new Date();
   const start = new Date(now);
   start.setDate(now.getDate() - now.getDay());
-  const key = start.toISOString().slice(0, 10);
+  const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
   return invest.journal.filter((j) => j.date >= key).length;
 });
 const habitPct = computed(() => Math.min(100, Math.round((weekLogs.value / 3) * 100)));
 
-const rows = computed(() => [...invest.stockRows, ...invest.etfRows]);
+const activeRows = computed(() => {
+  if (accountView.value === 'stock') return invest.stockRows;
+  if (accountView.value === 'etf') return invest.etfRows;
+  return [...invest.stockRows, ...invest.etfRows];
+});
+const activeCash = computed(() => {
+  if (accountView.value === 'stock') return invest.cash.stock;
+  if (accountView.value === 'etf') return invest.cash.etf;
+  return invest.cash.stock + invest.cash.etf;
+});
+const bookTotal = computed(() => {
+  const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
+  return mv + Math.max(0, activeCash.value);
+});
+const allocItems = computed(() => allocation(activeRows.value, activeCash.value));
+const accountLabel = computed(() =>
+  accountView.value === 'stock' ? '股票账户' : accountView.value === 'etf' ? 'ETF 账户' : '聚合',
+);
+
+const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
+function colorOf(name: string) {
+  if (name === '现金') return '#93a3ad';
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+function weightOf(mv: number | null) {
+  if (mv == null || !bookTotal.value) return '—';
+  return `${((mv / bookTotal.value) * 100).toFixed(1)}%`;
+}
+
 const money = (n: number | null) => (n == null ? '—' : `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
 const signed = (n: number | null) =>
   n == null ? '—' : `${n >= 0 ? '+' : '-'}¥${Math.abs(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
@@ -256,14 +318,18 @@ const healthClass = (val: number) => {
   return 'health-dot--alert';
 };
 
-const cols = [
-  { colKey: 'name', title: '名称 / 代码' },
-  { colKey: 'account', title: '账户', width: 80 },
-  { colKey: 'quantity', title: '持仓量', width: 100 },
-  { colKey: 'cost', title: '持仓成本', width: 100 },
-  { colKey: 'mv', title: '市值', width: 120 },
-  { colKey: 'pnl', title: '浮动盈亏' },
-];
+const cols = computed(() => {
+  const list = [
+    { colKey: 'name', title: '名称 / 代码' },
+    ...(accountView.value === 'all' ? [{ colKey: 'account', title: '账户', width: 80 }] : []),
+    { colKey: 'quantity', title: '持仓量', width: 100 },
+    { colKey: 'cost', title: '持仓成本', width: 100 },
+    { colKey: 'mv', title: '市值', width: 120 },
+    { colKey: 'weight', title: '占比', width: 80 },
+    { colKey: 'pnl', title: '浮动盈亏' },
+  ];
+  return list;
+});
 const logCols = [
   { colKey: 'date', title: '日期', width: 100 },
   { colKey: 'topic', title: '主题' },
@@ -379,6 +445,78 @@ function saveThesis() {
 .card-cap {
   font-size: 12px;
   color: var(--guanlan-muted);
+}
+
+.hold-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.weight-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weight-stack {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--guanlan-surface-soft);
+}
+
+.weight-seg {
+  height: 100%;
+  min-width: 2px;
+}
+
+.weight-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weight-row {
+  display: grid;
+  grid-template-columns: 8px minmax(72px, 1.2fr) minmax(80px, 2fr) 56px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.w-name {
+  color: var(--guanlan-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--guanlan-surface-soft);
+  overflow: hidden;
+}
+
+.w-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.w-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--guanlan-ink);
 }
 
 .thesis-header-actions {
