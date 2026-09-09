@@ -18,13 +18,9 @@
           <template #icon><t-icon name="chart" /></template>
           记录复盘
         </t-button>
-        <t-button variant="outline" size="small" @click="router.push('/plan?tab=rebalance')">
-          <template #icon><t-icon name="control-platform" /></template>
-          再平衡计算
-        </t-button>
-        <t-button variant="outline" size="small" @click="router.push('/plan?tab=penetration')">
-          <template #icon><t-icon name="layers" /></template>
-          持仓穿透
+        <t-button variant="outline" size="small" @click="router.push('/plan')">
+          <template #icon><t-icon name="edit" /></template>
+          持仓台账
         </t-button>
         <t-button theme="primary" size="small" @click="invest.openTradeModal({ account: tab as AccountId })">
           <template #icon><t-icon name="swap" /></template>
