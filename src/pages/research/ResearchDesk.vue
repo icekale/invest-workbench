@@ -22,7 +22,21 @@
                 <t-radio-button value="政策">政策</t-radio-button>
                 <t-radio-button value="海外">海外</t-radio-button>
               </t-radio-group>
-              <span class="macro-count-hint">共 {{ macros.length }} 条晨会研判</span>
+              <t-space :size="8" align="center">
+                <span class="macro-count-hint">
+                  华尔街见闻{{ invest.macroBriefsLastUpdated ? ` · ${invest.macroBriefsLastUpdated}` : '' }} ·
+                  {{ macros.length }} 条
+                </span>
+                <t-button
+                  size="small"
+                  variant="outline"
+                  :loading="invest.macroBriefsLoading"
+                  @click="handleRefreshBriefs"
+                >
+                  <template #icon><t-icon name="refresh" /></template>
+                  同步快讯
+                </t-button>
+              </t-space>
             </div>
 
             <!-- 时间轴研判列表 -->
@@ -78,7 +92,7 @@
                 </div>
               </t-timeline-item>
             </t-timeline>
-            <t-empty v-else description="暂无符合筛选条件的宏观信号" style="padding: 24px 0" />
+            <t-empty v-else description="暂无宏观快讯，点击同步华尔街见闻" style="padding: 24px 0" />
           </div>
 
           <!-- 视图 2: 近期重点会议 -->
@@ -211,7 +225,7 @@
             </div>
             <t-empty
               v-else
-              :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无录入的重点会议日程'"
+              :description="onlyMajorEvents ? '当前暂无符合筛选条件的重大日程' : '暂无即将召开的日程，点击同步日历'"
               style="padding: 24px 0"
             >
               <template v-if="onlyMajorEvents" #action>
@@ -224,7 +238,25 @@
 
           <!-- 视图 3: 产业催化 -->
           <div v-else-if="macroSectionTab === 'industries'" class="macro-industry-panel">
-            <div class="industry-grid">
+            <div class="macro-filter-row">
+              <span class="macro-section-sub events-sub-desc">选股宝板块异动 · 涨停家数与资金流向</span>
+              <t-space :size="8" align="center">
+                <span class="macro-count-hint">
+                  {{ invest.industryFocusLastUpdated ? `更新 ${invest.industryFocusLastUpdated}` : '' }}
+                  · {{ invest.industryFocus.length }} 个板块
+                </span>
+                <t-button
+                  size="small"
+                  variant="outline"
+                  :loading="invest.industryFocusLoading"
+                  @click="handleRefreshIndustry"
+                >
+                  <template #icon><t-icon name="refresh" /></template>
+                  同步产业风口
+                </t-button>
+              </t-space>
+            </div>
+            <div v-if="invest.industryFocus.length" class="industry-grid">
               <div v-for="ind in invest.industryFocus" :key="ind.id" class="ind-card" @click="openIndDrawer(ind)">
                 <div class="ind-card-hd">
                   <strong class="ind-card-name">{{ ind.name }}</strong>
@@ -242,6 +274,7 @@
                 </div>
               </div>
             </div>
+            <t-empty v-else description="暂无产业催化，点击同步选股宝板块异动" style="padding: 24px 0" />
           </div>
         </t-card>
       </t-col>
@@ -439,9 +472,31 @@ function onToggleOnlyMajor(val: boolean) {
   localStorage.setItem('invest-only-major-events', String(val));
 }
 
+async function handleRefreshBriefs() {
+  await invest.refreshMacroBriefs();
+  if (!invest.macroBriefs.length) {
+    MessagePlugin.warning('华尔街见闻暂无可用快讯');
+    return;
+  }
+  MessagePlugin.success('已同步华尔街见闻宏观快讯');
+}
+
 async function handleRefreshEvents() {
   await invest.refreshMacroEvents();
-  MessagePlugin.success('已同步最新全球宏观与产业会议日历');
+  if (!invest.macroEvents.length) {
+    MessagePlugin.warning('宏观日历暂无数据');
+    return;
+  }
+  MessagePlugin.success('已同步华尔街见闻宏观日历');
+}
+
+async function handleRefreshIndustry() {
+  await invest.refreshIndustryFocus();
+  if (!invest.industryFocus.length) {
+    MessagePlugin.warning('选股宝板块异动暂无数据');
+    return;
+  }
+  MessagePlugin.success('已同步选股宝产业风口');
 }
 
 function openAddToOpportunityFromTodo(t: { name: string; reason: string }) {
@@ -460,6 +515,7 @@ function openIndDrawer(ind: { name: string; catalyst: string }) {
 }
 
 onMounted(() => {
+  invest.refreshMacroBriefs();
   invest.refreshMacroEvents();
   invest.refreshIndustryFocus();
 });
