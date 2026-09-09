@@ -81,74 +81,45 @@
               <div class="desktop-table-wrap">
                 <t-table :data="sorted" :columns="columns" row-key="code" size="small">
                   <template #name="{ row }">
-                    <div class="symbol-cell">
-                      <div class="symbol-name">{{ row.name }}</div>
-                      <t-space :size="4" class="symbol-tags">
-                        <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
-                        <t-tag v-if="row.tag" size="small" variant="light">{{ row.tag }}</t-tag>
-                      </t-space>
+                    <div class="dual-cell">
+                      <div class="dual-cell__main">{{ row.name }}</div>
+                      <div class="dual-cell__sub tabular-nums">{{ money(row.marketValue) }}</div>
                     </div>
                   </template>
-                  <template #mv="{ row }">{{ money(row.marketValue) }}</template>
-                  <template #cost="{ row }">{{ px(row.cost) }}</template>
-                  <template #last="{ row }">{{ row.last == null ? '—' : px(row.last) }}</template>
+                  <template #qty="{ row }">
+                    <div class="dual-cell dual-cell--right">
+                      <div class="dual-cell__main tabular-nums">{{ row.quantity.toLocaleString() }}</div>
+                      <div class="dual-cell__sub tabular-nums">{{ row.quantity.toLocaleString() }}</div>
+                    </div>
+                  </template>
+                  <template #px="{ row }">
+                    <div class="dual-cell dual-cell--right">
+                      <div class="dual-cell__main tabular-nums">{{ row.last == null ? '—' : px(row.last) }}</div>
+                      <div class="dual-cell__sub tabular-nums">{{ px(row.cost) }}</div>
+                    </div>
+                  </template>
+                  <template #pnl="{ row }">
+                    <div class="dual-cell dual-cell--right tabular-nums" :style="{ color: pnlColor(row.pnl) }">
+                      <div class="dual-cell__main">{{ signed(row.pnl) }}</div>
+                      <div class="dual-cell__sub">{{ pct(row.pnlPct) }}</div>
+                    </div>
+                  </template>
                   <template #dayPnl="{ row }">
                     <div
                       v-if="row.dayPnl != null"
-                      class="tabular-nums day-pnl-cell"
+                      class="dual-cell dual-cell--right tabular-nums"
                       :style="{ color: pnlColor(row.dayPnl) }"
                     >
-                      <div class="day-pnl-val">{{ signed(row.dayPnl) }}</div>
-                      <div class="day-pnl-pct">
+                      <div class="dual-cell__main">{{ signed(row.dayPnl) }}</div>
+                      <div class="dual-cell__sub">
                         {{ row.dayPnlPct >= 0 ? '+' : '' }}{{ Number(row.dayPnlPct).toFixed(2) }}%
                       </div>
                     </div>
                     <span v-else class="muted">—</span>
                   </template>
-                  <template #pnl="{ row }">
-                    <span :style="{ color: pnlColor(row.pnlPct) }">{{ pct(row.pnlPct) }}</span>
-                  </template>
-                  <template #action="{ row }">
-                    <t-tag size="small" variant="light" :theme="actionTheme[row.action]">{{
-                      actionMap[row.action]
-                    }}</t-tag>
-                  </template>
-                  <template #op="{ row }">
-                    <div class="table-trade-btns">
-                      <t-button
-                        size="small"
-                        theme="danger"
-                        variant="text"
-                        @click.stop="
-                          invest.openTradeModal({
-                            account,
-                            side: 'buy',
-                            code: row.code,
-                            name: row.name,
-                            price: row.last || row.cost,
-                          })
-                        "
-                      >
-                        买入
-                      </t-button>
-                      <t-button
-                        size="small"
-                        theme="success"
-                        variant="text"
-                        @click.stop="
-                          invest.openTradeModal({
-                            account,
-                            side: 'sell',
-                            code: row.code,
-                            name: row.name,
-                            price: row.last || row.cost,
-                            quantity: row.quantity,
-                          })
-                        "
-                      >
-                        卖出
-                      </t-button>
-                    </div>
+                  <template #weight="{ row }">{{ calcWeight(row.marketValue) }}</template>
+                  <template #code="{ row }">
+                    <span class="code-mono">{{ shortCode(row.code) }}</span>
                   </template>
                 </t-table>
               </div>
@@ -188,7 +159,7 @@
                   <div class="m-pos-grid">
                     <!-- 第 1 列：现价 / 成本 -->
                     <div class="m-grid-col">
-                      <span class="col-lbl">现价 / 成本</span>
+                      <span class="col-lbl">现价/成本价</span>
                       <div class="col-val-row">
                         <span class="col-price tabular-nums" :style="{ color: priceChangeColor(row) }">
                           {{ row.last == null ? '—' : px(row.last) }}
@@ -215,7 +186,7 @@
 
                     <!-- 第 3 列：浮动盈亏 -->
                     <div class="m-grid-col text-right">
-                      <span class="col-lbl">浮动盈亏</span>
+                      <span class="col-lbl">持仓盈亏</span>
                       <div class="col-val-row justify-end">
                         <span class="col-pnl-pill tabular-nums" :class="pnlClass(row.pnlPct)">
                           {{ pct(row.pnlPct) }}
@@ -244,49 +215,13 @@
                     <span class="box-desc">{{ getActionGuide(row) }}</span>
                   </div>
 
-                  <!-- 移动端快捷实盘交易与当日盈亏 -->
-                  <div class="m-pos-footer" @click.stop>
-                    <div v-if="row.dayPnl != null" class="m-day-pnl">
-                      <span class="m-day-lbl">当日参考:</span>
+                  <div v-if="row.dayPnl != null" class="m-pos-footer">
+                    <div class="m-day-pnl">
+                      <span class="m-day-lbl">今日盈亏</span>
                       <span class="m-day-val tabular-nums" :style="{ color: pnlColor(row.dayPnl) }">
                         {{ signed(row.dayPnl) }} ({{ (row.dayPnlPct ?? 0) >= 0 ? '+' : ''
                         }}{{ Number(row.dayPnlPct ?? 0).toFixed(2) }}%)
                       </span>
-                    </div>
-                    <div class="m-trade-actions">
-                      <t-button
-                        size="small"
-                        theme="danger"
-                        variant="outline"
-                        @click.stop="
-                          invest.openTradeModal({
-                            account,
-                            side: 'buy',
-                            code: row.code,
-                            name: row.name,
-                            price: row.last || row.cost,
-                          })
-                        "
-                      >
-                        买入
-                      </t-button>
-                      <t-button
-                        size="small"
-                        theme="success"
-                        variant="outline"
-                        @click.stop="
-                          invest.openTradeModal({
-                            account,
-                            side: 'sell',
-                            code: row.code,
-                            name: row.name,
-                            price: row.last || row.cost,
-                            quantity: row.quantity,
-                          })
-                        "
-                      >
-                        卖出
-                      </t-button>
                     </div>
                   </div>
                 </div>
@@ -395,12 +330,6 @@ const lineEl = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
 const actionMap: Record<string, string> = { hold: '持有', add: '加仓区', reduce: '观察', exit: '止盈线' };
-const actionTheme: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
-  hold: 'success',
-  add: 'danger',
-  reduce: 'warning',
-  exit: 'danger',
-};
 const actionRank: Record<string, number> = { exit: 0, reduce: 1, add: 2, hold: 3 };
 const ALLOC_COLORS = ['#0d706d', '#dfb56d', '#3569bb', '#16815f'];
 const CASH_COLOR = '#b7c0c5';
@@ -559,14 +488,13 @@ const displayedRows = computed(() => {
 });
 
 const columns = [
-  { colKey: 'name', title: '标的', minWidth: 150 },
-  { colKey: 'mv', title: '持仓市值', width: 95, align: 'right' as const },
-  { colKey: 'cost', title: '成本价', width: 80, align: 'right' as const },
-  { colKey: 'last', title: '现价', width: 80, align: 'right' as const },
-  { colKey: 'dayPnl', title: '当日盈亏', width: 105, align: 'right' as const },
-  { colKey: 'pnl', title: '累计盈亏', width: 95, align: 'right' as const },
-  { colKey: 'action', title: '建议', width: 70, align: 'center' as const },
-  { colKey: 'op', title: '快捷交易', width: 110, align: 'center' as const },
+  { colKey: 'name', title: '名称/市值', minWidth: 120 },
+  { colKey: 'qty', title: '持仓/可用', width: 100, align: 'right' as const },
+  { colKey: 'px', title: '现价/成本价', width: 110, align: 'right' as const },
+  { colKey: 'pnl', title: '持仓盈亏', width: 110, align: 'right' as const },
+  { colKey: 'dayPnl', title: '今日盈亏', width: 105, align: 'right' as const },
+  { colKey: 'weight', title: '持仓占比', width: 88, align: 'right' as const },
+  { colKey: 'code', title: '证券代码', width: 88 },
 ];
 
 function renderLine() {
@@ -669,29 +597,20 @@ onUnmounted(() => {
   overflow-x: auto;
   max-width: 100%;
 
-  .day-pnl-cell {
+  .dual-cell {
     line-height: 1.25;
 
-    .day-pnl-val {
+    &--right {
+      text-align: right;
+    }
+
+    &__main {
       font-weight: 600;
     }
 
-    .day-pnl-pct {
+    &__sub {
       font-size: 11px;
       opacity: 0.85;
-    }
-  }
-
-  .table-trade-btns {
-    display: flex;
-    justify-content: center;
-    gap: 4px;
-
-    :deep(.t-button) {
-      padding: 0 4px;
-      height: 22px;
-      font-size: 12px;
-      font-weight: 500;
     }
   }
 }
@@ -1313,17 +1232,6 @@ onUnmounted(() => {
 
       .m-day-val {
         font-weight: 600;
-      }
-    }
-
-    .m-trade-actions {
-      display: flex;
-      gap: 6px;
-
-      :deep(.t-button) {
-        height: 26px;
-        padding: 0 10px;
-        font-size: 12px;
       }
     }
   }
