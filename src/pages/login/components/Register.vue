@@ -99,15 +99,19 @@ const FORM_RULES = computed<Record<string, FormRule[]>>(() => ({
 }));
 
 const onSubmit = async (ctx: SubmitContext) => {
-  if (ctx.validateResult !== true) return;
+  if (ctx.validateResult !== true) {
+    MessagePlugin.warning(ctx.firstError || '请填写账号和密码');
+    return;
+  }
   try {
     loading.value = true;
     const account = formData.value.account.trim();
     await registerAccount(account, formData.value.password);
     await userStore.login({ account, password: formData.value.password });
     useInvestStore().adoptUser(account);
-    await bindCloudSync(useInvestStore());
-    router.push((route.query.redirect as string) || '/dashboard');
+    void bindCloudSync(useInvestStore());
+    const redirect = route.query.redirect as string;
+    await router.push(redirect && redirect !== '/login' ? redirect : '/dashboard');
   } catch (e: unknown) {
     MessagePlugin.error((e as Error).message || '注册失败');
   } finally {

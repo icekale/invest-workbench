@@ -29,8 +29,8 @@ export const useUserStore = defineStore('user', {
       }
       try {
         await loginAgainstSync(account, password);
-      } catch {
-        throw new Error(t('pages.login.validation.passwordError'));
+      } catch (e) {
+        throw e instanceof Error ? e : new Error(t('pages.login.validation.passwordError'));
       }
       this.token = basicToken(account, password);
       this.userInfo = { name: account, roles: ['all'] };

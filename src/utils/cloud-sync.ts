@@ -54,8 +54,14 @@ export function setHydrating(v: boolean) {
   hydrating = v;
 }
 
+// ponytail: 8s ceiling; hung CF/Caddy looked like dead login
+const SYNC_MS = 8000;
+function syncFetch(input: string, init: RequestInit = {}) {
+  return fetch(input, { ...init, signal: AbortSignal.timeout(SYNC_MS) });
+}
+
 export async function pullCloudSnapshot(): Promise<CloudSnapshot | null> {
-  const res = await fetch('/sync', { headers: { Authorization: authHeader() } });
+  const res = await syncFetch('/sync', { headers: { Authorization: authHeader() } });
   if (res.status === 204) return null;
   if (!res.ok) throw new Error(`sync pull ${res.status}`);
   return res.json();
@@ -63,7 +69,7 @@ export async function pullCloudSnapshot(): Promise<CloudSnapshot | null> {
 
 export async function pushCloudSnapshot(data: CloudSnapshot): Promise<void> {
   const slim = slimSnap(data);
-  const res = await fetch('/sync', {
+  const res = await syncFetch('/sync', {
     method: 'PUT',
     headers: { Authorization: authHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify(slim),
@@ -143,7 +149,7 @@ export async function loginAgainstSync(account: string, password: string): Promi
   const header = basicToken(account, password);
   let res: Response;
   try {
-    res = await fetch('/sync', { headers: { Authorization: header } });
+    res = await syncFetch('/sync', { headers: { Authorization: header } });
   } catch {
     const envUser = import.meta.env?.VITE_AUTH_USER || 'xiong';
     const envPass = import.meta.env?.VITE_AUTH_PASS || 'demo';
@@ -159,7 +165,7 @@ export async function loginAgainstSync(account: string, password: string): Promi
 }
 
 export async function registerAccount(account: string, password: string) {
-  const res = await fetch('/sync/register', {
+  const res = await syncFetch('/sync/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: account, password }),

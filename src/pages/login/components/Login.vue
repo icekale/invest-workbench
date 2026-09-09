@@ -75,20 +75,22 @@ const router = useRouter();
 const route = useRoute();
 
 const onSubmit = async (ctx: SubmitContext) => {
-  if (ctx.validateResult === true) {
-    try {
-      loading.value = true;
-      await userStore.login(formData.value);
-      const account = String(formData.value.account || '').trim();
-      useInvestStore().adoptUser(account);
-      await bindCloudSync(useInvestStore());
-      const redirect = route.query.redirect as string;
-      router.push(redirect || '/dashboard');
-    } catch (e: unknown) {
-      MessagePlugin.error((e as Error).message || '账号或密码错误');
-    } finally {
-      loading.value = false;
-    }
+  if (ctx.validateResult !== true) {
+    MessagePlugin.warning(ctx.firstError || '请填写账号和密码');
+    return;
+  }
+  try {
+    loading.value = true;
+    await userStore.login(formData.value);
+    const account = String(formData.value.account || '').trim();
+    useInvestStore().adoptUser(account);
+    void bindCloudSync(useInvestStore());
+    const redirect = route.query.redirect as string;
+    await router.push(redirect && redirect !== '/login' ? redirect : '/dashboard');
+  } catch (e: unknown) {
+    MessagePlugin.error((e as Error).message || '账号或密码错误');
+  } finally {
+    loading.value = false;
   }
 };
 </script>

@@ -12,7 +12,7 @@ router.beforeEach(async (to, from, next) => {
 
   if (userStore.token) {
     if (to.path === '/login') {
-      next();
+      next('/');
       return;
     }
     try {
