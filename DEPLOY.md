@@ -54,8 +54,31 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 查持仓：`sqlite3 /opt/invest-workbench/data/invest.db "SELECT user, account, code, quantity FROM holdings;"`
 
+## 容器 DNS（勿改成 1.1.1.1）
+
+反代是按域名回源的，所以**每次请求都要解析域名**。容器 resolv.conf 是 `127.0.0.11`（Docker 内嵌 DNS），它只把外部域名转发给 `ExtServers`（取自宿主机 resolv.conf，转发超时约 3s）；宿主机 DNS 在 `/etc/netplan/60-public.yaml`。超时即 Caddy 返回 `502`，日志报 `dial tcp: lookup <domain>: i/o timeout`。
+
+各公共解析器都有**各自的病态区**（实测未命中回源耗时）：
+
+| zone | 1.1.1.1 | 8.8.8.8 | 223.5.5.5 |
+| --- | --- | --- | --- |
+| awtmt.com（`/wscn`） | **3101ms** | 14ms | 180ms |
+| szse.cn（`/szse`） | 149ms | **2207ms** | 148ms |
+| legulegu.com / eastmoney.com / gtimg.cn | 15ms | 15ms | 141–187ms |
+
+所以**必须用 223.5.5.5 打头**（唯一在所有区都 <200ms 的）。曾把 1.1.1.1 放第一位，导致 `/wscn`（宏观研判与事件催化页）间歇 502。改完 netplan 要 `systemctl restart systemd-resolved` + `docker restart invest-caddy` 让 ExtServers 生效。
+
+验证（应该 <300ms，若 >3000ms 就是又要踩 3s 线了）：
+
+```sh
+n=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
+s=$(date +%s%N); docker exec invest-caddy nslookup $n.awtmt.com; echo $(( ($(date +%s%N)-s)/1000000 ))ms
+```
+
 ## 排障
 
 - `525`：CF 在尝试 TLS 回源 443（SSL 模式不是 Flexible，或 xray 变更）
 - `521/522`：invest-caddy 容器没起来（`docker ps | grep invest`、`docker logs invest-caddy`）
+- `502` 且日志报 `lookup ... i/o timeout` → 看上面「容器 DNS」
+- `502` 且日志报 `connection reset by peer` → 上游自己掐连接（`/szse` 常见），重试即可
 - 行情接口报错：在 VPS 上直接 `curl -H "Host: stock.053727.xyz" http://127.0.0.1/qt/q=sh000001` 区分是代理层还是上游问题
