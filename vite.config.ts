@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import vue from '@vitejs/plugin-vue';
@@ -14,11 +15,34 @@ const CWD = process.cwd();
 /** 每次构建一个标识，只为让产物文件名不复用。 */
 const BUILD_STAMP = Date.now().toString(36);
 
+/**
+ * 「线上跑的是哪一版」只有构建时知道，否则就得去看产物文件名猜。
+ * sv-SE 的本地化格式正好是 `2026-09-10 09:22:31`（本地时区），省掉手写补零。
+ */
+const BUILD_TIME = new Date().toLocaleString('sv-SE').slice(0, 16);
+
+function gitShortSha(): string {
+  try {
+    const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
+    if (!sha) return 'dev';
+    // 带未提交改动时只显示 SHA 会直接骗人 —— 那版代码根本不在这个提交里
+    const dirty = execFileSync('git', ['status', '--porcelain']).toString().trim();
+    return sha + (dirty ? '-dirty' : '');
+  } catch {
+    // 非 git 环境（CI 打镜像、源码包构建）不该让构建失败
+    return 'dev';
+  }
+}
+
 // https://vitejs.dev/config/
 export default ({ mode }: ConfigEnv): UserConfig => {
   const { VITE_BASE_URL, VITE_API_URL_PREFIX } = loadEnv(mode, CWD);
   return {
     base: VITE_BASE_URL,
+    define: {
+      __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+      __GIT_SHA__: JSON.stringify(gitShortSha()),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { BUILD_TIME, buildLabel, GIT_SHA } from '../src/utils/build-info.ts';
 import {
   BAND_COUNT,
   bands,
@@ -140,5 +141,12 @@ assert.ok(
   rows.every((r) => r.status === 'idle' && r.detail === ''),
   '初始行应全是未测状态',
 );
+
+/* ---------- 构建信息：不经 Vite 时必须回落，不能 ReferenceError ---------- */
+
+assert.equal(BUILD_TIME, 'dev', '检查脚本不经 Vite，构建时间应回落 dev');
+assert.equal(GIT_SHA, 'dev', '检查脚本不经 Vite，提交号应回落 dev');
+assert.equal(buildLabel, 'dev · dev');
+assert.ok(!buildLabel.includes('undefined'), '绝不能把 undefined 显示给用户');
 
 console.log('check-research-settings ✓');

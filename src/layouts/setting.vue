@@ -111,6 +111,7 @@
         <t-button theme="primary" variant="text" @click="handleCopy">
           {{ t('layout.setting.copy.title') }}
         </t-button>
+        <p class="setting-build" :title="`构建于 ${BUILD_TIME}，提交 ${GIT_SHA}`">{{ buildLabel }}</p>
       </div>
     </div>
   </t-drawer>
@@ -131,6 +132,7 @@ import { DEFAULT_COLOR_OPTIONS } from '@/config/color';
 import STYLE_CONFIG from '@/config/style';
 import { t } from '@/locales';
 import { useSettingStore } from '@/store';
+import { BUILD_TIME, buildLabel, GIT_SHA } from '@/utils/build-info';
 
 const settingStore = useSettingStore();
 
@@ -307,9 +309,19 @@ watchEffect(() => {
   background: var(--td-bg-color-container);
 }
 
+/* 线上跑的是哪版：只看产物文件名要翻半天，放页脚最省事。可选中，好拿去搜提交。 */
+.setting-build {
+  margin: 4px 0 0;
+  font-family: var(--td-font-family-mono);
+  font-size: 11px;
+  user-select: text;
+  color: var(--td-text-color-placeholder);
+}
+
 .setting-drawer-container {
   .setting-container {
-    padding-bottom: 100px;
+    /* 页脚是绝对定位，这里要留出它的高度：提示语 + 复制按钮 + 版本行 */
+    padding-bottom: 124px;
   }
 
   .t-radio-group.t-size-m {
