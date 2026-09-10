@@ -153,6 +153,22 @@
               ¥{{ tradeAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
             </span>
           </div>
+          <div class="preview-row">
+            <span class="preview-label">手续费 (元)</span>
+            <span class="preview-val fee-val">
+              <t-input-number
+                v-model="manualFee"
+                :min="0"
+                :step="1"
+                :decimal-places="2"
+                :placeholder="autoFee.toFixed(2)"
+                size="small"
+                style="width: 130px"
+              />
+              <t-button v-if="feeOverridden" size="small" variant="text" @click="resetFee">恢复自动</t-button>
+              <span v-else class="fee-auto">按费率估算</span>
+            </span>
+          </div>
           <div class="preview-grid">
             <div class="grid-item">
               <span class="g-lbl">成交后剩余现金</span>
@@ -246,6 +262,8 @@ watch(
       form.quantity = opts.quantity || 100;
       form.todoId = opts.todoId || '';
       form.note = opts.note || '';
+      // 每次打开都回到自动估算，别把上一次手填的佣金带进来
+      manualFee.value = undefined;
 
       if (form.code) {
         fetchQuoteForCode();
@@ -357,7 +375,22 @@ function fillLivePrice() {
 
 // 交易金额
 const tradeAmount = computed(() => Number((form.price * form.quantity).toFixed(2)));
-const estimatedFee = computed(() => tradeFee(form.account, tradeAmount.value, invest.accounts));
+/** 按费率自动算出的手续费；手改后仍作为占位提示，让人看得到“自动是多少”。 */
+const autoFee = computed(() => tradeFee(form.account, tradeAmount.value, invest.accounts));
+/** 手填的手续费；undefined = 没动过。 */
+const manualFee = ref<number | undefined>(undefined);
+/** 真的填了一个有效数（空/负数/NaN 一律当没填）。 */
+const feeOverridden = computed(() => {
+  const m = manualFee.value;
+  return typeof m === 'number' && Number.isFinite(m) && m >= 0;
+});
+/** 实际生效的手续费：试算、现金校验、落库都以它为准。 */
+const effectiveFee = computed(() =>
+  feeOverridden.value ? Number((manualFee.value as number).toFixed(2)) : autoFee.value,
+);
+function resetFee() {
+  manualFee.value = undefined;
+}
 const feeRate = computed(() => rateOf(invest.accounts, form.account));
 
 // 最大可买股数 (按整百股向下取整，预留佣金)
@@ -416,9 +449,9 @@ function applyRatio(ratio: number) {
 // 预计剩余现金
 const estimatedRemainingCash = computed(() => {
   if (form.side === 'buy') {
-    return availableCash.value - tradeAmount.value - estimatedFee.value;
+    return availableCash.value - tradeAmount.value - effectiveFee.value;
   }
-  return availableCash.value + tradeAmount.value - estimatedFee.value;
+  return availableCash.value + tradeAmount.value - effectiveFee.value;
 });
 
 // 预计变动后持仓股数
@@ -437,14 +470,14 @@ const estimatedNewCost = computed(() => {
   if (!current) return form.price;
   const totalQty = current.quantity + form.quantity;
   if (totalQty <= 0) return null;
-  return (current.cost * current.quantity + tradeAmount.value + estimatedFee.value) / totalQty;
+  return (current.cost * current.quantity + tradeAmount.value + effectiveFee.value) / totalQty;
 });
 
 // 校验交易合法性
 const isTradeValid = computed(() => {
   if (!form.code || form.price <= 0 || form.quantity <= 0) return false;
   if (form.side === 'buy') {
-    return tradeAmount.value + estimatedFee.value <= availableCash.value;
+    return tradeAmount.value + effectiveFee.value <= availableCash.value;
   }
   return existingHolding.value !== null && form.quantity <= existingHolding.value.quantity;
 });
@@ -457,7 +490,7 @@ function pnlColor(val: number) {
 
 async function submitTrade() {
   if (!isTradeValid.value) {
-    if (form.side === 'buy' && tradeAmount.value + estimatedFee.value > availableCash.value) {
+    if (form.side === 'buy' && tradeAmount.value + effectiveFee.value > availableCash.value) {
       MessagePlugin.error('可用现金不足，无法买入');
       return;
     }
@@ -478,6 +511,8 @@ async function submitTrade() {
       name: form.name || quoteData.name || form.code,
       price: form.price,
       quantity: form.quantity,
+      // 显示多少就落多少：手改过的佣金必须传下去，否则 store 会按费率重算
+      fee: effectiveFee.value,
       todoId: form.todoId || undefined,
       note: form.note || undefined,
     });
@@ -684,6 +719,17 @@ async function submitTrade() {
       font-size: 18px;
       font-weight: 700;
       color: var(--td-brand-color, #0d706d);
+    }
+
+    .preview-val.fee-val {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .fee-auto {
+      font-size: 12px;
+      color: var(--td-text-color-placeholder);
     }
   }
 

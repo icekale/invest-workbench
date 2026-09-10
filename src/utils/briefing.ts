@@ -21,6 +21,8 @@ import { briefingModel } from './research-settings.ts';
 export const FAIL_COOLDOWN_MS = 10 * 60 * 1000;
 export const QUOTE_WAIT_MS = 8000;
 const FAIL_AT_KEY = 'invest-briefing-fail-at';
+/** 晨会缓存键前缀。和 FAIL_AT_KEY（invest-briefing-fail-at）不会撞。 */
+const BRIEFING_KEY_PREFIX = 'invest-briefing-v2-';
 const STANCES: BriefingStance[] = ['偏多', '中性', '谨慎', '防守'];
 
 export const SYSTEM_PROMPT = [
@@ -160,7 +162,7 @@ function num(n: number | null | undefined): number {
 }
 
 export function cacheKey(date: string): string {
-  return `invest-briefing-v2-${date}`;
+  return `${BRIEFING_KEY_PREFIX}${date}`;
 }
 
 export function allowedCodes(pack: BriefingFactPack): Set<string> {
@@ -460,6 +462,33 @@ export function readCachedBriefing(storage: StorageLike, today: string): DailyBr
 export function writeCachedBriefing(storage: StorageLike, today: string, briefing: DailyBriefing): void {
   storage.setItem(cacheKey(today), JSON.stringify(briefing));
   storage.removeItem(FAIL_AT_KEY);
+  // 垃圾在产生的那一刻清最省事：不用启动时扫一遍，也不漏
+  pruneBriefingCache(storage, today);
+}
+
+/**
+ * 清掉晨会缓存里已经没人再读的旧日期。
+ *
+ * 每天写一条，而读的地方只两个日期：当日（页面加载）与昨日（当 yesterdayStance 给模型）。
+ * 更早的条目就是纯垃圾 —— 一天一条、一年几 MB，顶到 localStorage 配额后 setItem 直接抛错，
+ * 反而把「写缓存」这一步弄坏。
+ *
+ * 只有真实 localStorage 遍历得动（测试替身没有 length/key，直接返回 0，不抛）。
+ * 返回清掉的条数。
+ */
+export function pruneBriefingCache(storage: StorageLike, today: string): number {
+  const ls = storage as StorageLike & { length?: number; key?: (i: number) => string | null };
+  if (typeof ls.length !== 'number' || typeof ls.key !== 'function') return 0;
+  // src/pages/research/index.vue:158 会读昨日那份取 stance，所以昨日不能清
+  const keep = new Set([cacheKey(today), cacheKey(shiftDate(today, -1))]);
+  const doomed: string[] = [];
+  // 先收集再删：边遍历边删会让 length 变化，下标错位
+  for (let i = 0; i < ls.length; i += 1) {
+    const k = ls.key(i);
+    if (k && k.startsWith(BRIEFING_KEY_PREFIX) && !keep.has(k)) doomed.push(k);
+  }
+  for (const k of doomed) storage.removeItem(k);
+  return doomed.length;
 }
 
 export function writeFailAt(storage: StorageLike, now: number): void {

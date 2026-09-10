@@ -9,6 +9,7 @@ import {
   ensureTodayBriefing,
   parseBriefing,
   parseModelContent,
+  pruneBriefingCache,
   readCachedBriefing,
   shouldSkipAutoFetch,
   weatherFromBriefing,
@@ -285,6 +286,38 @@ const storage = {
 writeCachedBriefing(storage, today, ok);
 assert.equal(readCachedBriefing(storage, today)?.headline, ok.headline);
 assert.equal(readCachedBriefing(storage, '2026-09-10'), null);
+
+/* ---------- 存储卫生：只留当日与昨日，更早的晨会缓存是垃圾 ---------- */
+const lsMap = new Map<string, string>();
+const enumerable = {
+  getItem: (k: string) => lsMap.get(k) ?? null,
+  setItem: (k: string, v: string) => {
+    lsMap.set(k, v);
+  },
+  removeItem: (k: string) => {
+    lsMap.delete(k);
+  },
+  // 真 localStorage 靠 length/key 遍历，清理函数就需要这两个
+  get length() {
+    return lsMap.size;
+  },
+  key: (i: number) => [...lsMap.keys()][i] ?? null,
+};
+
+// 前天、昨天各一条，再混一个不相干的键，然后写今天的
+lsMap.set(cacheKey('2026-09-07'), '{}');
+lsMap.set(cacheKey('2026-09-08'), '{}');
+lsMap.set('research-settings-v1', '{"keep":1}');
+writeCachedBriefing(enumerable, today, ok);
+
+assert.ok(lsMap.has(cacheKey(today)), '当日那条要留');
+assert.ok(lsMap.has(cacheKey('2026-09-08')), '昨日要给 yesterdayStance 用，不能清');
+assert.ok(!lsMap.has(cacheKey('2026-09-07')), '前天那条是垃圾，该清');
+assert.ok(lsMap.has('research-settings-v1'), '别的键一根汗毛都不能动');
+
+// 没有 length/key 的替身（也代表隐私模式下残缺的实现）：安静返回 0，不抛
+assert.equal(pruneBriefingCache(storage, today), 0);
+assert.equal(lsMap.has(cacheKey(today)), true, '不能顺手把有用的也清了');
 const cached = await ensureTodayBriefing({
   pack,
   storage,

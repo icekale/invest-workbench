@@ -59,10 +59,10 @@
 - [x] C2 图片懒加载（已在迭代中落地）
 
 ### 第 2 批（1 次会话）
-- [~] B1 fetch 封装重试 —— 只做了一半。`src/utils/http.ts` 已接入 calendar / macro-cn / valuation / sw-valuation / briefs / briefing；但 `src/utils/quote.ts:82` 与 `src/utils/backup.ts:33,71` 仍是裸 `fetch`，无重试
-- [ ] B2 localStorage 清理策略 —— 未做。`runStorageHygiene()` 全库不存在，`main.ts` 未接
+- [x] B1 fetch 封装重试 —— `src/utils/http.ts` 已接入 calendar / macro-cn / valuation / sw-valuation / briefs / briefing / quote / backup。后三处（`fetchQuotes` / `fetchSinaQuotes` / `fetchTradeMonth`）原来是裸 `fetch` + 自拼错误串，现已换成 `fetchOk` 并包 `withRetry`，重试覆盖到读响应体（连接重置常发生在 body 读到一半）。`scripts/check-quotes.ts` 有断言：502 重试一次后拿到数据、404 只试一次
+- [x] B2 localStorage 清理 —— 只清真正无界增长的那一处：新增 `pruneBriefingCache()`，在 `writeCachedBriefing` 写入时清掉当日与昨日以外的晨会缓存。**保留昨日是必须的**：`src/pages/research/index.vue:158` 会读昨日那份取 `yesterdayStance` 喂给模型。**明确不做「流水 5000 条上限」**——流水是持仓与成本结转的唯一来源，截断等于改账，比配额溢出更糟。另两处无需处理：`val-history` 已有 `MAX_POINTS=60` 上限，市场缓存已搬服务端 `/sync/cache`
 - [x] B3 快照周提醒（7 天未导出在驾驶舱提示一次；导出自动记录 lastBackupAt）
-- [~] A4 交易手续费输入 —— 只做了一半。`estimatedFee`（`src/components/TradeDialog.vue:360`）已计入现金校验与加权成本，但模板里不渲染（用户看不到实际要付多少）；无手改入口；估算按 `rateOf` 纯比例，无最低 5 元
+- [x] A4 交易手续费输入 —— 试算面板渲染出手续费，可手改并「恢复自动」；`effectiveFee` 同时驱动现金校验、加权成本与落库（`submitTrade` 显式传 `fee`，否则 store 会按费率重算）。**仍无最低 5 元下限**：`rateOf` 是纯比例，加下限会改掉成交价与成本，且与 `scripts/check-book.ts:57` 的 `tradeFee('stock', 10_000) === 0.8` 冲突，需单独拍板
 - [ ] D2 rebalance 测试用例进 check-book —— 未做。所有 `scripts/check-*.ts` 中没有一处 rebalance
 
 ### 第 3 批（需用户决策后执行）

@@ -1,3 +1,5 @@
+import { fetchOk, withRetry } from './http.ts';
+
 export interface Quote {
   code: string;
   name: string;
@@ -79,8 +81,10 @@ export function normalizeCode(raw: string): string {
 export async function fetchQuotes(codes: string[]): Promise<Map<string, Quote>> {
   const uniq = [...new Set(codes.filter(Boolean))];
   if (!uniq.length) return new Map();
-  const res = await fetch(`/qt/q=${uniq.join(',')}`);
-  if (!res.ok) throw new Error(`quote http ${res.status}`);
-  const text = new TextDecoder('gbk').decode(await res.arrayBuffer());
+  // 重试覆盖到读响应体：连接重置常发生在 body 读到一半时
+  const text = await withRetry(async () => {
+    const res = await fetchOk(`/qt/q=${uniq.join(',')}`);
+    return new TextDecoder('gbk').decode(await res.arrayBuffer());
+  });
   return parseTencentBody(text);
 }

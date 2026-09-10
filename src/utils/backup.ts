@@ -1,3 +1,5 @@
+import { fetchOk, withRetry } from './http.ts';
+
 /** 中证官方 xls，浏览器不解。需要成分/权重时另接解析。 */
 export function csiFile(code: string, kind: 'cons' | 'closeweight' | 'indicator') {
   const c = code.replace(/\D/g, '').padStart(6, '0');
@@ -30,9 +32,10 @@ export function parseSinaBody(text: string) {
 export async function fetchSinaQuotes(codes: string[]) {
   const uniq = [...new Set(codes.filter(Boolean))];
   if (!uniq.length) return new Map();
-  const res = await fetch(`/sina/list=${uniq.join(',')}`);
-  if (!res.ok) throw new Error(`sina http ${res.status}`);
-  const text = new TextDecoder('gbk').decode(await res.arrayBuffer());
+  const text = await withRetry(async () => {
+    const res = await fetchOk(`/sina/list=${uniq.join(',')}`);
+    return new TextDecoder('gbk').decode(await res.arrayBuffer());
+  });
   return parseSinaBody(text);
 }
 
@@ -68,7 +71,10 @@ export function parseSzseMonth(json: unknown, year: number, month: number): Trad
 
 export async function fetchTradeMonth(year: number, month: number): Promise<TradeDay[]> {
   const ym = `${year}-${String(month).padStart(2, '0')}`;
-  const res = await fetch(`/szse/api/report/exchange/onepersistenthour/monthList?month=${ym}`);
-  if (!res.ok) throw new Error(`szse http ${res.status}`);
-  return parseSzseMonth(await res.json(), year, month);
+  // 只重试网络与 5xx；parseSzseMonth 的数据校验错误留在重试之外，不该重来
+  const json = await withRetry(async () => {
+    const res = await fetchOk(`/szse/api/report/exchange/onepersistenthour/monthList?month=${ym}`);
+    return (await res.json()) as unknown;
+  });
+  return parseSzseMonth(json, year, month);
 }
