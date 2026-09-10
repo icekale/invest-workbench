@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- 核心指数估值分位与买卖信号 (Valuation Radar & Signals) -->
-    <t-card class="valuation-radar-card" title="估值分位" subtitle="宽基与行业 PE 分位">
+    <t-card class="valuation-radar-card" title="估值分位" subtitle="偏低/偏高优先，中性默认收起">
       <template #actions>
         <div class="val-header-actions">
           <t-radio-group v-model="valFilter" variant="default-filled" size="small">
@@ -12,8 +12,8 @@
             <t-radio-button value="sector">申万一级</t-radio-button>
           </t-radio-group>
           <t-radio-group v-model="valViewMode" variant="default-filled" size="small" style="margin-left: 8px">
-            <t-radio-button value="cards">卡片视图</t-radio-button>
-            <t-radio-button value="table">详细列表</t-radio-button>
+            <t-radio-button value="rank">分位条</t-radio-button>
+            <t-radio-button value="table">明细</t-radio-button>
           </t-radio-group>
           <t-button
             size="small"
@@ -31,130 +31,72 @@
       <!-- 估值分位图例与状态提示条 -->
       <div class="val-legend-strip">
         <div class="legend-items">
-          <span class="legend-dot green">&lt;40% 偏低</span>
-          <span class="legend-dot yellow">40%~60% 中性</span>
-          <span class="legend-dot red">&gt;60% 偏高</span>
-        </div>
-        <div class="val-summary-text">
-          <span
-            >共跟踪 <strong>{{ valList.length }}</strong> 只 · 偏低 <strong>{{ bargainCount }}</strong> 只</span
+          <button
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'low' }"
+            @click="signalFilter = 'low'"
           >
+            偏低 {{ nLow }}
+          </button>
+          <button
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'mid' }"
+            @click="signalFilter = 'mid'"
+          >
+            中性 {{ nMid }}
+          </button>
+          <button
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'high' }"
+            @click="signalFilter = 'high'"
+          >
+            偏高 {{ nHigh }}
+          </button>
+          <button
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'ends' }"
+            @click="signalFilter = 'ends'"
+          >
+            两端
+          </button>
+          <button
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'all' }"
+            @click="signalFilter = 'all'"
+          >
+            全部
+          </button>
         </div>
+        <div class="val-summary-text">按分位从便宜到贵扫</div>
       </div>
 
-      <!-- 卡片网格视图 -->
-      <div v-if="valViewMode === 'cards'" class="val-cards-grid">
-        <div
-          v-for="item in filteredValuations"
-          :key="item.code"
-          class="val-card"
-          :class="`val-signal-${item.signal.toLowerCase()}`"
-          @click="onCardClick(item)"
-        >
-          <div class="val-card-header">
-            <div class="val-title-box">
-              <strong class="val-name">{{ item.name }}</strong>
-              <span class="val-code">{{ item.code.toUpperCase() }}</span>
-            </div>
-            <span
-              class="val-signal-badge"
-              :style="{ backgroundColor: `${item.color}1a`, color: item.color, borderColor: item.color }"
-            >
-              {{ item.signalLabel }}
-            </span>
-          </div>
-
-          <div class="val-data-row">
-            <div class="val-price-box">
-              <span class="val-price">{{ item.price > 0 ? Number(item.price).toFixed(2) : '—' }}</span>
-              <span v-if="item.price > 0" class="val-change" :class="item.changePct >= 0 ? 'is-up' : 'is-down'">
-                {{
-                  item.changePct >= 0
-                    ? `+${Number(item.changePct).toFixed(2)}%`
-                    : `${Number(item.changePct).toFixed(2)}%`
-                }}
-              </span>
-              <span v-else class="val-change muted-hint">{{ item.count ? `${item.count} 家` : '行情未同步' }}</span>
-            </div>
-            <div class="val-pe-box">
-              <span class="pe-label">PE(TTM)</span>
-              <strong class="pe-val">{{ Number(item.pe).toFixed(2) }}</strong>
-            </div>
-          </div>
-
-          <!-- 分位数刻度条 -->
-          <div class="val-gauge-wrapper">
-            <div class="gauge-meta">
-              <span class="gauge-label">{{ isSwL1(item) ? '历史分位' : '历史分位 (10年)' }}</span>
-              <strong class="gauge-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
-            </div>
-            <div class="gauge-bar-track">
-              <!-- 20% 机会区间 -->
-              <div class="gauge-zone zone-opp" style="width: 20%" title="0-20% 机会低估区" />
-              <!-- 20-40% 偏低区间 -->
-              <div class="gauge-zone zone-low" style="width: 20%" title="20-40% 偏低区" />
-              <!-- 40-60% 中枢区间 -->
-              <div class="gauge-zone zone-mid" style="width: 20%" title="40-60% 合理中枢" />
-              <!-- 60-80% 偏高区间 -->
-              <div class="gauge-zone zone-high" style="width: 20%" title="60-80% 偏高区" />
-              <!-- 80-100% 高估区间 -->
-              <div class="gauge-zone zone-risk" style="width: 20%" title="80-100% 高估危险区" />
-              <!-- 光标指示针 -->
-              <div
-                class="gauge-pointer"
-                :style="{ left: `${Math.max(2, Math.min(98, item.pePercentile))}%`, backgroundColor: item.color }"
+      <div v-if="valViewMode === 'rank'" class="val-rank">
+        <template v-for="group in rankGroups" :key="group.key">
+          <div class="val-rank-hd">{{ group.label }} · {{ group.items.length }}</div>
+          <div v-for="item in group.items" :key="item.code" class="val-rank-row" @click="onCardClick(item)">
+            <strong class="rk-name">{{ item.name }}</strong>
+            <span class="rk-pe">{{ Number(item.pe).toFixed(1) }}</span>
+            <div class="rk-bar" aria-hidden="true">
+              <span
+                class="rk-fill"
+                :style="{ width: `${Math.max(2, Math.min(100, item.pePercentile))}%`, background: item.color }"
               />
             </div>
-            <div class="gauge-axis-labels">
-              <span>0% 极低</span>
-              <span>20% 机会</span>
-              <span>50% 中位</span>
-              <span>80% 警戒</span>
-              <span>100% 极高</span>
-            </div>
+            <strong class="rk-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
+            <span class="rk-tag">{{ item.signalLabel }}</span>
+            <button type="button" class="rk-todo" @click.stop="quickAddValuationTodo(item)">待办</button>
           </div>
-
-          <div class="val-advice-box">
-            <span class="advice-title"
-              >建议配置偏离: <strong>{{ item.allocationTilt }}</strong></span
-            >
-            <p class="advice-text">{{ item.advice }}</p>
-          </div>
-
-          <div class="val-card-footer" @click.stop>
-            <div v-if="item.etfCode" class="etf-anchor" @click="openValChartModal(item)">
-              <span class="etf-tag">标的</span>
-              <span class="etf-name">{{ item.etfName }}</span>
-              <span class="etf-code">({{ item.etfCode }})</span>
-            </div>
-            <span v-else class="etf-name">{{ item.description }}</span>
-            <div class="val-card-btns">
-              <t-button
-                v-if="!isSwL1(item)"
-                size="small"
-                variant="text"
-                theme="primary"
-                @click="openValChartModal(item)"
-              >
-                走势 →
-              </t-button>
-              <t-button size="small" theme="primary" variant="outline" @click="quickAddValuationTodo(item)">
-                + 待办
-              </t-button>
-            </div>
-          </div>
-        </div>
+        </template>
+        <div v-if="!rankGroups.length" class="val-rank-empty">这一侧没有标的</div>
       </div>
 
       <!-- 详细列表视图 -->
-      <t-table
-        v-else
-        :data="filteredValuations"
-        :columns="valTableColumns"
-        row-key="code"
-        size="small"
-        class="val-table"
-      >
+      <t-table v-else :data="shownValuations" :columns="valTableColumns" row-key="code" size="small" class="val-table">
         <template #indexInfo="{ row }">
           <div class="table-idx-cell">
             <strong class="idx-name">{{ row.name }}</strong>
@@ -297,20 +239,24 @@
 <script setup lang="ts">
 import type { ECharts } from 'echarts/core';
 import type { PrimaryTableCol } from 'tdesign-vue-next';
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { loadEcharts } from '@/utils/load-echarts';
 import { isSwL1 } from '@/utils/sw-valuation';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
 import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/valuation';
 
-import { bargainCount, ensureValuations, valuationItems } from './state';
+import { ensureValuations, valuationItems } from './state';
 import { todoDialogVisible, todoForm } from './todo';
 
 const valLoading = ref(false);
 const valList = computed(() => valuationItems.value);
 const valFilter = ref<'all' | IndexCategory>('all');
-const valViewMode = ref<'cards' | 'table'>('cards');
+const valViewMode = ref<'rank' | 'table'>('rank');
+const signalFilter = ref<'ends' | 'all' | 'low' | 'mid' | 'high'>('ends');
+watch(valFilter, (f) => {
+  signalFilter.value = f === 'all' || f === 'sector' ? 'ends' : 'all';
+});
 const selectedValuation = ref<IndexValuationItem | null>(null);
 const valChartModalVisible = ref(false);
 const valChartPeriod = ref<number>(3);
@@ -320,6 +266,40 @@ let valChartInstance: ECharts | null = null;
 const filteredValuations = computed(() => {
   if (valFilter.value === 'all') return valList.value;
   return valList.value.filter((v) => v.category === valFilter.value);
+});
+
+function valBand(p: number): 'low' | 'mid' | 'high' {
+  if (p < 40) return 'low';
+  if (p > 60) return 'high';
+  return 'mid';
+}
+
+const nLow = computed(() => filteredValuations.value.filter((v) => valBand(v.pePercentile) === 'low').length);
+const nMid = computed(() => filteredValuations.value.filter((v) => valBand(v.pePercentile) === 'mid').length);
+const nHigh = computed(() => filteredValuations.value.filter((v) => valBand(v.pePercentile) === 'high').length);
+
+const shownValuations = computed(() => {
+  const list = filteredValuations.value;
+  if (signalFilter.value === 'all') return list;
+  if (signalFilter.value === 'ends') return list.filter((v) => valBand(v.pePercentile) !== 'mid');
+  return list.filter((v) => valBand(v.pePercentile) === signalFilter.value);
+});
+
+const rankGroups = computed(() => {
+  const low = shownValuations.value
+    .filter((v) => valBand(v.pePercentile) === 'low')
+    .sort((a, b) => a.pePercentile - b.pePercentile);
+  const high = shownValuations.value
+    .filter((v) => valBand(v.pePercentile) === 'high')
+    .sort((a, b) => b.pePercentile - a.pePercentile);
+  const mid = shownValuations.value
+    .filter((v) => valBand(v.pePercentile) === 'mid')
+    .sort((a, b) => a.pePercentile - b.pePercentile);
+  const groups: { key: string; label: string; items: IndexValuationItem[] }[] = [];
+  if (low.length) groups.push({ key: 'low', label: '偏低', items: low });
+  if (high.length) groups.push({ key: 'high', label: '偏高', items: high });
+  if (mid.length) groups.push({ key: 'mid', label: '中性', items: mid });
+  return groups;
 });
 
 const valTableColumns: PrimaryTableCol[] = [

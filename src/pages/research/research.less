@@ -932,9 +932,22 @@
       font-size: 12px;
 
       .legend-dot {
-        font-family: var(--td-font-family-mono, monospace);
+        appearance: none;
+        margin: 0;
+        padding: 2px 8px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
         font-variant-numeric: tabular-nums;
         color: var(--td-text-color-secondary);
+
+        &.on {
+          border-color: var(--td-brand-color, #0d706d);
+          color: var(--td-brand-color, #0d706d);
+          background: var(--td-brand-color-light, #e7f3f2);
+        }
       }
     }
 
@@ -947,6 +960,84 @@
         font-family: var(--td-font-family-mono, monospace);
       }
     }
+  }
+
+  .val-rank {
+    border: 1px solid var(--td-border-level-1-color);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .val-rank-hd {
+    padding: 8px 12px 4px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--td-text-color-placeholder);
+    background: var(--td-bg-color-page, #f8fafc);
+  }
+
+  .val-rank-row {
+    display: grid;
+    grid-template-columns: 5.5em 3.6em minmax(72px, 1fr) 3.2em 2.6em 2.8em;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--td-border-level-1-color);
+
+    &:hover {
+      background: var(--td-bg-color-container-hover, #f3f5f7);
+    }
+  }
+
+  .rk-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rk-pe,
+  .rk-pct {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .rk-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--td-bg-color-secondarycontainer, #eef2f6);
+    overflow: hidden;
+  }
+
+  .rk-fill {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+  }
+
+  .rk-tag {
+    font-size: 12px;
+    color: var(--td-text-color-secondary);
+  }
+
+  .rk-todo {
+    appearance: none;
+    margin: 0;
+    padding: 2px 0;
+    border: 1px solid var(--td-border-level-1-color);
+    border-radius: 6px;
+    background: transparent;
+    font-size: 12px;
+    color: var(--td-brand-color, #0d706d);
+    cursor: pointer;
+  }
+
+  .val-rank-empty {
+    padding: 28px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--td-text-color-placeholder);
   }
 
   .val-cards-grid {
