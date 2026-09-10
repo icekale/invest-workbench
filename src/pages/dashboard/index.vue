@@ -6,38 +6,24 @@
           <template #icon><t-icon name="refresh" /></template>
           刷新行情
         </t-button>
-        <t-button variant="outline" size="small" @click="exportSnap">
-          <template #icon><t-icon name="download" /></template>
-          导出快照
-        </t-button>
-        <t-button variant="outline" size="small" @click="triggerImport">
-          <template #icon><t-icon name="upload" /></template>
-          导入快照
-        </t-button>
-        <t-button variant="outline" size="small" @click="ocrOpen = true">
-          <template #icon><t-icon name="scan" /></template>
-          截图导入持仓
-        </t-button>
-        <t-button variant="outline" size="small" @click="router.push('/review')">
-          <template #icon><t-icon name="chart" /></template>
-          记录复盘
-        </t-button>
-        <t-button variant="outline" size="small" @click="router.push('/review')">
-          <template #icon><t-icon name="edit" /></template>
-          持仓台账
-        </t-button>
         <t-button theme="primary" size="small" @click="invest.openTradeModal({ account: tab as AccountId })">
           <template #icon><t-icon name="swap" /></template>
           模拟下单
         </t-button>
-        <t-button variant="outline" size="small" @click="editOpen = true">
-          <template #icon><t-icon name="edit" /></template>
-          手工校准
-        </t-button>
-        <t-button variant="outline" size="small" @click="manageOpen = true">
-          <template #icon><t-icon name="setting" /></template>
-          管理账户
-        </t-button>
+        <t-dropdown trigger="click" :min-column-width="140">
+          <t-button variant="outline" size="small">
+            <template #icon><t-icon name="setting" /></template>
+            账户管理
+            <template #suffix><t-icon name="chevron-down" /></template>
+          </t-button>
+          <template #dropdown>
+            <t-dropdown-item @click="editOpen = true"> <t-icon name="edit" />手工校准持仓 </t-dropdown-item>
+            <t-dropdown-item @click="ocrOpen = true"> <t-icon name="scan" />截图导入持仓 </t-dropdown-item>
+            <t-dropdown-item @click="exportSnap"> <t-icon name="download" />导出快照 </t-dropdown-item>
+            <t-dropdown-item @click="triggerImport"> <t-icon name="upload" />导入快照 </t-dropdown-item>
+            <t-dropdown-item divided @click="manageOpen = true"> <t-icon name="setting" />管理账户 </t-dropdown-item>
+          </template>
+        </t-dropdown>
       </div>
     </div>
     <t-alert v-if="closed" theme="warning" message="今日休市，展示最近交易日收盘价" />
@@ -67,7 +53,6 @@
 <script setup lang="ts">
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
@@ -82,7 +67,6 @@ import ManageAccountsDialog from './ManageAccountsDialog.vue';
 defineOptions({ name: 'DashboardIndex' });
 
 const invest = useInvestStore();
-const router = useRouter();
 // ?tab=<账户 id> 只在它确实是当前活跃账户时才认 —— 否则归档/改名过的旧链接会开出空白页
 const wantedTab = new URLSearchParams(window.location.search).get('tab');
 const tab = ref<AccountId>(
