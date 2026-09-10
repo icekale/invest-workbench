@@ -1,6 +1,6 @@
 # 部署说明
 
-线上地址：https://stock.053727.xyz（Cloudflare 橙云代理）
+线上地址：<https://stock.053727.xyz（Cloudflare> 橙云代理）
 
 ## 目标机器（vnrack / cpa 机）
 
@@ -15,6 +15,7 @@
   - 静态站点：`/opt/invest-workbench/site`（只读挂载 /srv）
   - SPA fallback：`try_files {path} /index.html`
   - 数据源反代（浏览器同源路径 → 上游）：
+
     | 路径 | 上游 | 备注 |
     | --- | --- | --- |
     | `/qt/*` | `https://qt.gtimg.cn` | 腾讯行情，GBK 由前端解码 |
@@ -29,6 +30,7 @@
     | `/csindex/*` | `https://www.csindex.com.cn` | 中证指数 PE 历史真实曲线 |
     | `/legulegu/*` | `https://www.legulegu.com` | 申万一级 PE/分位（乐咕乐股 HTML） |
     | `/sync` | `invest-sync:3003` | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
+
 - Cloudflare：`stock.053727.xyz` **必须保持橙云代理 + zone SSL 模式 Flexible**（2026-09-08 设定，https 全通）。⚠️ 两勿：勿把 SSL 模式改回 Full（回源撞 xray 443 → 525）；勿关橙云加速（灰云后浏览器 https 直连 xray 握手失败 → 无法访问，且灰云久了 Universal SSL 证书会被停用，重开橙云后要等边缘重新部署，期间 https 间歇 403/TLS 错误）。
 
 ## 更新流程
@@ -45,6 +47,20 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 ```
 
 上传是「解包覆盖」，不删旧文件：每次构建的旧哈希产物会一直留在 `site/assets/`（现有 13 份历史 `index-*.js`）。它不影响正确性，只是占地方，累积多了再一次性清。
+
+### `site/ocr/` 是**不带哈希**的静态资源
+
+持仓截图识别（本地 OCR）要三个文件，全在 `public/ocr/`，随构建原样进 `dist/ocr/`：`worker.min.js`、`tesseract-core-simd-lstm.wasm.js`（内嵌 wasm，不用再单独传 .wasm）、`chi_sim.traineddata`（2.4MB，LSTM-only 小模型）。共约 6.2MB，**只在用户点「截图导入持仓 → 开始识别」时才下载**，不进首屏。
+
+三个文件必须同目录、且不能改用 Blob worker：tesseract 在 worker 里拿 `self.location.href` 反推脚本目录去找 core 和语言包，Blob URL 会让这个目录算空、找不到文件。所以 `workerBlobURL: false`，路径由 worker 的 URL 决定。
+
+⚠️ 这三个名字**不带构建时间戳**（不像 `assets/` 那样每次换名），所以正好落进本文开头那个坑：万一在上传完成前就有人访问 `/ocr/worker.min.js`，Caddy 的 `try_files {path} /index.html` 会回 200 + HTML，若再被 CF 按 immutable 缓存，这个文件名就长期吐 HTML，识别全挂。**先上传、后使用**，或上传后按上面「验证必须在**上传之后**」的办法逐个 `cmp` 一次：
+
+```sh
+for f in worker.min.js tesseract-core-simd-lstm.wasm.js chi_sim.traineddata; do
+  curl -s "https://stock.053727.xyz/ocr/$f" -o /tmp/live.bin && cmp "dist/ocr/$f" /tmp/live.bin && echo "$f ok"
+done
+```
 
 ### 验证必须在**上传之后**
 
@@ -69,6 +85,7 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/s
 ```
 
   哈希产物（`/assets/*`）不受影响，仍然逐字节比。另外要确认线上 HTML 指向的是新产物名（`rg -o 'index-[A-Za-z0-9_]+-b[A-Za-z0-9]+\.js' /tmp/live.html`）—— 字节比对查不出引用是不是更新了。
+
 - 产物名带构建时间戳（`vite.config.ts` 的 `BUILD_STAMP`），每次构建换一批 URL，这类污染就碰不到真文件；
 - 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
 
@@ -94,8 +111,8 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 | 查询 | 1.1.1.1 / 8.8.8.8 | 223.5.5.5 |
 | --- | --- | --- |
-| `api.x.ai` | `104.18.18.80`（Cloudflare）| `31.13.95.34`、`2a03:2880:f12c:183:face:b00c`（Facebook 段）|
-| `api.openai.com` | `172.66.0.243`、`162.159.140.245`（Cloudflare）| `2a03:2880:...:face:b00c`、`104.244.46.185` |
+| `api.x.ai` | `104.18.18.80`（Cloudflare） | `31.13.95.34`、`2a03:2880:f12c:183:face:b00c`（Facebook 段） |
+| `api.openai.com` | `172.66.0.243`、`162.159.140.245`（Cloudflare） | `2a03:2880:...:face:b00c`、`104.244.46.185` |
 
 `face:b00c` 是 Facebook 的招牌段，见到就是被投毒。这会直接打挂 `cli-proxy-api`（它无上游代理，纯靠 DNS 直连 `api.x.ai` / `api.openai.com`）。
 
@@ -107,9 +124,9 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 | 上游 | 1.1.1.1 | 8.8.8.8 |
 | --- | --- | --- |
-| `api-one-wscn.awtmt.com`（`/wscn`）| **3174ms**（超时！）| 522ms（最差 1112ms）|
+| `api-one-wscn.awtmt.com`（`/wscn`） | **3174ms**（超时！） | 522ms（最差 1112ms） |
 | `www.csindex.com.cn` | 663ms | **129ms** |
-| `flash-api.xuangubao.cn` | 439ms（最差 689ms）| 343ms |
+| `flash-api.xuangubao.cn` | 439ms（最差 689ms） | 343ms |
 | 其余 7 个上游 | 108–300ms | 108–362ms |
 
 8.8.8.8 是唯一同时满足「境外答案干净」+「所有中文上游 ≤1112ms（离 3s 有 3 倍余量）」的选择，所以**无需改 Caddyfile、无需给容器单独配 DNS**。

@@ -14,6 +14,10 @@
           <template #icon><t-icon name="upload" /></template>
           导入快照
         </t-button>
+        <t-button variant="outline" size="small" @click="ocrOpen = true">
+          <template #icon><t-icon name="scan" /></template>
+          截图导入持仓
+        </t-button>
         <t-button variant="outline" size="small" @click="router.push('/review')">
           <template #icon><t-icon name="chart" /></template>
           记录复盘
@@ -49,6 +53,7 @@
       </t-tab-panel>
     </t-tabs>
     <holdings-editor v-model:visible="editOpen" />
+    <import-holdings-ocr v-model:visible="ocrOpen" />
     <manage-accounts-dialog v-model:visible="manageOpen" />
     <input
       ref="fileInputRef"
@@ -71,6 +76,7 @@ import { bindCloudSync } from '@/utils/cloud-sync';
 
 import AccountPanel from './AccountPanel.vue';
 import HoldingsEditor from './HoldingsEditor.vue';
+import ImportHoldingsOcr from './ImportHoldingsOcr.vue';
 import ManageAccountsDialog from './ManageAccountsDialog.vue';
 
 defineOptions({ name: 'DashboardIndex' });
@@ -93,6 +99,7 @@ watch(
   },
 );
 const editOpen = ref(false);
+const ocrOpen = ref(false);
 const manageOpen = ref(false);
 const closed = ref(false);
 let timer = 0;

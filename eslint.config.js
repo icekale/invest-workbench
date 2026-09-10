@@ -132,6 +132,11 @@ export default antfu(
       },
     },
     globalIgnores([
+      // public/ 是原样搬进 dist 的资源目录，既不参与构建也不是应用代码，lint 它没有意义。
+      // 但 `eslint --ext .js ./` 会连它一起扫：截图识别用的 tesseract-core 是 3.95MB 的
+      // 压缩产物（内含 3.8MB base64），解析它会让 eslint 直接 OOM（实测 heap 冲到 4GB 崩掉），
+      // 连带 pre-commit 的 lint-staged 一起挂、提交被卡住。
+      'public',
       '**/snapshot*',
       '**/dist',
       '**/lib',

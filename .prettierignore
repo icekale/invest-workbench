@@ -1,0 +1,11 @@
+# prettier 只管我们自己写的代码。
+#
+# public/ 下的东西是**原样搬运**进 dist 的资源，不是源码：截图识别用的
+# tesseract-core 是 3.95MB 的压缩产物（内含 3.8MB base64）。lint-staged 会把
+# 暂存的 public/ocr/*.js 显式传给 prettier，格式化它既无意义又危险 ——
+# 既可能改坏 vendored 产物，也要花很久解析。
+public/
+
+# 构建产物
+dist/
+_site/
