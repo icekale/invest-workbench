@@ -148,9 +148,7 @@
                       </div>
                       <div class="m-symbol-sub">
                         <t-tag v-if="row.tag" size="small" variant="light" class="m-tag">{{ row.tag }}</t-tag>
-                        <span class="m-sub-qty">
-                          {{ row.quantity.toLocaleString() }} {{ kind === 'etf' ? '份' : '股' }}
-                        </span>
+                        <span class="m-sub-qty"> {{ row.quantity.toLocaleString() }} {{ unit }} </span>
                       </div>
                     </div>
 
@@ -318,6 +316,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
+import { unitOf } from '@/utils/accounts';
 import { allocation, healthNote, healthScore, risks, shortCode, summarize } from '@/utils/book';
 import { navCurveFor } from '@/utils/nav-history';
 import type { SwClass } from '@/utils/sw-industry';
@@ -375,6 +374,7 @@ const pnlColor = (n: number | null) => {
 const account = computed(() => props.account);
 // 单位、行业口径这些行为看性质，不看账户叫什么 —— 见 utils/accounts.ts
 const kind = computed(() => invest.accountKind(account.value));
+const unit = computed(() => unitOf(invest.accounts, account.value));
 /** 真净值曲线：首个记录日 = 1。不足两个点时为 null，界面如实说还在攒。 */
 const curve = computed(() => navCurveFor(invest.navSnapshots, account.value));
 const navCaption = computed(() =>
@@ -398,7 +398,8 @@ async function loadSw() {
   }
 }
 const alloc = computed(() => {
-  if (kind.value === 'etf') return allocation(props.rows, props.cash, targets.value);
+  // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
+  if (kind.value !== 'stock') return allocation(props.rows, props.cash, targets.value);
   if (drillL1.value) {
     const sub = props.rows.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
     return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));

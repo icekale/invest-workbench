@@ -21,6 +21,14 @@ import { seriesToIndicator } from '../src/utils/macro-cn.ts';
 
 const today = '2026-09-09';
 
+/*
+ * 事件正文（抓来的 URL）已经不在 `MacroEvent` 里了，这里还是照旧塞一个进去：
+ * 要守的行为是「事实包不能把正文带进提示词」，不是「这个字段还在类型里」。
+ * 用具名常量而不用字面量，是因为展开写法绕过多余属性检查 —— 这正是想要的：
+ * 故意给一个类型上不该有的字段，看下游会不会原样传给模型。
+ */
+const LEAKY_BODY = { body: 'http://news.example/secret-body-should-not-leak' };
+
 const input: FactPackInput = {
   date: today,
   weather: {
@@ -30,7 +38,7 @@ const input: FactPackInput = {
     suggestedEtfPos: '75% ~ 85%',
     updatedAt: today,
   },
-  indicators: [{ name: 'PMI', value: '49.4', status: '弱势筑底', hint: '', id: 'pmi', theme: 'warning' }],
+  indicators: [{ name: 'PMI', value: '49.4', status: '弱势筑底' }],
   events: [
     {
       id: 'e-far',
@@ -40,7 +48,7 @@ const input: FactPackInput = {
       level: '重大',
       impact: '影响',
       beneficiaries: [],
-      body: 'http://news.example/secret-body-should-not-leak',
+      ...LEAKY_BODY,
     },
     {
       id: 'e-soft',
@@ -50,7 +58,7 @@ const input: FactPackInput = {
       level: '关注',
       impact: '影响',
       beneficiaries: [],
-      body: 'http://news.example/secret-body-should-not-leak',
+      ...LEAKY_BODY,
     },
     {
       id: 'e-big',
@@ -60,7 +68,7 @@ const input: FactPackInput = {
       level: '重大',
       impact: '影响',
       beneficiaries: [],
-      body: 'http://news.example/secret-body-should-not-leak',
+      ...LEAKY_BODY,
     },
     ...Array.from({ length: 10 }, (_, i) => ({
       id: `e${i}`,
@@ -70,7 +78,7 @@ const input: FactPackInput = {
       level: '关注' as const,
       impact: '影响',
       beneficiaries: [] as string[],
-      body: 'http://news.example/secret-body-should-not-leak',
+      ...LEAKY_BODY,
     })),
   ],
   valuation: [

@@ -338,6 +338,7 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
+import type { AccountKind } from '@/types/invest';
 import type { AfreRow } from '@/utils/afre';
 import { afreToSeries, fetchAfre } from '@/utils/afre';
 import { loadEcharts } from '@/utils/load-echarts';
@@ -351,10 +352,19 @@ type Stance = '偏多' | '中性' | '谨慎' | '防守';
 
 const invest = useInvestStore();
 
-function mvOf(account: 'stock' | 'etf') {
-  return invest.enriched
-    .filter((h) => h.account === account)
-    .reduce((s, h) => s + (h.marketValue ?? h.cost * h.quantity), 0);
+/**
+ * 某类资产的总市值／可用现金。按性质汇总，不按某个桶的 id ——
+ * 「我的股票仓位」问的是种类，不是那个叫 `stock` 的账户：
+ * 自建账户（第二个股票桶、公募基金桶）不写在这里会被静默漏掉。
+ */
+function mvOfKind(kind: AccountKind) {
+  return invest.rowsByKind(kind).reduce((s, h) => s + (h.marketValue ?? h.cost * h.quantity), 0);
+}
+
+function cashOfKind(kind: AccountKind) {
+  return invest.accounts
+    .filter((a) => a.kind === kind)
+    .reduce((s, a) => s + (Number.isFinite(invest.cash[a.id]) ? invest.cash[a.id] : 0), 0);
 }
 
 function gapLabel(actual: number | null, target: string | undefined) {
@@ -364,8 +374,12 @@ function gapLabel(actual: number | null, target: string | undefined) {
   return '';
 }
 
-const stockActual = computed(() => accountPos(mvOf('stock'), invest.cash.stock));
-const etfActual = computed(() => accountPos(mvOf('etf'), invest.cash.etf));
+/*
+ * 仓位立场只有股票/ETF 两档，因为天气里只有这两个建议值。
+ * 公募基金账户（`kind: 'fund'`）自然不进这两档 —— 它是另一条线，不该被算成股票或 ETF 仓位。
+ */
+const stockActual = computed(() => accountPos(mvOfKind('stock'), cashOfKind('stock')));
+const etfActual = computed(() => accountPos(mvOfKind('etf'), cashOfKind('etf')));
 const stockGap = computed(() => gapLabel(stockActual.value, invest.macroWeather?.suggestedStockPos));
 const etfGap = computed(() => gapLabel(etfActual.value, invest.macroWeather?.suggestedEtfPos));
 const macroLoading = ref(false);

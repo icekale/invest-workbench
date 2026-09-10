@@ -330,7 +330,8 @@ const bookTotal = computed(() => {
   return mv + Math.max(0, activeCash.value);
 });
 const allocItems = computed(() => {
-  if (invest.accountKind(accountView.value) === 'etf') return allocation(activeRows.value, activeCash.value);
+  // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
+  if (invest.accountKind(accountView.value) !== 'stock') return allocation(activeRows.value, activeCash.value);
   if (drillL1.value) {
     const sub = activeRows.value.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
     return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));

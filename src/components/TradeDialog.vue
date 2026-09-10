@@ -99,7 +99,7 @@
           <!-- 当前标的持仓底线提示 -->
           <div v-if="existingHolding" class="holding-tip-bar">
             <span>当前已持有：</span>
-            <strong>{{ existingHolding.quantity.toLocaleString('zh-CN') }} 股/份</strong>
+            <strong>{{ existingHolding.quantity.toLocaleString('zh-CN') }} {{ unit }}</strong>
             <span class="tip-sub">（成本 ¥{{ existingHolding.cost.toFixed(3) }}）</span>
           </div>
           <div v-else-if="form.side === 'sell' && form.code" class="holding-tip-bar warning">
@@ -115,8 +115,14 @@
             </t-form-item>
           </t-col>
           <t-col :span="6">
-            <t-form-item label="委托数量 (股/份)">
-              <t-input-number v-model="form.quantity" :min="1" :step="100" :decimal-places="0" style="width: 100%" />
+            <t-form-item :label="`委托数量 (${unit})`">
+              <t-input-number
+                v-model="form.quantity"
+                :min="isOtc ? 0.01 : 1"
+                :step="isOtc ? 100 : 100"
+                :decimal-places="isOtc ? 2 : 0"
+                style="width: 100%"
+              />
             </t-form-item>
           </t-col>
         </t-row>
@@ -125,10 +131,10 @@
         <div class="pos-ratio-bar">
           <div class="ratio-label">
             <span v-if="form.side === 'buy'">
-              快捷买入：最多可买 <strong>{{ maxBuyQuantity.toLocaleString('zh-CN') }}</strong> 股/份
+              快捷买入：最多可买 <strong>{{ maxBuyQuantity.toLocaleString('zh-CN') }}</strong> {{ unit }}
             </span>
             <span v-else>
-              快捷卖出：可卖数量 <strong>{{ maxSellQuantity.toLocaleString('zh-CN') }}</strong> 股/份
+              快捷卖出：可卖数量 <strong>{{ maxSellQuantity.toLocaleString('zh-CN') }}</strong> {{ unit }}
             </span>
           </div>
           <div class="ratio-buttons">
@@ -181,7 +187,7 @@
             <div class="grid-item">
               <span class="g-lbl">成交后持仓变动</span>
               <span class="g-val">
-                {{ estimatedPostHoldingQty.toLocaleString('zh-CN') }} 股/份
+                {{ estimatedPostHoldingQty.toLocaleString('zh-CN') }} {{ unit }}
                 <small v-if="form.side === 'buy' && form.quantity > 0 && estimatedNewCost">
                   (均价 ¥{{ estimatedNewCost.toFixed(3) }})
                 </small>
@@ -218,9 +224,9 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
-import { MIN_COMMISSION, rateOf } from '@/utils/accounts';
+import { isOtcFund, MIN_COMMISSION, rateOf, tradesInLots, unitOf } from '@/utils/accounts';
 import { maxBuyQuantity as maxBuyable, tradeFee } from '@/utils/ledger';
-import { fetchQuotes, normalizeCode } from '@/utils/quote';
+import { fetchAnyQuotes, normalizeForAccount } from '@/utils/quote';
 
 defineOptions({ name: 'TradeDialog' });
 
@@ -295,6 +301,11 @@ function onAccountChange() {
 
 const availableCash = computed(() => invest.cash[form.account] || 0);
 
+/* 场外基金：按份额申购、收申购费。这几个值决定了界面上是「整手 100 股」还是「份额可小数」。 */
+const isOtc = computed(() => isOtcFund(invest.accounts, form.account));
+const unit = computed(() => unitOf(invest.accounts, form.account));
+const inLots = computed(() => tradesInLots(invest.accounts, form.account));
+
 // 当前账户持仓选项
 const currentAccountHoldingOptions = computed(() =>
   invest.holdings
@@ -308,10 +319,12 @@ const currentAccountHoldingOptions = computed(() =>
 // 查找当前账户中是否持有选中的标的
 const existingHolding = computed(() => {
   if (!form.code) return null;
-  const target = normalizeCode(form.code);
+  const target = normalizeForAccount(invest.accounts, form.account, form.code);
   return (
     invest.holdings.find(
-      (h) => h.account === form.account && (h.code === target || normalizeCode(h.code) === target),
+      (h) =>
+        h.account === form.account &&
+        (h.code === target || normalizeForAccount(invest.accounts, form.account, h.code) === target),
     ) || null
   );
 });
@@ -342,11 +355,11 @@ watch(
 );
 
 async function fetchQuoteForCode() {
-  const norm = normalizeCode(form.code);
+  const norm = normalizeForAccount(invest.accounts, form.account, form.code);
   if (!norm || norm.length < 6) return;
   quoteLoading.value = true;
   try {
-    const qMap = await fetchQuotes([norm]);
+    const qMap = await fetchAnyQuotes([norm]);
     const q = qMap.get(norm.toLowerCase());
     if (q) {
       quoteData.name = q.name;
@@ -397,8 +410,9 @@ const feeRate = computed(() => rateOf(invest.accounts, form.account));
 const maxBuyQuantity = computed(() => maxBuyable(form.account, form.price, availableCash.value, invest.accounts));
 
 // 费率算出来不足最低佣金时实际按下限收 —— 标出来，不然看着像试算面板算错了
+// 场外基金没有最低佣金（它收的是申购费），所以这条提示对它恒为假
 const feeAtFloor = computed(
-  () => !feeOverridden.value && feeRate.value > 0 && tradeAmount.value * feeRate.value < MIN_COMMISSION,
+  () => !feeOverridden.value && !isOtc.value && feeRate.value > 0 && tradeAmount.value * feeRate.value < MIN_COMMISSION,
 );
 
 // 最大可卖股数
@@ -435,7 +449,9 @@ function applyRatio(ratio: number) {
     const qty = maxBuyable(form.account, form.price, targetAmount, invest.accounts);
     if (qty <= 0) {
       // 旧代码在这里强行报 100 股，结果交给现金校验去打回；说清楚买不起更好
-      MessagePlugin.warning('按这个比例买不起一手（已含最低佣金）');
+      MessagePlugin.warning(
+        isOtc.value ? '按这个比例买不起一份（已含申购费）' : '按这个比例买不起一手（已含最低佣金）',
+      );
       return;
     }
     form.quantity = qty;
@@ -449,7 +465,13 @@ function applyRatio(ratio: number) {
       form.quantity = total;
     } else {
       const raw = Math.round(total * ratio);
-      form.quantity = Math.min(total, Math.max(100, Math.floor(raw / 100) * 100 || raw));
+      /*
+       * 整手只对场内成立。场外的份额是小数，套上 `Math.max(100, …)` 会一下卖出 100 份 ——
+       * 比用户按的 1/4 仓多得多。场外直接取比例值，两位小数。
+       */
+      form.quantity = inLots.value
+        ? Math.min(total, Math.max(100, Math.floor(raw / 100) * 100 || raw))
+        : Math.min(total, Math.max(0.01, Math.floor(raw * 100) / 100));
     }
   }
 }

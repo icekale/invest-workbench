@@ -102,7 +102,7 @@ export function slimHolding(h: Record<string, unknown>): HoldingSlim {
 export interface BookSnap {
   updatedAt?: number;
   holdings?: HoldingSlim[] | Record<string, unknown>[];
-  cash?: { stock?: number; etf?: number };
+  cash?: Record<string, number>;
   transactions?: { id: string; [k: string]: unknown }[];
   todos?: { id: string; [k: string]: unknown }[];
   theses?: { id: string; [k: string]: unknown }[];
@@ -255,10 +255,16 @@ export function threeWaySnapshot(
     if (v !== undefined) prefs[k] = v;
   }
 
-  const cash = {
-    stock: Number(mergeScalar(b.cash?.stock, l.cash?.stock, r.cash?.stock) ?? 0),
-    etf: Number(mergeScalar(b.cash?.etf, l.cash?.etf, r.cash?.etf) ?? 0),
-  };
+  /*
+   * 现金按「三边出现过的键」并集合并，不能写死 stock/etf。
+   * 账户是自定义资金桶：写死的话，自建账户（含公募基金账户）的现金
+   * 在 三方合并 里会被静默丢掉 —— 同步冲突一次就少一笔钱。与上面 prefs 同一个写法。
+   */
+  const cashKeys = new Set([...Object.keys(b.cash || {}), ...Object.keys(l.cash || {}), ...Object.keys(r.cash || {})]);
+  const cash: Record<string, number> = {};
+  for (const k of cashKeys) {
+    cash[k] = Number(mergeScalar(b.cash?.[k], l.cash?.[k], r.cash?.[k]) ?? 0);
+  }
 
   const merged: BookSnap = {
     holdings,
@@ -299,7 +305,9 @@ const LIST_KEY: Record<string, (row: Record<string, unknown>) => string> = {
 };
 
 export function applyConflictPicks(merged: BookSnap, conflicts: MergeConflict[], pick: 'local' | 'remote'): BookSnap {
-  const next = JSON.parse(JSON.stringify(merged)) as BookSnap;
+  // structuredClone 而不是 JSON 走一圈：合并结果是我们自己拼的纯数据，本来就没什么要转义的，
+  // 而且不依赖「undefined 会被丢掉」这种副作用
+  const next = structuredClone(merged);
   const bag = next as Record<string, unknown>;
   for (const c of conflicts) {
     const chosen = pick === 'remote' ? c.remote : c.local;

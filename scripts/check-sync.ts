@@ -62,6 +62,22 @@ assert.equal(mergeScalar(1, 1, 3), 3);
   assert.equal(conflicts.length, 0);
 }
 
+/*
+ * 现金合并按三边的键并集，不能只认 stock/etf。
+ * 账户是自定义资金桶：写死两个键的话，自建账户（含公募基金账户）的现金
+ * 在同步冲突合并里会被静默丢掉 —— 表现是“同步一次就少一笔钱”，且不报任何错。
+ */
+{
+  const { merged } = threeWaySnapshot(
+    { ...emptySnap(), cash: { stock: 1, etf: 1, acct_3: 100 } },
+    { ...emptySnap(), cash: { stock: 1, etf: 1, acct_3: 200 } },
+    { ...emptySnap(), cash: { stock: 1, etf: 1, acct_3: 100, of_acct: 66 } },
+  );
+  assert.equal(merged.cash?.acct_3, 200, '自建账户现金要进合并结果');
+  assert.equal(merged.cash?.of_acct, 66, '只在一边出现的账户也不能丢');
+  assert.equal(merged.cash?.stock, 1, '写死过的老键照旧');
+}
+
 {
   const { merged, conflicts } = threeWaySnapshot(
     { ...emptySnap(), holdings: [a] },

@@ -49,7 +49,7 @@ import { fetchLiveIndustryCatalysts } from '@/utils/industry';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import { normalizeNavSnapshots } from '@/utils/nav-history';
 import type { Quote } from '@/utils/quote';
-import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
+import { calcHolding, fetchOtcQuotes, fetchQuotes, normalizeForAccount } from '@/utils/quote';
 import { defaultScenario } from '@/utils/scenario';
 
 function persist() {
@@ -270,7 +270,7 @@ export const useInvestStore = defineStore('invest', {
       persist();
     },
     async refreshQuotes() {
-      const extra = this.todos.map((t) => normalizeCode(t.code)).filter(Boolean);
+      const extra = this.todos.map((t) => normalizeForAccount(this.accounts, t.account, t.code)).filter(Boolean);
       const missing = extra.filter((c) => !this.quotes[c]);
       if (this.quoteAt && Date.now() - this.quoteAt < 15_000 && Object.keys(this.quotes).length && !missing.length) {
         return;
@@ -281,6 +281,14 @@ export const useInvestStore = defineStore('invest', {
       try {
         let map = await fetchQuotes(codes).catch(() => new Map<string, Quote>());
         if (!map.size) map = await fetchSinaQuotes(codes);
+        /*
+         * 场外基金走另一条链（东财净值），拼在同一张表里。
+         * `of` 码已被上面两个行情函数滤掉，所以两边不会撞。
+         * 只持场外基金时整张表就靠这一块 —— 少了它 `map.size` 会是 0，
+         * 页面报「行情暂不可用」且净值快照不再入库。
+         */
+        const otc = await fetchOtcQuotes(codes).catch(() => new Map<string, Quote>());
+        otc.forEach((q, k) => map.set(k, q));
         const next: Record<string, Quote> = {};
         map.forEach((q, k) => {
           next[k] = q;
@@ -343,7 +351,8 @@ export const useInvestStore = defineStore('invest', {
     },
     executeTrade(params: ExecuteTradeParams): ExecuteTradeResult {
       const { account, side, name, price, quantity, todoId } = params;
-      const code = normalizeCode(params.code);
+      // 代码归一化跟账户走：同一串 000001 在场内是平安银行、在场外是华夏成长
+      const code = normalizeForAccount(this.accounts, account, params.code);
       const date = params.date || todayCN();
       const note = params.note?.trim() || '';
 
@@ -368,7 +377,8 @@ export const useInvestStore = defineStore('invest', {
 
         // 2. 更新或新建持仓 (加权移动平均成本，手续费计入成本)
         const idx = this.holdings.findIndex(
-          (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
+          (h) =>
+            h.account === account && (h.code === code || normalizeForAccount(this.accounts, account, h.code) === code),
         );
         const holdingsCopy = this.holdings.slice();
 
@@ -400,7 +410,8 @@ export const useInvestStore = defineStore('invest', {
       } else {
         // sell
         const idx = this.holdings.findIndex(
-          (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
+          (h) =>
+            h.account === account && (h.code === code || normalizeForAccount(this.accounts, account, h.code) === code),
         );
         if (idx < 0) {
           throw new Error(`无法卖出：「${nameOf(this.accounts, account)}」未持有【${name || code}】`);

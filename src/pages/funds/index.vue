@@ -296,9 +296,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import type { AccountId, Opportunity } from '@/types/invest';
-import { isFund } from '@/utils/accounts';
+import { kindOf } from '@/utils/accounts';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
+import { ofCode } from '@/utils/quote';
 
 import FundsNav from './FundsNav.vue';
 
@@ -471,13 +472,23 @@ function deleteOpp(id: string) {
 
 function convertOppToTodo(o: Opportunity) {
   const match = o.name.match(/\d{6}/);
-  const code = match ? match[0] : isFund(invest.accounts, o.account) ? '510300' : '600519';
+  const kind = kindOf(invest.accounts, o.account);
+  /*
+   * 机会池里的名字常常不带代码，得给个占位。占位物必须跟账户性质对得上：
+   * 场外基金账户里填一只场内 ETF（510300）会被行情接口当成市价，账面就静默错了。
+   * 场外那档用 of000001（华夏成长）—— 一只真存在的场外基金，能查到净值，用户改掉就是。
+   */
+  const fallback = kind === 'stock' ? '600519' : kind === 'etf' ? '510300' : 'of000001';
+  // 名字里有代码时同样要过关：场外账户一律套 of 前缀，否则 510300 会被当市价读
+  const raw = match ? match[0] : fallback;
+  const code = kind === 'fund' ? ofCode(raw) : raw;
   invest.addTodo({
     account: o.account,
     code,
     name: o.name,
     side: 'buy',
-    quantity: isFund(invest.accounts, o.account) ? 1000 : 100,
+    // 场外按份额申购，一手 100 份那套不适用
+    quantity: kind === 'etf' || kind === 'fund' ? 1000 : 100,
     reason: `[机会池导入] ${o.thesis}`,
   });
   MessagePlugin.success(`已将「${o.name}」转为买入待办`);

@@ -2,17 +2,23 @@
 export type AccountId = string;
 
 /**
- * 账户性质。计价单位、默认佣金率、取数口径都看它 —— 不看账户叫什么名字。
+ * 账户性质。计价单位、默认费率、取数口径都看它 —— 不看账户叫什么名字。
  * 所以「打新账户(kind: 'stock')」自动拿到「股」与万 0.8。
+ *
+ * 三者是三种**不同的交易模型**，不是三个名字：
+ * - `stock` / `etf`：按行情成交，整手 100，券商**佣金**（不足 5 元按 5 元）。
+ * - `fund`：场外基金。按**净值**一天一个价，不整手、份额可小数，收的是**申购/赎回费**，没有最低 5 元。
+ *   它的代码必须带 `of` 前缀（`of000001`）—— `000001` 在行情里是平安银行、在场外是华夏成长，
+ *   两者价格相差一个数量级，不加前缀会静默按错的价格估值。见 `src/utils/quote.ts` 的 `ofCode`。
  */
-export type AccountKind = 'stock' | 'etf';
+export type AccountKind = 'stock' | 'etf' | 'fund';
 
 /** 一个资金桶：独立现金、持仓、费率、净值曲线。 */
 export interface Account {
   id: AccountId;
   name: string;
   kind: AccountKind;
-  /** 佣金率。缺省按 kind 取默认值（股票万 0.8 / ETF 万 0.5） */
+  /** 费率。缺省按 kind 取默认值（股票万 0.8 / ETF 万 0.5 / 场外基金申购 0.15%） */
   feeRate?: number;
   /** 软删：保留持仓与账本历史，界面默认不列出 */
   archived?: boolean;

@@ -7,7 +7,8 @@
       <t-form-item label="类型">
         <t-radio-group v-model="form.kind" variant="default-filled" :disabled="!!editingId">
           <t-radio-button value="stock">股票</t-radio-button>
-          <t-radio-button value="etf">基金</t-radio-button>
+          <t-radio-button value="etf">ETF</t-radio-button>
+          <t-radio-button value="fund">公募基金</t-radio-button>
         </t-radio-group>
       </t-form-item>
       <t-form-item label="费率">
@@ -29,14 +30,13 @@
       </t-form-item>
     </t-form>
     <p class="acct-hint">
-      类型建好后不能改 —— 它决定持仓单位（股/份）与默认费率。要换类型就新建一个账户，再把持仓挪过去。
+      类型建好后不能改 —— 它决定三件事：报价来源（行情/净值）、能不能小数、有没有 5 元最低佣金。 股票与 ETF 看行情、整手
+      100；公募基金看每日净值、份额可小数、收申购费。要换类型就新建一个账户，再把持仓挪过去。
     </p>
 
     <t-table :data="rows" :columns="cols" row-key="id" size="small" style="margin-top: 12px">
       <template #kind="{ row }">
-        <t-tag size="small" variant="light" :theme="row.kind === 'etf' ? 'primary' : 'default'">
-          {{ row.kind === 'etf' ? '基金' : '股票' }}
-        </t-tag>
+        <t-tag size="small" variant="light" :theme="kindTheme(row.kind)">{{ kindLabel(row.kind) }}</t-tag>
       </template>
       <template #fee="{ row }">{{ (row.feeRate * 100).toFixed(3) }}%</template>
       <template #cash="{ row }">{{ row.cash.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) }}</template>
@@ -102,6 +102,22 @@ function resetForm() {
   form.name = '';
   form.kind = 'stock';
   form.feePct = undefined;
+}
+
+/* 三种性质三种口径：股票看行情整手、ETF 也是行情但有印花税差异、公募基金看每日净值。 */
+const KIND_LABEL: Record<AccountKind, string> = { stock: '股票', etf: 'ETF', fund: '公募基金' };
+const KIND_THEME: Record<AccountKind, 'default' | 'primary' | 'success'> = {
+  stock: 'default',
+  etf: 'primary',
+  fund: 'success',
+};
+
+function kindLabel(kind: AccountKind): string {
+  return KIND_LABEL[kind] ?? kind;
+}
+
+function kindTheme(kind: AccountKind) {
+  return KIND_THEME[kind] ?? 'default';
 }
 
 function edit(row: (typeof rows.value)[number]) {

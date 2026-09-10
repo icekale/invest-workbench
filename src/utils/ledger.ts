@@ -15,7 +15,7 @@ import type {
 import { matchAccount } from '@/utils/accounts';
 import type { Quote } from '@/utils/quote';
 
-import { feeOf, minCommissionOf, rateOf } from './accounts.ts';
+import { feeOf, minCommissionOf, rateOf, tradesInLots } from './accounts.ts';
 import { formatCN, todayCN } from './date.ts';
 
 /**
@@ -43,7 +43,7 @@ export function tradeFee(account: AccountId, amount: number, accounts: Account[]
 }
 
 /**
- * 给定账户、单价与可用现金，最多能买多少（按 100 股整手向下取整）。
+ * 给定账户、单价与可用现金，最多能买多少。
  *
  * 不能简化成 `cash / (price * (1 + rate))`：佣金有最低 5 元，现金偏少时比例式会
  * 多报一手，然后被成交校验（`src/store/modules/invest.ts:357` 的 `amount + fee > currentCash`）打回 ——
@@ -54,14 +54,19 @@ export function tradeFee(account: AccountId, amount: number, accounts: Account[]
  * 复核走 `tradeFee`（含 `toFixed(2)`）而不是 `feeOf`，这样和真正落库时算的是同一个数。
  *
  * 复核用严格 `<=`，不放过浮点误差：宁可少报一手，不能报出成交时会被拒的数量。
+ *
+ * 整手只对场内成立（`tradesInLots`）：场外基金按金额申购，份额本身就是小数，
+ * 套上 100 份整手会把 1000 元的申购卡成 0 份（净值 1.26 才 793 份，不到一手）。
  */
 export function maxBuyQuantity(account: AccountId, price: number, cash: number, accounts: Account[] = []): number {
   if (!Number.isFinite(price) || !Number.isFinite(cash) || price <= 0 || cash <= 0) return 0;
   const rate = rateOf(accounts, account);
+  const lots = tradesInLots(accounts, account);
   let best = 0;
   for (const budget of [cash / (1 + rate), cash - minCommissionOf(accounts, account)]) {
-    const lots = Math.floor(Math.floor(budget / price) / 100) * 100;
-    if (lots > best && price * lots + tradeFee(account, price * lots, accounts) <= cash) best = lots;
+    // 场外留两位小数就够（与界面上份额的显示精度一致），不取整手
+    const qty = lots ? Math.floor(Math.floor(budget / price) / 100) * 100 : Math.floor((budget / price) * 100) / 100;
+    if (qty > best && price * qty + tradeFee(account, price * qty, accounts) <= cash) best = qty;
   }
   return best;
 }
