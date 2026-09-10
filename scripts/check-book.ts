@@ -54,8 +54,10 @@ assert.equal(shortCode('sh510300'), '510300');
 assert.equal(scenarioTarget(87.191027496382, -0.05, 12), 993.98);
 assert.equal(scenarioTarget(100 / 15, 0.1, 15), 110);
 assert.equal(scenarioUpside(100, 80), -0.2);
-assert.equal(tradeFee('stock', 10_000), 0.8);
-assert.equal(tradeFee('etf', 10_000), 0.5);
+// 最低佣金 5 元：这两笔小额现在按下限收（大额仍走比例，平衡点见 check-accounts.ts）
+assert.equal(tradeFee('stock', 10_000), 5);
+assert.equal(tradeFee('etf', 10_000), 5);
+assert.equal(tradeFee('stock', 100_000), 8);
 
 // 校验台账解析、持仓加权成本重算与换手率计算
 const csvSample = `日期,账户,代码,名称,买卖,成交价,成交量,手续费

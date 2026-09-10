@@ -46,15 +46,37 @@ export function isFund(accounts: Account[], id: AccountId): boolean {
   return kindOf(accounts, id) === 'etf';
 }
 
+/**
+ * 券商佣金的最低收费（元）。券商按**笔**收，一笔委托算下来不足 5 元时按 5 元收。
+ *
+ * 只对**有佣金**的账户成立：`feeRate: 0` 是免佣账户，免佣就没有「最低 5 元」这回事，
+ * 所以下限不套在它头上。这两条规则在 `scripts/check-accounts.ts` 里有断言守着。
+ */
+export const MIN_COMMISSION = 5;
+
+/** 该账户的最低佣金。免佣账户是 0，其余按 MIN_COMMISSION。 */
+export function minCommissionOf(accounts: Account[], id: AccountId): number {
+  return rateOf(accounts, id) > 0 ? MIN_COMMISSION : 0;
+}
+
 /** 单笔费率。账户自带 `feeRate` 优先，否则按性质取默认值。 */
 export function rateOf(accounts: Account[], id: AccountId): number {
   const own = findAccount(accounts, id)?.feeRate;
-  // 默认值是施工时就有的数：股票 0.00008（万 0.8）、基金 0.00005（万 0.5），无最低佣金。
+  // 默认值是施工时就有的数：股票 0.00008（万 0.8）、基金 0.00005（万 0.5）。最低佣金见 MIN_COMMISSION。
   return Number.isFinite(own) ? (own as number) : isFund(accounts, id) ? 0.00005 : 0.00008;
 }
 
+/**
+ * 一笔委托的佣金。费率算出来低于最低佣金时按下限收。
+ *
+ * 下限放在这里而不是调用方，是因为所有费用计算都从这走：store 落库（`src/store/modules/invest.ts:355`）、
+ * 交易试算面板、CSV 导入的回落（`src/utils/ledger.ts:119`）、台账手填的默认值
+ * （`src/pages/plan/components/TransactionLedger.vue:315`）。放这里四处一起生效，
+ * 只在 UI 里加下限会导致预览和实际扣款不是一个数。
+ */
 export function feeOf(accounts: Account[], id: AccountId, amount: number): number {
-  return Math.max(0, amount * rateOf(accounts, id));
+  if (!(amount > 0)) return 0;
+  return Math.max(amount * rateOf(accounts, id), minCommissionOf(accounts, id));
 }
 
 export function nameTaken(accounts: Account[], name: string, exceptId?: AccountId): boolean {

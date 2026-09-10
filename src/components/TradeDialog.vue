@@ -166,7 +166,7 @@
                 style="width: 130px"
               />
               <t-button v-if="feeOverridden" size="small" variant="text" @click="resetFee">恢复自动</t-button>
-              <span v-else class="fee-auto">按费率估算</span>
+              <span v-else class="fee-auto">{{ feeAtFloor ? `最低佣金 ${MIN_COMMISSION} 元` : '按费率估算' }}</span>
             </span>
           </div>
           <div class="preview-grid">
@@ -218,8 +218,8 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
-import { rateOf } from '@/utils/accounts';
-import { tradeFee } from '@/utils/ledger';
+import { MIN_COMMISSION, rateOf } from '@/utils/accounts';
+import { maxBuyQuantity as maxBuyable, tradeFee } from '@/utils/ledger';
 import { fetchQuotes, normalizeCode } from '@/utils/quote';
 
 defineOptions({ name: 'TradeDialog' });
@@ -393,12 +393,13 @@ function resetFee() {
 }
 const feeRate = computed(() => rateOf(invest.accounts, form.account));
 
-// 最大可买股数 (按整百股向下取整，预留佣金)
-const maxBuyQuantity = computed(() => {
-  if (form.price <= 0 || availableCash.value <= 0) return 0;
-  const raw = Math.floor(availableCash.value / (form.price * (1 + feeRate.value)));
-  return Math.floor(raw / 100) * 100;
-});
+// 最大可买股数 (按整百股向下取整，含佣金与最低佣金)
+const maxBuyQuantity = computed(() => maxBuyable(form.account, form.price, availableCash.value, invest.accounts));
+
+// 费率算出来不足最低佣金时实际按下限收 —— 标出来，不然看着像试算面板算错了
+const feeAtFloor = computed(
+  () => !feeOverridden.value && feeRate.value > 0 && tradeAmount.value * feeRate.value < MIN_COMMISSION,
+);
 
 // 最大可卖股数
 const maxSellQuantity = computed(() => existingHolding.value?.quantity || 0);
@@ -428,9 +429,16 @@ function applyRatio(ratio: number) {
       return;
     }
     const targetAmount = availableCash.value * ratio;
-    const rawQty = Math.floor(targetAmount / (form.price * (1 + feeRate.value)));
-    const roundQty = Math.floor(rawQty / 100) * 100;
-    form.quantity = Math.max(100, roundQty);
+    // 和「最多可买」走同一个函数：比例买入同样受最低佣金约束，
+    // 不能自己按 `cash / (price * (1 + rate))` 算 —— 现金紧的时候会报出付不起的手数，
+    // 点「满仓」反而弹「可用现金不足」。
+    const qty = maxBuyable(form.account, form.price, targetAmount, invest.accounts);
+    if (qty <= 0) {
+      // 旧代码在这里强行报 100 股，结果交给现金校验去打回；说清楚买不起更好
+      MessagePlugin.warning('按这个比例买不起一手（已含最低佣金）');
+      return;
+    }
+    form.quantity = qty;
   } else {
     if (!existingHolding.value) {
       MessagePlugin.warning('当前账户未持有该标的');

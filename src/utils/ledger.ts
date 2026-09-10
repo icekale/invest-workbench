@@ -15,7 +15,7 @@ import type {
 import { matchAccount } from '@/utils/accounts';
 import type { Quote } from '@/utils/quote';
 
-import { feeOf } from './accounts.ts';
+import { feeOf, minCommissionOf, rateOf } from './accounts.ts';
 import { formatCN, todayCN } from './date.ts';
 
 /**
@@ -37,9 +37,33 @@ function byChrono(a: Transaction, b: Transaction): number {
   return am !== bm ? am - bm : ai - bi;
 }
 
-/** 佣金：按账户费率算。不传注册表时按账户性质取默认值。无最低佣金。 */
+/** 佣金：按账户费率算，不足最低佣金时按下限（见 `src/utils/accounts.ts` 的 MIN_COMMISSION）。 */
 export function tradeFee(account: AccountId, amount: number, accounts: Account[] = []): number {
   return Number(feeOf(accounts, account, Math.max(0, amount)).toFixed(2));
+}
+
+/**
+ * 给定账户、单价与可用现金，最多能买多少（按 100 股整手向下取整）。
+ *
+ * 不能简化成 `cash / (price * (1 + rate))`：佣金有最低 5 元，现金偏少时比例式会
+ * 多报一手，然后被成交校验（`src/store/modules/invest.ts:357` 的 `amount + fee > currentCash`）打回 ——
+ * 表现为点「满仓」之后报「可用现金不足」。
+ *
+ * 费用随金额分段线性递增，所以可行上界只可能落在两个断点之一：比例档
+ * `cash / (1 + rate)` 或最低档 `cash - 最低佣金`。两个候选各自用真实费用复核，取能站住的更大者。
+ * 复核走 `tradeFee`（含 `toFixed(2)`）而不是 `feeOf`，这样和真正落库时算的是同一个数。
+ *
+ * 复核用严格 `<=`，不放过浮点误差：宁可少报一手，不能报出成交时会被拒的数量。
+ */
+export function maxBuyQuantity(account: AccountId, price: number, cash: number, accounts: Account[] = []): number {
+  if (!Number.isFinite(price) || !Number.isFinite(cash) || price <= 0 || cash <= 0) return 0;
+  const rate = rateOf(accounts, account);
+  let best = 0;
+  for (const budget of [cash / (1 + rate), cash - minCommissionOf(accounts, account)]) {
+    const lots = Math.floor(Math.floor(budget / price) / 100) * 100;
+    if (lots > best && price * lots + tradeFee(account, price * lots, accounts) <= cash) best = lots;
+  }
+  return best;
 }
 
 /**

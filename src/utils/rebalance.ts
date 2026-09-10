@@ -248,7 +248,10 @@ export function calculateRebalance(params: {
     it.postWeight = finalTotalCap > 0 ? it.postMV / finalTotalCap : 0;
   }
 
-  // 预估双边摩擦佣金 (按万分之一计算，最低 5 元)
+  // 预估双边摩擦佣金：按万分之一乘总成交额的粗算。
+  // 这里**不含**最低佣金（每笔 5 元，见 `src/utils/accounts.ts` 的 MIN_COMMISSION）：
+  // 最低佣金是按笔收的，而这个数把全部调仓委托合成一个金额，摊不到单笔上。
+  // 所以总成交额小的时候这个估值会偏低，它只是个量级参考，不是可入账的手续费。
   const estimatedFee = (totalBuyAmount + totalSellAmount) * 0.0001;
 
   // 计算最大偏离度与调仓项数

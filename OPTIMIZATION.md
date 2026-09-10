@@ -13,7 +13,7 @@
 
 ### 方向 A：数据真实性收口（收益最高）
 
-本轮审查修复了三处「看起来有数据、实际是编造」的问题（估值历史随机数、降级假点位、万得失败假指标）。剩余同类问题与延伸动作：
+本轮审查修复了三处「看起来有数据、实际是编造」的问题（估值历史随机数、降级假点位、万得失败假指标）。剩余同类问题与延伸动作（下表是当时审查的建议**原文**，包括其中的数字建议；实际落地情况一律以文末清单为准）：
 
 | # | 事项 | 说明 |
 |---|------|------|
@@ -54,7 +54,7 @@
 - [x] 时区统一：`todayCN()/formatCN()` 落地 store/ledger（已完成）
 - [x] 估值历史确定性 + 弹窗「示意」标注（已完成）
 - [x] ~~万得失败诚实展示 + 状态灯~~ —— 已作废：`src/utils/wind.ts` 在 8be8e39 删除，全库已无「万得」，此项失去对象
-- [ ] 再平衡佣金最低 5 元 —— 未做。`src/utils/accounts.ts:58` 的 `feeOf` 是 `Math.max(0, amount * rateOf(...))`，下限 0，不是 5 元
+- [x] 再平衡佣金最低 5 元 —— 已做。下限加在 `src/utils/accounts.ts` 的 `feeOf`（所有费用计算的唯一出口），不是加在 `rateOf`：`rateOf` 要留给"每手费率"用，把元塞进去会算出 `rate = 5`。`MIN_COMMISSION = 5` 只对有佣金的账户成立，`feeRate: 0` 的免佣账户下限是 0。`src/utils/rebalance.ts` 的 `estimatedFee` 仍不含下限（它把全部调仓委托合成一个金额，按笔收的下限摊不到单笔上），注释已说明
 - [x] A2 每日市值快照落库（`recordDailySnapshot()` 每次行情刷新同日覆盖；AccountPanel 有 ≥2 日快照自动切真实净值，否则回退示意）
 - [x] C2 图片懒加载（已在迭代中落地）
 
@@ -62,7 +62,7 @@
 - [x] B1 fetch 封装重试 —— `src/utils/http.ts` 已接入 calendar / macro-cn / valuation / sw-valuation / briefs / briefing / quote / backup。后三处（`fetchQuotes` / `fetchSinaQuotes` / `fetchTradeMonth`）原来是裸 `fetch` + 自拼错误串，现已换成 `fetchOk` 并包 `withRetry`，重试覆盖到读响应体（连接重置常发生在 body 读到一半）。`scripts/check-quotes.ts` 有断言：502 重试一次后拿到数据、404 只试一次
 - [x] B2 localStorage 清理 —— 只清真正无界增长的那一处：新增 `pruneBriefingCache()`，在 `writeCachedBriefing` 写入时清掉当日与昨日以外的晨会缓存。**保留昨日是必须的**：`src/pages/research/index.vue:158` 会读昨日那份取 `yesterdayStance` 喂给模型。**明确不做「流水 5000 条上限」**——流水是持仓与成本结转的唯一来源，截断等于改账，比配额溢出更糟。另两处无需处理：`val-history` 已有 `MAX_POINTS=60` 上限，市场缓存已搬服务端 `/sync/cache`
 - [x] B3 快照周提醒（7 天未导出在驾驶舱提示一次；导出自动记录 lastBackupAt）
-- [x] A4 交易手续费输入 —— 试算面板渲染出手续费，可手改并「恢复自动」；`effectiveFee` 同时驱动现金校验、加权成本与落库（`submitTrade` 显式传 `fee`，否则 store 会按费率重算）。**仍无最低 5 元下限**：`rateOf` 是纯比例，加下限会改掉成交价与成本，且与 `scripts/check-book.ts:57` 的 `tradeFee('stock', 10_000) === 0.8` 冲突，需单独拍板
+- [x] A4 交易手续费输入 —— 试算面板渲染出手续费，可手改并「恢复自动」；`effectiveFee` 同时驱动现金校验、加权成本与落库（`submitTrade` 显式传 `fee`，否则 store 会按费率重算）。**最低佣金 5 元已生效**（见 B 段）。影响面已核实：存量持仓成本不受影响，因为加权成本读的是**存储的** `tx.fee`（`src/utils/ledger.ts:204,259-265,273`），只有新成交和缺费率列的 CSV 导入走新规则
 - [ ] D2 rebalance 测试用例进 check-book —— 未做。所有 `scripts/check-*.ts` 中没有一处 rebalance
 
 ### 第 3 批（需用户决策后执行）

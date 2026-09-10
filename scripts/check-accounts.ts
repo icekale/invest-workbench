@@ -16,11 +16,12 @@ import {
   kindOf,
   makeAccountId,
   matchAccount,
+  minCommissionOf,
   nameOf,
   normalizeAccounts,
   rateOf,
 } from '../src/utils/accounts.ts';
-import { tradeFee } from '../src/utils/ledger.ts';
+import { maxBuyQuantity, tradeFee } from '../src/utils/ledger.ts';
 
 /* ---------- 默认注册表 ---------- */
 const def = defaultAccounts();
@@ -50,13 +51,67 @@ assert.equal(rateOf(custom, 'acct_1'), 0.00008, 'kind=stock 拿股票默认费�
 assert.equal(rateOf(custom, 'acct_2'), 0.00005, 'kind=etf 拿基金默认费率');
 assert.equal(rateOf(normalizeAccounts([{ id: 'a', name: 'a', kind: 'stock', feeRate: 0.0003 }]), 'a'), 0.0003);
 assert.equal(rateOf(normalizeAccounts([{ id: 'a', name: 'a', kind: 'stock', feeRate: 0 }]), 'a'), 0, '免佣账户');
-assert.equal(feeOf(custom, 'acct_1', 10_000), 0.8);
 
-/* ---------- 老断言必须保住：费率来源换了，数字不能变 ---------- */
-assert.equal(tradeFee('stock', 10_000), 0.8, 'check-book.ts 依赖这条');
-assert.equal(tradeFee('etf', 10_000), 0.5);
-assert.equal(tradeFee('acct_2', 10_000, custom), 0.5, '注册表里的基金桶');
+/*
+ * 最低佣金 5 元。券商按笔收，不足 5 元按 5 元 —— 但只对有佣金的账户成立，
+ * 免佣账户不能被子限兜成 5，那就不叫免佣了。金额 0/负也不能凭空算出 5 元。
+ */
+assert.equal(feeOf(custom, 'acct_1', 20_000), 5, '股票万 0.8：2 万只算 1.6，低于下限按下限');
+assert.equal(tradeFee('stock', 10_000), 5, '股票小额按下限');
+assert.equal(tradeFee('etf', 10_000), 5, '基金小额按下限');
+assert.equal(tradeFee('acct_2', 10_000, custom), 5, '注册表里的基金桶同样有下限');
+
+// 平衡点：比例值正好等于 5 的那一档。股票万 0.8 → 62 500；基金万 0.5 → 10 万
+assert.equal(tradeFee('stock', 62_500), 5, '股票恰好到下限');
+assert.equal(tradeFee('stock', 100_000), 8, '股票过平衡点后回到比例');
+assert.equal(tradeFee('etf', 100_000), 5, '基金恰好到下限');
+assert.equal(tradeFee('etf', 200_000), 10, '基金过平衡点后回到比例');
+
+// 免佣账户：费率就是 0，没有被下限变成 5
+const freeAcct = normalizeAccounts([{ id: 'free', name: '免佣', kind: 'stock', feeRate: 0 }]);
+assert.equal(minCommissionOf(freeAcct, 'free'), 0, '免佣账户没有最低佣金');
+assert.equal(tradeFee('free', 10_000, freeAcct), 0, '免佣账户小额也是 0');
+assert.equal(minCommissionOf(custom, 'acct_1'), 5, '有佣金的账户才有下限');
+
+// 零/负金额不能凭空算出 5 元
 assert.equal(tradeFee('acct_1', -5, custom), 0, '负数金额不该算出负佣金');
+assert.equal(tradeFee('acct_1', 0, custom), 0, '零金额不该算出最低佣金');
+
+/*
+ * 最大可买股数。加上最低佣金后 `cash / (price * (1 + rate))` 会多报一手，
+ * 然后被成交校验打回（表现为点「满仓」报「可用现金不足」），所以这里把它钉住。
+ */
+// 1 万股 × 10 元：比例佣金 8 元 > 5，所以正常吃满现金
+assert.equal(maxBuyQuantity('stock', 10, 1005, custom), 100, '够付 5 元最低佣金');
+// 现金 1002 只差 3 元：比例式会报 100 股，但实际要付 1000+5=1005
+assert.equal(maxBuyQuantity('stock', 10, 1002, custom), 0, '差 3 元付不起最低佣金，不能报 100 股');
+assert.equal(maxBuyQuantity('stock', 10, 1007, custom), 100, '多出 2 元就买得起');
+
+/*
+ * 只算比例档不够：比例档会报出一个被校验打回的手数，然后直接归零——
+ * 而少一手其实是买得起的。下面这个是拿变异测试逼出来的反例：
+ * 现金 2004 只够 100 股（1000 + 5 元佣金），但比例档会报 200 股（2000 + 5 = 2005，付不起）。
+ * 最低档 `cash - 5 = 1999` 才能找回那 100 股。
+ */
+assert.equal(maxBuyQuantity('stock', 10, 2004, custom), 100, '比例档报多了要退回一手，不能归零');
+assert.equal(maxBuyQuantity('stock', 10, 2005, custom), 200, '刚好付得起 200 股的手续费就买 200');
+assert.equal(maxBuyQuantity('stock', 10, 3004, custom), 200, '3004 只够 200 股');
+assert.equal(maxBuyQuantity('stock', 10, 5004, custom), 400, '5004 只够 400 股');
+
+// 过平衡点后走比例档：单价 100、现金 10 万 → 900 股（10 万全买要付 8 元佣金，付不起 1000 股）
+assert.equal(maxBuyQuantity('stock', 100, 100_000, custom), 900, '大额走比例档');
+assert.equal(maxBuyQuantity('stock', 100, 99_995, custom), 900, '现金差 5 元只少一手，不是清零');
+assert.equal(maxBuyQuantity('stock', 100, 9_995, custom), 0, '买不起一手时就是 0，不能向上取');
+// 免佣账户没有 5 元门槛：1000 元买 10 元的股正好 100 股
+assert.equal(maxBuyQuantity('free', 10, 1000, freeAcct), 100, '免佣账户 1000 元刚好买 100 股');
+assert.equal(maxBuyQuantity('free', 10, 999, freeAcct), 0, '免佣账户差 1 元也买不起');
+
+// 非正价格/现金不能报出数量，也不能算出 NaN
+assert.equal(maxBuyQuantity('stock', 0, 10_000, custom), 0);
+assert.equal(maxBuyQuantity('stock', 10, 0, custom), 0);
+assert.equal(maxBuyQuantity('stock', -10, 10_000, custom), 0);
+
+/* ---------- 老断言：费率来源换了，大额数字不能变 ---------- */
 
 /* ---------- 老备份迁移：没登记的账户补成归档，持仓才不会凭空消失 ---------- */
 const migrated = normalizeAccounts(undefined, ['stock', 'etf', 'grid']);
