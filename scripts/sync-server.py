@@ -257,10 +257,21 @@ def put_snapshot(conn: sqlite3.Connection, user: str, data: dict) -> int:
         )
 
     conn.execute("DELETE FROM cash WHERE user=?", (user,))
-    for account in ("stock", "etf"):
+    # 账户不再写死 stock/etf：自建桶（打新、港股…）的现金也得落库。
+    # account 是主键的一部分，所以这里仍然不信客户端：长度/字符集不合就跳过。
+    for account, amount in cash.items():
+        key = str(account).strip()
+        if not re.fullmatch(r"[\w.-]{1,32}", key):
+            continue
+        try:
+            value = float(amount or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value != value or value in (float("inf"), float("-inf")):
+            value = 0.0
         conn.execute(
             "INSERT INTO cash(user, account, amount) VALUES (?, ?, ?)",
-            (user, account, float(cash.get(account) or 0)),
+            (user, key, value),
         )
 
     conn.execute("DELETE FROM transactions WHERE user=?", (user,))
@@ -1054,6 +1065,23 @@ def selftest() -> None:
     migrate_legacy_blob(conn)
     snap = get_snapshot(conn, "xiong")
     assert snap and snap["holdings"][0]["code"] == "sh510300"
+
+    # 多账户：自建桶的现金必须原样进出，脏 key/脏值跳过而不是写进库
+    put_snapshot(
+        conn,
+        "xiong",
+        {
+            "holdings": [{"account": "acct_3", "code": "sh600900", "quantity": 100, "cost": 10}],
+            "cash": {"stock": 1000, "acct_3": 250.5, "": 999, "x" * 40: 1, "acct_4": float("nan")},
+        },
+    )
+    multi = get_snapshot(conn, "xiong")
+    assert multi["cash"]["acct_3"] == 250.5, multi["cash"]
+    assert multi["cash"]["stock"] == 1000
+    assert "acct_4" in multi["cash"] and multi["cash"]["acct_4"] == 0.0, "NaN 要归 0，不能拦下整条记录"
+    assert "" not in multi["cash"]
+    assert "x" * 40 not in multi["cash"], "超长 key 不入库"
+    assert multi["holdings"][0]["account"] == "acct_3"
     conn.close()
     os.unlink(DB_PATH)
     print("sync-server selftest ok")

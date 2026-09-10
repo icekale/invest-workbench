@@ -2,7 +2,9 @@ import { defineStore } from 'pinia';
 
 import { indexes, planTargets, prefsSeed } from '@/mock/invest';
 import type {
+  Account,
   AccountId,
+  AccountKind,
   CustomPortfolio,
   ExecuteTradeParams,
   ExecuteTradeResult,
@@ -26,13 +28,25 @@ import type {
   TradeTodo,
   Transaction,
 } from '@/types/invest';
+import {
+  activeOf,
+  defaultAccounts,
+  feeOf,
+  kindOf,
+  labelOf,
+  makeAccountId,
+  matchAccount,
+  nameOf,
+  nameTaken,
+  normalizeAccounts,
+} from '@/utils/accounts';
 import { fetchSinaQuotes } from '@/utils/backup';
 import { fetchLiveMacroBriefs } from '@/utils/briefs';
 import { fetchLiveMacroEvents } from '@/utils/calendar';
 import { scheduleCloudPush, setHydrating } from '@/utils/cloud-sync';
 import { todayCN } from '@/utils/date';
 import { fetchLiveIndustryCatalysts } from '@/utils/industry';
-import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts, tradeFee } from '@/utils/ledger';
+import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts } from '@/utils/ledger';
 import { normalizeNavSnapshots } from '@/utils/nav-history';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
@@ -94,7 +108,9 @@ export const useInvestStore = defineStore('invest', {
     journal: [] as JournalEntry[],
     theses: [] as Thesis[],
     priceScenarios: [] as PriceScenario[],
-    // 账户是自定义资金桶，键不固定；加账户时这句和类型都不用再动
+    // 账户注册表：自定义资金桶，见 utils/accounts.ts
+    accounts: defaultAccounts() as Account[],
+    // 账户 id → 现金；键不固定，加账户时不用改这句
     cash: { stock: 0, etf: 0 } as Record<string, number>,
     opportunities: [] as Opportunity[],
     transactions: [] as Transaction[],
@@ -131,8 +147,20 @@ export const useInvestStore = defineStore('invest', {
   }),
   getters: {
     enriched: (state) => enrich(state.holdings, state.quotes),
-    stockRows: (state) => enrich(state.holdings, state.quotes).filter((h) => h.account === 'stock'),
-    etfRows: (state) => enrich(state.holdings, state.quotes).filter((h) => h.account === 'etf'),
+    activeAccounts: (state): Account[] => activeOf(state.accounts),
+    rowsOf:
+      (state) =>
+      (accountId: AccountId): ReturnType<typeof enrich> =>
+        enrich(state.holdings, state.quotes).filter((h) => h.account === accountId),
+    /** 按性质取全部持仓。账户越分越多时，「我的股票仓位」问的仍是性质，不是某个桶。 */
+    rowsByKind: (state) => (kind: AccountKind) => {
+      const ids = new Set(state.accounts.filter((a) => a.kind === kind).map((a) => a.id));
+      return enrich(state.holdings, state.quotes).filter((h) => ids.has(h.account));
+    },
+    accountName: (state) => (id: AccountId) => nameOf(state.accounts, id),
+    /** 可带 `all`：事件/产业说的是全市场 */
+    accountLabel: (state) => (id?: string) => labelOf(state.accounts, id),
+    accountKind: (state) => (id: AccountId) => kindOf(state.accounts, id),
     totalHoldingMv: (state) =>
       enrich(state.holdings, state.quotes).reduce((sum, h) => sum + (h.marketValue ?? h.cost * h.quantity), 0),
     totalPortfolioValue: (state) => {
@@ -140,7 +168,9 @@ export const useInvestStore = defineStore('invest', {
         (sum, h) => sum + (h.marketValue ?? h.cost * h.quantity),
         0,
       );
-      return holdingMv + state.cash.stock + state.cash.etf;
+      // 所有桶的現金都算，不能写死 stock/etf：自建账户的钱不是钱吗
+      const cash = Object.values(state.cash).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
+      return holdingMv + cash;
     },
     ledgerSummary: (state): ReturnType<typeof calculateLedger> => {
       const holdingMv = enrich(state.holdings, state.quotes).reduce(
@@ -176,8 +206,10 @@ export const useInvestStore = defineStore('invest', {
       persist();
     },
     openTradeModal(opts?: Partial<TradeModalOptions>) {
+      // 传来的账户可能已被归档，落到一个在用的桶（TradeDialog 打开时还会再对一次）
+      const alive = activeOf(this.accounts);
       this.tradeModal.options = {
-        account: opts?.account || 'stock',
+        account: alive.some((a) => a.id === opts?.account) ? (opts?.account as AccountId) : (alive[0]?.id ?? 'stock'),
         side: opts?.side || 'buy',
         code: opts?.code || '',
         name: opts?.name || '',
@@ -193,6 +225,48 @@ export const useInvestStore = defineStore('invest', {
     },
     setCash(account: AccountId, value: number) {
       this.cash = { ...this.cash, [account]: Math.max(0, value) };
+      persist();
+    },
+    /** 新建资金桶。费率留空则按性质取默认值。 */
+    addAccount(input: { name: string; kind: AccountKind; feeRate?: number }) {
+      const name = input.name.trim();
+      if (!name) throw new Error('账户名不能为空');
+      if (nameTaken(this.accounts, name)) throw new Error(`已有叫「${name}」的账户`);
+      const acc: Account = { id: makeAccountId(this.accounts), name, kind: input.kind };
+      if (typeof input.feeRate === 'number' && Number.isFinite(input.feeRate) && input.feeRate >= 0) {
+        acc.feeRate = input.feeRate;
+      }
+      this.accounts = [...this.accounts, acc];
+      // 现金键先建好（0）：否则它不进当日快照，净值曲线要等第一次入金才开始
+      this.cash = { ...this.cash, [acc.id]: 0 };
+      persist();
+      return acc;
+    },
+    renameAccount(id: AccountId, name: string) {
+      const next = name.trim();
+      if (!next) throw new Error('账户名不能为空');
+      if (nameTaken(this.accounts, next, id)) throw new Error(`已有叫「${next}」的账户`);
+      // id 不动：它是账本外键，改名不该动历史
+      this.accounts = this.accounts.map((a) => (a.id === id ? { ...a, name: next } : a));
+      persist();
+    },
+    setAccountFee(id: AccountId, feeRate?: number) {
+      const valid = typeof feeRate === 'number' && Number.isFinite(feeRate) && feeRate >= 0;
+      this.accounts = this.accounts.map((a) => {
+        if (a.id !== id) return a;
+        const next: Account = { id: a.id, name: a.name, kind: a.kind };
+        if (a.archived) next.archived = true;
+        if (valid) next.feeRate = feeRate;
+        return next;
+      });
+      persist();
+    },
+    /**
+     * 归档 = 从界面收起来，持仓/账本/历史现金全留着。
+     * 账本是钱的记录，删了找不回，所以这里没有硬删。
+     */
+    archiveAccount(id: AccountId, archived: boolean) {
+      this.accounts = this.accounts.map((a) => (a.id === id ? { ...a, archived: archived || undefined } : a));
       persist();
     },
     async refreshQuotes() {
@@ -278,7 +352,7 @@ export const useInvestStore = defineStore('invest', {
       }
 
       const amount = Number((price * quantity).toFixed(2));
-      const fee = Math.max(0, Number((params.fee ?? tradeFee(account, amount)).toFixed(2)));
+      const fee = Math.max(0, Number((params.fee ?? feeOf(this.accounts, account, amount)).toFixed(2)));
       const currentCash = this.cash[account] || 0;
 
       if (side === 'buy') {
@@ -329,7 +403,7 @@ export const useInvestStore = defineStore('invest', {
           (h) => h.account === account && (h.code === code || normalizeCode(h.code) === code),
         );
         if (idx < 0) {
-          throw new Error(`无法卖出：当前${account === 'stock' ? '股票' : 'ETF'}账户未持有【${name || code}】`);
+          throw new Error(`无法卖出：「${nameOf(this.accounts, account)}」未持有【${name || code}】`);
         }
         const holding = this.holdings[idx];
         if (quantity > holding.quantity) {
@@ -603,7 +677,7 @@ export const useInvestStore = defineStore('invest', {
     convertEventToTodo(event: MacroEvent): boolean {
       const primaryTarget = event.beneficiaries?.[0] || event.title;
       this.addTodo({
-        account: event.account === 'stock' ? 'stock' : 'etf',
+        account: matchAccount(this.accounts, event.account),
         code: '',
         name: primaryTarget.slice(0, 14),
         side: 'buy',
@@ -616,7 +690,7 @@ export const useInvestStore = defineStore('invest', {
     convertIndustryToOpportunity(ind: IndustryFocus, targetCode?: string): boolean {
       const target = ind.keyTargets.find((t) => t.code === targetCode) || ind.keyTargets[0];
       const name = target ? target.name : ind.name;
-      const account: AccountId = ind.account === 'stock' ? 'stock' : 'etf';
+      const account: AccountId = matchAccount(this.accounts, ind.account);
       this.addOpportunity({
         account,
         name,
@@ -639,7 +713,7 @@ export const useInvestStore = defineStore('invest', {
         return true;
       }
       this.addTodo({
-        account: brief.account === 'stock' ? 'stock' : 'etf',
+        account: matchAccount(this.accounts, brief.account),
         code: '',
         name: brief.title.slice(0, 14),
         side: brief.tone === '偏空' ? 'sell' : 'buy',
@@ -697,6 +771,7 @@ export const useInvestStore = defineStore('invest', {
         version: 2,
         updatedAt: this.prefs.updatedAt || Date.now(),
         holdings: this.holdings,
+        accounts: this.accounts,
         cash: this.cash,
         quotes: this.quotes,
         navSnapshots: this.navSnapshots,
@@ -725,8 +800,20 @@ export const useInvestStore = defineStore('invest', {
       }
 
       this.holdings = data.holdings;
-      if (typeof data.cash.stock === 'number' && typeof data.cash.etf === 'number') {
-        this.cash = { stock: data.cash.stock, etf: data.cash.etf };
+      // 账户注册表：老快照没这个字段，从现金/持仓/账本里把出现过的账户补出来
+      const hints = [
+        ...Object.keys(typeof data.cash === 'object' && data.cash ? (data.cash as object) : {}),
+        ...(Array.isArray(data.holdings) ? data.holdings.map((h: Holding) => h?.account) : []),
+        ...(Array.isArray(data.transactions) ? data.transactions.map((t: Transaction) => t?.account) : []),
+      ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+      this.accounts = normalizeAccounts(data.accounts, hints);
+      // 现金按实际键收，不再写死 stock/etf —— 写死会让第三个账户的钱静默丢失
+      if (typeof data.cash === 'object' && data.cash) {
+        const next: Record<string, number> = {};
+        for (const [k, v] of Object.entries(data.cash as Record<string, unknown>)) {
+          if (typeof v === 'number' && Number.isFinite(v)) next[k] = v;
+        }
+        this.cash = next;
       }
       if (Array.isArray(data.transactions)) this.transactions = data.transactions;
       if (Array.isArray(data.todos)) this.todos = data.todos;

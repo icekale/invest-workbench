@@ -132,9 +132,10 @@
           <t-input v-model="formData.date" placeholder="YYYY-MM-DD" />
         </t-form-item>
         <t-form-item label="归属账户">
-          <t-radio-group v-model="formData.account">
-            <t-radio value="stock">股票账户</t-radio>
-            <t-radio value="etf">ETF 账户</t-radio>
+          <t-radio-group v-model="formData.account" variant="default-filled">
+            <t-radio-button v-for="a in invest.activeAccounts" :key="a.id" :value="a.id">
+              {{ a.name }}
+            </t-radio-button>
           </t-radio-group>
         </t-form-item>
         <t-form-item label="买卖方向">
@@ -229,7 +230,7 @@ const formData = reactive({
   note: '',
 });
 
-const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
+const activeRows = computed(() => invest.rowsOf(accountView.value));
 const accountTx = computed(() => invest.transactions.filter((tx) => tx.account === accountView.value));
 const summary = computed(() => {
   const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? r.cost * r.quantity), 0);
@@ -311,7 +312,7 @@ function saveSingleTransaction() {
     side: formData.side,
     price: formData.price,
     quantity: formData.quantity,
-    fee: tradeFee(formData.account, formData.price * formData.quantity),
+    fee: tradeFee(formData.account, formData.price * formData.quantity, invest.accounts),
     note: formData.note.trim(),
   });
 
@@ -322,9 +323,9 @@ function saveSingleTransaction() {
 
 function loadSampleCsv() {
   importText.value = `日期,账户,代码,名称,买卖,成交价,成交量,手续费,备注
-2025-02-18,股票,sh600900,长江电力,买入,28.50,1000,5.00,防御性现金流
-2025-02-20,ETF,sh510300,300ETF,买入,3.82,5000,3.50,定投执行
-2025-02-24,股票,sh600519,贵州茅台,卖出,1720,10,12.00,阶段止盈`;
+2025-02-18,${invest.accountName(accountView.value)},sh600900,长江电力,买入,28.50,1000,5.00,防御性现金流
+2025-02-20,${invest.accountName(accountView.value)},sh510300,300ETF,买入,3.82,5000,3.50,定投执行
+2025-02-24,${invest.accountName(accountView.value)},sh600519,贵州茅台,卖出,1720,10,12.00,阶段止盈`;
 }
 
 function handleBatchImport() {
@@ -333,7 +334,7 @@ function handleBatchImport() {
     return false;
   }
 
-  const res = parseTransactionsCsv(importText.value.trim());
+  const res = parseTransactionsCsv(importText.value.trim(), invest.accounts);
   parseResult.errors = res.errors;
 
   if (!res.success) {

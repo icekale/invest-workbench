@@ -183,6 +183,41 @@ assert.equal(ok.conflicts?.length ?? 0, 0);
 
 const buyOk = parseBriefing({ ...ok, todos: [{ ...sellDraft, side: 'buy' }] }, pack, today);
 assert.equal(buyOk.todos.length, 1);
+
+/* ---------- 多账户：新桶要进事实包，模型点名它不能被校验拦掉 ---------- */
+const multiPack = buildFactPack({
+  ...input,
+  accounts: [
+    { id: 'stock', name: '股票账户', kind: 'stock' },
+    { id: 'etf', name: 'ETF 账户', kind: 'etf' },
+    { id: 'acct_3', name: '打新账户', kind: 'stock' },
+    { id: 'acct_4', name: '港股账户', kind: 'stock', archived: true },
+  ],
+  // 故意少一个键：老备份里新桶没有 cash 记录
+  cash: { stock: 100, etf: 200 },
+});
+assert.ok(
+  multiPack.accounts.some((a) => a.id === 'acct_3'),
+  '刚建的空桶也要让模型看见，否则新建后晨会里没它',
+);
+assert.equal(multiPack.accounts.find((a) => a.id === 'acct_3')!.cash, 0, '缺 cash 键要给 0，不能是 undefined');
+assert.ok(!multiPack.accounts.some((a) => a.id === 'acct_4'), '归档的不进事实包');
+
+// side 用 buy：sh510300+sell 已在 openTodos 里，会被去重滤掉看不出结果
+const customDraft = { ...sellDraft, side: 'buy' as const, account: 'acct_3' };
+const customOk = parseBriefing({ ...ok, todos: [customDraft] }, multiPack, today);
+assert.equal(customOk.todos.length, 1, '自建账户的待办必须能过校验');
+assert.equal(customOk.todos[0].account, 'acct_3');
+assert.throws(
+  () => parseBriefing({ ...ok, todos: [{ ...customDraft, account: '不存在户' }] }, multiPack, today),
+  /bad account/,
+  '清单外的账户名要拦下',
+);
+assert.throws(
+  () => parseBriefing({ ...ok, todos: [{ ...customDraft, account: '' }] }, multiPack, today),
+  /bad account/,
+  '空账户名要拦下',
+);
 assert.ok(buyOk.cites?.some((c) => c.kind === 'holding' && c.label.includes('沪深300ETF')));
 const dups = parseBriefing(
   {

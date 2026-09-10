@@ -50,9 +50,7 @@
                 <t-space :size="6" align="center">
                   <t-tag size="small" :theme="toneTagTheme(m.tone as MacroTone)" variant="light">{{ m.tone }}</t-tag>
                   <t-tag size="small" variant="light">{{ m.topic }}</t-tag>
-                  <t-tag size="small" variant="outline">{{
-                    m.account === 'stock' ? '股票' : m.account === 'etf' ? 'ETF' : '全市场'
-                  }}</t-tag>
+                  <t-tag size="small" variant="outline">{{ invest.accountLabel(m.account) }}</t-tag>
                   <span class="macro-time-badge">{{ m.time }}</span>
                 </t-space>
               </div>
@@ -167,9 +165,7 @@
                       {{ ev.level }}
                     </t-tag>
                     <t-tag size="small" variant="outline">{{ ev.category }}</t-tag>
-                    <t-tag size="small" variant="light">{{
-                      ev.account === 'stock' ? '股票' : ev.account === 'etf' ? 'ETF' : '全市场'
-                    }}</t-tag>
+                    <t-tag size="small" variant="light">{{ invest.accountLabel(ev.account) }}</t-tag>
                   </t-space>
                 </div>
                 <div class="event-impact-text">{{ ev.impact }}</div>
@@ -358,8 +354,9 @@
         </t-form-item>
         <t-form-item label="账户">
           <t-radio-group v-model="todoForm.account">
-            <t-radio-button value="etf">ETF</t-radio-button>
-            <t-radio-button value="stock">股票</t-radio-button>
+            <t-radio-button v-for="a in invest.activeAccounts" :key="a.id" :value="a.id">
+              {{ a.name }}
+            </t-radio-button>
           </t-radio-group>
         </t-form-item>
         <t-form-item label="数量">
@@ -381,6 +378,7 @@ import { computed, onMounted, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { IndustryFocus, MacroBrief, MacroEvent } from '@/types/invest';
+import { matchAccount } from '@/utils/accounts';
 import { getEventCountdown, sortMacroEvents } from '@/utils/calendar';
 
 import { confirmCreateTodo, todoDialogVisible, todoForm } from './todo';
@@ -438,7 +436,7 @@ function onConvertMacro(m: MacroBrief) {
     todoForm.exec = '即期';
     todoForm.reason = m.suggestedTodo.reason;
   } else {
-    todoForm.account = m.account === 'stock' ? 'stock' : 'etf';
+    todoForm.account = matchAccount(invest.accounts, m.account);
     todoForm.code = '';
     todoForm.name = m.title;
     todoForm.side = m.tone === '利多' ? 'buy' : 'sell';
@@ -457,7 +455,7 @@ function onConvertEventToTodo(ev: MacroEvent) {
 function handleEventTargetClick(targetName: string, ev: MacroEvent) {
   invest.openTradeModal({
     name: targetName,
-    account: !ev.account || ev.account === 'all' ? 'stock' : ev.account,
+    account: matchAccount(invest.accounts, ev.account),
     note: `会议催化交易【${ev.title}】：${ev.impact}`,
   });
 }
@@ -502,7 +500,7 @@ function openIndustryTarget(ind: IndustryFocus, tgt: IndustryFocus['keyTargets']
   invest.openTradeModal({
     code: tgt.code,
     name: tgt.name,
-    account: ind.account === 'all' ? (tgt.type === 'ETF' ? 'etf' : 'stock') : ind.account,
+    account: matchAccount(invest.accounts, ind.account === 'all' ? tgt.type : ind.account),
     note: `产业配置【${ind.name}】：${ind.catalyst}`,
   });
 }

@@ -327,7 +327,7 @@ watch([valFilter, valViewMode, signalFilter], () => {
 
 /** 各申万一级行业在股票仓中的占比(%)，由 state 维护，估值表与晨报共用同一份。 */
 const heldMap = heldIndustryWeights;
-const stockRows = computed(() => invest.enriched.filter((h) => h.account === 'stock'));
+const stockRows = computed(() => invest.rowsByKind('stock'));
 
 const heldCount = computed(() => Object.keys(heldMap.value).length);
 

@@ -30,7 +30,10 @@
     "test:coverage": "echo \"no test:coverage specified,work in process\"",
     "check:settings": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-research-settings.ts",
     "check:val-history": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-val-history.ts",
-    "check:nav": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-nav-history.ts"
+    "check:nav": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-nav-history.ts",
+    "check:accounts": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-accounts.ts",
+    "check:position": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-position.ts",
+    "check:sw-valuation": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-sw-valuation.ts"
   },
   "dependencies": {
     "@vueuse/core": "^14.3.0",

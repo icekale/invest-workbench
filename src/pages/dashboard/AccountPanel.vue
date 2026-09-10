@@ -149,7 +149,7 @@
                       <div class="m-symbol-sub">
                         <t-tag v-if="row.tag" size="small" variant="light" class="m-tag">{{ row.tag }}</t-tag>
                         <span class="m-sub-qty">
-                          {{ row.quantity.toLocaleString() }} {{ account === 'etf' ? '份' : '股' }}
+                          {{ row.quantity.toLocaleString() }} {{ kind === 'etf' ? '份' : '股' }}
                         </span>
                       </div>
                     </div>
@@ -317,6 +317,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
+import type { AccountId } from '@/types/invest';
 import { allocation, healthNote, healthScore, risks, shortCode, summarize } from '@/utils/book';
 import { navCurveFor } from '@/utils/nav-history';
 import type { SwClass } from '@/utils/sw-industry';
@@ -340,7 +341,7 @@ interface Row {
   thesisId: string;
 }
 
-const props = defineProps<{ title: string; rows: Row[]; cash: number }>();
+const props = defineProps<{ account: AccountId; title: string; rows: Row[]; cash: number }>();
 const emit = defineEmits<{ (e: 'edit'): void }>();
 
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
@@ -371,7 +372,9 @@ const pnlColor = (n: number | null) => {
   return n >= 0 ? 'var(--td-error-color)' : 'var(--td-success-color)';
 };
 
-const account = computed(() => (props.title.includes('ETF') ? 'etf' : 'stock'));
+const account = computed(() => props.account);
+// 单位、行业口径这些行为看性质，不看账户叫什么 —— 见 utils/accounts.ts
+const kind = computed(() => invest.accountKind(account.value));
 /** 真净值曲线：首个记录日 = 1。不足两个点时为 null，界面如实说还在攒。 */
 const curve = computed(() => navCurveFor(invest.navSnapshots, account.value));
 const navCaption = computed(() =>
@@ -382,7 +385,7 @@ const stats = computed(() => summarize(props.rows, props.cash));
 const swMap = ref<Record<string, SwClass>>({});
 const drillL1 = ref<string | null>(null);
 async function loadSw() {
-  if (account.value !== 'stock') return;
+  if (kind.value !== 'stock') return;
   const codes = props.rows.map((r) => r.code);
   if (!codes.length) {
     swMap.value = {};
@@ -395,7 +398,7 @@ async function loadSw() {
   }
 }
 const alloc = computed(() => {
-  if (account.value === 'etf') return allocation(props.rows, props.cash, targets.value);
+  if (kind.value === 'etf') return allocation(props.rows, props.cash, targets.value);
   if (drillL1.value) {
     const sub = props.rows.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
     return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));
@@ -412,10 +415,7 @@ const parentShare = computed(() => {
 const donutPct = computed(() => (drillL1.value ? Math.round(parentShare.value * 100) : investedPct.value));
 function canDrill(name: string) {
   return (
-    account.value === 'stock' &&
-    !drillL1.value &&
-    name !== '现金' &&
-    Object.values(swMap.value).some((c) => c.l1 === name)
+    kind.value === 'stock' && !drillL1.value && name !== '现金' && Object.values(swMap.value).some((c) => c.l1 === name)
   );
 }
 function onAllocClick(name: string) {
@@ -462,7 +462,7 @@ const weekDelta = ref(0);
 watch(
   () => health.value.total,
   (total) => {
-    weekDelta.value = invest.touchHealth(props.title.includes('ETF') ? 'etf' : 'stock', total);
+    weekDelta.value = invest.touchHealth(account.value, total);
   },
   { immediate: true },
 );

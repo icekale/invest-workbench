@@ -1,52 +1,28 @@
 <template>
   <t-space direction="vertical" :size="16" style="width: 100%">
     <t-row :gutter="[16, 16]">
-      <t-col :xs="12" :xl="6">
-        <t-card title="股票账户">
-          <div class="kpi-num num-hero">{{ money(stock.mv) }}</div>
+      <t-col v-for="acc in invest.activeAccounts" :key="acc.id" :xs="12" :xl="6">
+        <t-card :title="acc.name">
+          <div class="kpi-num num-hero">{{ money(sumOf(acc.id).mv) }}</div>
           <div class="kpi-foot">
-            <span class="pnl-span" :style="{ color: pnlColor(stock.pnl) }">
-              盈亏 {{ signed(stock.pnl) }}<template v-if="stock.pnlPct != null"> ({{ pct(stock.pnlPct) }})</template>
+            <span class="pnl-span" :style="{ color: pnlColor(sumOf(acc.id).pnl) }">
+              盈亏 {{ signed(sumOf(acc.id).pnl)
+              }}<template v-if="sumOf(acc.id).pnlPct != null"> ({{ pct(sumOf(acc.id).pnlPct) }})</template>
             </span>
           </div>
           <div class="cash-row">
             <span class="cash-label"
-              >现金 <b class="cash-amt">{{ money(invest.cash.stock) }}</b></span
+              >现金 <b class="cash-amt">{{ money(cashOf(acc.id)) }}</b></span
             >
             <t-input-number
-              :value="invest.cash.stock"
+              :value="cashOf(acc.id)"
               :min="0"
               :step="10000"
               :decimal-places="0"
               theme="column"
               size="small"
               class="cash-stepper"
-              @change="(v) => invest.setCash('stock', Number(v) || 0)"
-            />
-          </div>
-        </t-card>
-      </t-col>
-      <t-col :xs="12" :xl="6">
-        <t-card title="ETF 账户">
-          <div class="kpi-num num-hero">{{ money(etf.mv) }}</div>
-          <div class="kpi-foot">
-            <span class="pnl-span" :style="{ color: pnlColor(etf.pnl) }">
-              盈亏 {{ signed(etf.pnl) }}<template v-if="etf.pnlPct != null"> ({{ pct(etf.pnlPct) }})</template>
-            </span>
-          </div>
-          <div class="cash-row">
-            <span class="cash-label"
-              >现金 <b class="cash-amt">{{ money(invest.cash.etf) }}</b></span
-            >
-            <t-input-number
-              :value="invest.cash.etf"
-              :min="0"
-              :step="10000"
-              :decimal-places="0"
-              theme="column"
-              size="small"
-              class="cash-stepper"
-              @change="(v) => invest.setCash('etf', Number(v) || 0)"
+              @change="(v) => invest.setCash(acc.id, Number(v) || 0)"
             />
           </div>
         </t-card>
@@ -57,8 +33,9 @@
     <t-card title="投资组合持仓">
       <div class="hold-toolbar">
         <t-radio-group v-model="accountView" variant="default-filled" size="small">
-          <t-radio-button value="stock">股票账户</t-radio-button>
-          <t-radio-button value="etf">ETF 账户</t-radio-button>
+          <t-radio-button v-for="acc in invest.activeAccounts" :key="acc.id" :value="acc.id">
+            {{ acc.name }}
+          </t-radio-button>
         </t-radio-group>
         <t-radio-group v-model="holdView" variant="default-filled" size="small">
           <t-radio-button value="list">明细</t-radio-button>
@@ -250,7 +227,7 @@ import { useRoute } from 'vue-router';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
-import type { PriceScenario, TodoStatus, TradeSide } from '@/types/invest';
+import type { AccountId, PriceScenario, TodoStatus, TradeSide } from '@/types/invest';
 import { allocation, summarize } from '@/utils/book';
 import { fmtSignedPct, impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
 import type { SwClass } from '@/utils/sw-industry';
@@ -261,7 +238,7 @@ defineOptions({ name: 'ReviewIndex' });
 echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
 
 const invest = useInvestStore();
-const accountView = ref<'stock' | 'etf'>('stock');
+const accountView = ref<AccountId>(invest.activeAccounts[0]?.id ?? 'stock');
 const holdView = ref<'list' | 'weight'>('list');
 const pieEl = ref<HTMLDivElement>();
 let pie: echarts.ECharts | null = null;
@@ -294,14 +271,15 @@ watch(
   () => route.query.l1,
   (l1) => {
     if (typeof l1 !== 'string' || !l1) return;
-    accountView.value = 'stock';
+    // 行业下钻只为股票类账户做（基金没有申万行业），落到第一个股票桶
+    accountView.value = invest.activeAccounts.find((a) => a.kind === 'stock')?.id ?? 'stock';
     drillL1.value = l1;
   },
   { immediate: true },
 );
 
 async function loadSw() {
-  const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
+  const codes = invest.rowsByKind('stock').map((h) => h.code);
   if (!codes.length) {
     swMap.value = {};
     return;
@@ -319,8 +297,8 @@ onMounted(() => {
 });
 watch(
   () =>
-    invest.holdings
-      .filter((h) => h.account === 'stock')
+    invest
+      .rowsByKind('stock')
       .map((h) => h.code)
       .join(','),
   () => void loadSw(),
@@ -328,17 +306,31 @@ watch(
 watch(accountView, () => {
   drillL1.value = null;
 });
+// 当前账户被归档后，卡片区与台账得落到还活着的账户上，不然是白屏
+watch(
+  () => invest.activeAccounts.map((a) => a.id).join(','),
+  () => {
+    if (!invest.activeAccounts.some((a) => a.id === accountView.value)) {
+      accountView.value = invest.activeAccounts[0]?.id ?? 'stock';
+    }
+  },
+);
 
-const stock = computed(() => summarize(invest.stockRows, invest.cash.stock));
-const etf = computed(() => summarize(invest.etfRows, invest.cash.etf));
-const activeRows = computed(() => (accountView.value === 'etf' ? invest.etfRows : invest.stockRows));
-const activeCash = computed(() => (accountView.value === 'etf' ? invest.cash.etf : invest.cash.stock));
+/** 每个账户一行的汇总，卡片区靠它铺开 */
+const summaries = computed(() =>
+  Object.fromEntries(invest.activeAccounts.map((a) => [a.id, summarize(invest.rowsOf(a.id), invest.cash[a.id] ?? 0)])),
+);
+const EMPTY_SUM = summarize([], 0);
+const sumOf = (id: AccountId) => summaries.value[id] ?? EMPTY_SUM;
+const cashOf = (id: AccountId) => invest.cash[id] ?? 0;
+const activeRows = computed(() => invest.rowsOf(accountView.value));
+const activeCash = computed(() => cashOf(accountView.value));
 const bookTotal = computed(() => {
   const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
   return mv + Math.max(0, activeCash.value);
 });
 const allocItems = computed(() => {
-  if (accountView.value === 'etf') return allocation(activeRows.value, activeCash.value);
+  if (invest.accountKind(accountView.value) === 'etf') return allocation(activeRows.value, activeCash.value);
   if (drillL1.value) {
     const sub = activeRows.value.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);
     return allocation(sub, 0, [], (p) => swGroupOf(p, swMap.value, 'l2'));
@@ -347,7 +339,7 @@ const allocItems = computed(() => {
 });
 function canDrill(name: string) {
   return (
-    accountView.value === 'stock' &&
+    invest.accountKind(accountView.value) === 'stock' &&
     !drillL1.value &&
     name !== '现金' &&
     Object.values(swMap.value).some((c) => c.l1 === name)
@@ -356,7 +348,7 @@ function canDrill(name: string) {
 function onAllocClick(name: string) {
   if (canDrill(name)) drillL1.value = name;
 }
-const accountLabel = computed(() => (accountView.value === 'etf' ? 'ETF 账户' : '股票账户'));
+const accountLabel = computed(() => invest.accountName(accountView.value));
 
 const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
 function colorOf(name: string) {

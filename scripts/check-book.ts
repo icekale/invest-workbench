@@ -79,6 +79,35 @@ assert.equal(ledger.totalSellAmount, 95000);
 assert.ok(ledger.realizedPnL > 9000); // 卖出50股，成本约1700，卖出价1900，盈利约10000减去手续费
 assert.ok(ledger.turnoverRate > 0);
 
+// 同一天先买后卖：必须按录入先后结转成本，不能把卖出当成纯利润
+const sameDayCsv = `日期,账户,代码,名称,买卖,成交价,成交量,手续费
+2025-02-01,股票,sh600900,长江电力,买入,10,100,0
+2025-02-10,股票,sh600900,长江电力,买入,10,100,0
+2025-02-10,股票,sh600900,长江电力,卖出,11,200,0`;
+const sameDay = parseTransactionsCsv(sameDayCsv);
+assert.equal(sameDay.rows.length, 3);
+
+const sameDayHoldings = recalculateHoldingsFromTransactions(sameDay.rows);
+assert.equal(sameDayHoldings.length, 0, '当日已全部卖出，不该留幽灵持仓');
+
+const sameDayLedger = calculateLedger(sameDay.rows, 0);
+// 成本 2000（两笔各 1000），卖出 2200 → 已实现盈亏 200
+assert.equal(sameDayLedger.realizedPnL, 200, '同日买卖的已实现盈亏应为 200');
+
+// 同一天先卖后买（录入顺序相反）：卖出时持仓为 0，不得凭空结转成本
+const sellFirstCsv = `日期,账户,代码,名称,买卖,成交价,成交量,手续费
+2025-02-01,股票,sh600900,长江电力,买入,10,100,0
+2025-02-10,股票,sh600900,长江电力,卖出,11,100,0
+2025-02-10,股票,sh600900,长江电力,买入,9,100,0`;
+const sellFirst = parseTransactionsCsv(sellFirstCsv);
+const sellFirstLedger = calculateLedger(sellFirst.rows, 0);
+// 卖出 1100 - 成本 1000 = 100；随后 9 元买回不影响已实现盈亏
+assert.equal(sellFirstLedger.realizedPnL, 100, '先卖后买：只算卖出那一笔');
+const sellFirstHoldings = recalculateHoldingsFromTransactions(sellFirst.rows);
+assert.equal(sellFirstHoldings.length, 1);
+assert.equal(sellFirstHoldings[0].quantity, 100);
+assert.equal(sellFirstHoldings[0].cost, 9);
+
 assert.equal(swL1FromF100('白酒Ⅱ'), '食品饮料');
 assert.equal(swL1FromF100('电池'), '电力设备');
 assert.equal(swL1FromF100('银行Ⅱ'), '银行');

@@ -68,8 +68,9 @@
         </t-form-item>
         <t-form-item label="归属账户">
           <t-radio-group v-model="todoForm.account">
-            <t-radio-button value="etf">ETF 账户</t-radio-button>
-            <t-radio-button value="stock">股票账户</t-radio-button>
+            <t-radio-button v-for="a in invest.activeAccounts" :key="a.id" :value="a.id">
+              {{ a.name }}
+            </t-radio-button>
           </t-radio-group>
         </t-form-item>
         <t-form-item label="拟买份数">
@@ -134,16 +135,24 @@ const todoForm = reactive({
   reason: '',
 });
 
+/** 基金详情默认落基金桶；没有或已归档就落第一个在用的桶。 */
+function defaultAccount(): AccountId {
+  const list = invest.activeAccounts;
+  return list.find((a) => a.kind === 'etf')?.id ?? list[0]?.id ?? 'stock';
+}
+
 function openTodoDialog() {
   if (!fund.value) return;
+  if (!invest.activeAccounts.some((a) => a.id === todoForm.account)) todoForm.account = defaultAccount();
   todoForm.reason = `拾光研选${score.value ?? '—'}分，近1年收益率 ${fund.value.year ?? '—'}%`;
   todoDialogVisible.value = true;
 }
 
 function confirmBuyTodo() {
   if (!fund.value) return;
+  const list = invest.activeAccounts;
   invest.addTodo({
-    account: todoForm.account,
+    account: list.some((a) => a.id === todoForm.account) ? todoForm.account : defaultAccount(),
     code: fund.value.code,
     name: fund.value.name,
     side: 'buy',
@@ -162,7 +171,7 @@ function handleAddToOpportunity() {
     return;
   }
   invest.addOpportunity({
-    account: 'etf',
+    account: defaultAccount(),
     name: fund.value.name,
     thesis: `${fund.value.type} · 拾光研选分 ${score.value ?? '—'} · ${sampleNote.value || '表现优异'}`,
     score: score.value ?? 85,

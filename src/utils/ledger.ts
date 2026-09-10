@@ -1,4 +1,5 @@
 import type {
+  Account,
   AccountId,
   ActionPoint,
   AlertLevel,
@@ -11,21 +12,44 @@ import type {
   TradeAlert,
   Transaction,
 } from '@/types/invest';
+import { matchAccount } from '@/utils/accounts';
 import type { Quote } from '@/utils/quote';
 
+import { feeOf } from './accounts.ts';
 import { formatCN, todayCN } from './date.ts';
 
-/** 佣金：股票万 0.8，ETF 万 0.5。无最低佣金。 */
-export function tradeFee(account: AccountId, amount: number): number {
-  const rate = account === 'etf' ? 0.00005 : 0.00008;
-  return Number((Math.max(0, amount) * rate).toFixed(2));
+/**
+ * 流水按时间排序的比较器。
+ *
+ * 日期只到天，同一天的顺序必须另外定，否则成本结转与已实现盈亏会错。
+ * 取 id 里的信息做全序：`tx_<毫秒>`（逐笔录入）与 `tx_<毫秒>_<行号>`（CSV 一次导入，行号即文件先后）。
+ * 不能写成 `(a, b) => a.date > b.date ? 1 : -1` —— 同一天时它永远不返回 0，
+ * 是个自相矛盾的比较器（a<b 且 b<a），排序结果属于未定义行为，实测会把同日流水整段反转。
+ */
+function byChrono(a: Transaction, b: Transaction): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  const seq = (tx: Transaction): [number, number] => {
+    const m = /^tx_(\d+)(?:_(\d+))?$/.exec(tx.id);
+    return m ? [Number(m[1]), Number(m[2] ?? 0)] : [0, 0];
+  };
+  const [am, ai] = seq(a);
+  const [bm, bi] = seq(b);
+  return am !== bm ? am - bm : ai - bi;
+}
+
+/** 佣金：按账户费率算。不传注册表时按账户性质取默认值。无最低佣金。 */
+export function tradeFee(account: AccountId, amount: number, accounts: Account[] = []): number {
+  return Number(feeOf(accounts, account, Math.max(0, amount)).toFixed(2));
 }
 
 /**
  * 导入文本/CSV解析器：
  * 支持表头或无表头，常见列：日期,账户(股票/ETF),代码,名称,买卖,成交价,成交量,手续费(可选),备注(可选)
  */
-export function parseTransactionsCsv(text: string): {
+export function parseTransactionsCsv(
+  text: string,
+  accounts: Account[] = [],
+): {
   success: boolean;
   rows: Transaction[];
   errors: string[];
@@ -69,9 +93,8 @@ export function parseTransactionsCsv(text: string): {
       date = Number.isNaN(d.getTime()) ? todayCN() : formatCN(d);
     }
 
-    // 账户判断
-    const account: AccountId =
-      rawAccount === 'etf' || rawAccount === 'ETF' || rawAccount.includes('基') ? 'etf' : 'stock';
+    // 账户判断：对账单里写的是「股票」「ETF」或账户全名，交给注册表认
+    const account: AccountId = matchAccount(accounts, rawAccount);
 
     // 代码规范化
     let code = rawCode.toLowerCase();
@@ -124,8 +147,8 @@ export function recalculateHoldingsFromTransactions(
   transactions: Transaction[],
   existingTheses: Thesis[] = [],
 ): Holding[] {
-  // 按时间升序排序
-  const sorted = [...transactions].sort((a, b) => (a.date > b.date ? 1 : -1));
+  // 按时间升序排序（同一天按录入先后，见 byChrono）
+  const sorted = [...transactions].sort(byChrono);
 
   // 记录每个 (account, code) 的仓位
   const map: Record<
@@ -201,7 +224,7 @@ export function calculateLedger(transactions: Transaction[], currentPortfolioVal
   // 模拟计算每笔卖出的盈亏
   const positionTracker: Record<string, { qty: number; totalCost: number }> = {};
 
-  const sorted = [...transactions].sort((a, b) => (a.date > b.date ? 1 : -1));
+  const sorted = [...transactions].sort(byChrono);
 
   for (const tx of sorted) {
     const key = `${tx.account}_${tx.code}`;

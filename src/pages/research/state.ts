@@ -64,7 +64,8 @@ export async function ensureValuations(force = false) {
 
 /** 拉取持仓的申万一级归属并算出各行业占比。上游失败则不标持仓，不阻塞估值。 */
 export async function ensureHeldIndustryWeights() {
-  const rows = useInvestStore().enriched.filter((h) => h.account === 'stock');
+  // 按账户性质取，不是按 id：注册表里叫什么都不影响这里
+  const rows = useInvestStore().rowsByKind('stock');
   if (!rows.length) {
     heldIndustryWeights.value = {};
     return;

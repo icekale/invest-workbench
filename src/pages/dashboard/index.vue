@@ -30,18 +30,26 @@
           <template #icon><t-icon name="edit" /></template>
           手工校准
         </t-button>
+        <t-button variant="outline" size="small" @click="manageOpen = true">
+          <template #icon><t-icon name="setting" /></template>
+          管理账户
+        </t-button>
       </div>
     </div>
     <t-alert v-if="closed" theme="warning" message="今日休市，展示最近交易日收盘价" />
     <t-tabs v-model="tab" @change="onTab">
-      <t-tab-panel value="stock" label="股票账户">
-        <account-panel title="股票账户" :rows="invest.stockRows" :cash="invest.cash.stock" @edit="editOpen = true" />
-      </t-tab-panel>
-      <t-tab-panel value="etf" label="ETF 账户">
-        <account-panel title="ETF 账户" :rows="invest.etfRows" :cash="invest.cash.etf" @edit="editOpen = true" />
+      <t-tab-panel v-for="acc in invest.activeAccounts" :key="acc.id" :value="acc.id" :label="acc.name">
+        <account-panel
+          :account="acc.id"
+          :title="acc.name"
+          :rows="invest.rowsOf(acc.id)"
+          :cash="invest.cash[acc.id] ?? 0"
+          @edit="editOpen = true"
+        />
       </t-tab-panel>
     </t-tabs>
     <holdings-editor v-model:visible="editOpen" />
+    <manage-accounts-dialog v-model:visible="manageOpen" />
     <input
       ref="fileInputRef"
       type="file"
@@ -53,7 +61,7 @@
 </template>
 <script setup lang="ts">
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
@@ -63,13 +71,29 @@ import { bindCloudSync } from '@/utils/cloud-sync';
 
 import AccountPanel from './AccountPanel.vue';
 import HoldingsEditor from './HoldingsEditor.vue';
+import ManageAccountsDialog from './ManageAccountsDialog.vue';
 
 defineOptions({ name: 'DashboardIndex' });
 
 const invest = useInvestStore();
 const router = useRouter();
-const tab = ref(new URLSearchParams(window.location.search).get('tab') === 'etf' ? 'etf' : 'stock');
+// ?tab=<账户 id> 只在它确实是当前活跃账户时才认 —— 否则归档/改名过的旧链接会开出空白页
+const wantedTab = new URLSearchParams(window.location.search).get('tab');
+const tab = ref<AccountId>(
+  invest.activeAccounts.some((a) => a.id === wantedTab)
+    ? (wantedTab as AccountId)
+    : (invest.activeAccounts[0]?.id ?? 'stock'),
+);
+watch(
+  () => invest.activeAccounts.map((a) => a.id).join(','),
+  () => {
+    if (!invest.activeAccounts.some((a) => a.id === tab.value)) {
+      tab.value = invest.activeAccounts[0]?.id ?? 'stock';
+    }
+  },
+);
 const editOpen = ref(false);
+const manageOpen = ref(false);
 const closed = ref(false);
 let timer = 0;
 
@@ -111,7 +135,7 @@ async function refresh(silent = false) {
 }
 
 function onTab(value: string | number) {
-  MessagePlugin.info(`已切换到${value === 'etf' ? 'ETF' : '股票'}账户`);
+  MessagePlugin.info(`已切换到${invest.accountName(value as AccountId)}`);
 }
 
 function exportSnap() {

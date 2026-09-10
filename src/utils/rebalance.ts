@@ -1,4 +1,4 @@
-import type { Holding, TradeTodo } from '@/types/invest';
+import type { AccountId, Holding, TradeTodo } from '@/types/invest';
 import type { Quote } from '@/utils/quote';
 
 export type RebalanceStrategyId = 'valuation_tilt' | 'all_weather' | 'growth_core' | 'plan_base' | 'custom';
@@ -291,7 +291,7 @@ export function calculateRebalance(params: {
  */
 export function generateRebalanceTodos(
   items: RebalanceItem[],
-  account: 'etf' | 'stock' = 'etf',
+  account: AccountId = 'etf',
 ): Omit<TradeTodo, 'id' | 'createdAt'>[] {
   const result: Omit<TradeTodo, 'id' | 'createdAt'>[] = [];
 

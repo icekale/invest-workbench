@@ -66,6 +66,7 @@ import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
 import type { BriefingTodoDraft } from '@/types/invest';
+import { matchAccount } from '@/utils/accounts';
 import type { FactPackInput, HoldingSlice } from '@/utils/briefing';
 import {
   alreadyOpen,
@@ -185,6 +186,7 @@ function factInput(): FactPackInput {
       }),
     holdings,
     cash: invest.cash,
+    accounts: invest.accounts,
     todos: invest.todos,
     alerts: invest.activeAlerts,
     yesterdayStance: yesterday?.stance ?? null,
@@ -200,7 +202,8 @@ async function waitQuotes() {
 }
 
 async function loadSw() {
-  const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
+  // 申万行业分类只对个股有意义，基金不查
+  const codes = invest.rowsByKind('stock').map((h) => h.code);
   if (!codes.length) {
     swMap.value = {};
     return;
@@ -251,7 +254,8 @@ async function bootBriefing(force = false) {
 function commitBriefingTodo(todo: BriefingTodoDraft) {
   if (alreadyOpen(invest.todos, todo)) return;
   invest.addTodo({
-    account: todo.account,
+    // 模型的账户名可能已被重命名/归档，落库前对回注册表
+    account: matchAccount(invest.accounts, todo.account),
     code: todo.code,
     name: todo.name,
     side: todo.side,

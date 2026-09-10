@@ -34,8 +34,12 @@
         <div v-for="o in invest.opportunities" :key="o.id" class="opp-card">
           <div class="opp-card__header">
             <div class="opp-card__title-row">
-              <t-tag size="small" variant="light" :theme="o.account === 'etf' ? 'primary' : 'warning'">
-                {{ o.account === 'etf' ? 'ETF' : '股票' }}
+              <t-tag
+                size="small"
+                variant="light"
+                :theme="invest.accountKind(o.account) === 'etf' ? 'primary' : 'warning'"
+              >
+                {{ invest.accountName(o.account) }}
               </t-tag>
               <span class="opp-card__name">{{ o.name }}</span>
             </div>
@@ -264,8 +268,7 @@
         </t-form-item>
         <t-form-item label="所属账户">
           <t-radio-group v-model="opp.account">
-            <t-radio value="etf">ETF 账户</t-radio>
-            <t-radio value="stock">股票账户</t-radio>
+            <t-radio v-for="a in invest.activeAccounts" :key="a.id" :value="a.id">{{ a.name }}</t-radio>
           </t-radio-group>
         </t-form-item>
         <t-form-item label="核心投资论点 (Thesis)">
@@ -293,6 +296,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { smartPortfolios } from '@/mock/invest';
 import { useInvestStore } from '@/store';
 import type { AccountId, Opportunity } from '@/types/invest';
+import { isFund } from '@/utils/accounts';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
 
@@ -321,6 +325,12 @@ const opp = reactive({
   score: 70,
   note: '',
 });
+
+/** 机会池默认落基金桶；没有或已归档就落第一个在用的桶。 */
+function defaultAccount(): AccountId {
+  const list = invest.activeAccounts;
+  return list.find((a) => a.kind === 'etf')?.id ?? list[0]?.id ?? 'stock';
+}
 
 const fundName = (code: string) => rank.value.find((f) => f.code === code)?.name || code;
 
@@ -440,7 +450,8 @@ function saveOpp() {
   }
   invest.addOpportunity({
     name: opp.name.trim(),
-    account: opp.account,
+    // 表单里选的桶可能已被归档，落库前对回注册表
+    account: invest.activeAccounts.some((a) => a.id === opp.account) ? opp.account : defaultAccount(),
     thesis: opp.thesis.trim(),
     score: opp.score,
     note: opp.note.trim(),
@@ -460,13 +471,13 @@ function deleteOpp(id: string) {
 
 function convertOppToTodo(o: Opportunity) {
   const match = o.name.match(/\d{6}/);
-  const code = match ? match[0] : o.account === 'etf' ? '510300' : '600519';
+  const code = match ? match[0] : isFund(invest.accounts, o.account) ? '510300' : '600519';
   invest.addTodo({
     account: o.account,
     code,
     name: o.name,
     side: 'buy',
-    quantity: o.account === 'etf' ? 1000 : 100,
+    quantity: isFund(invest.accounts, o.account) ? 1000 : 100,
     reason: `[机会池导入] ${o.thesis}`,
   });
   MessagePlugin.success(`已将「${o.name}」转为买入待办`);

@@ -2,7 +2,7 @@
   <t-dialog v-model:visible="visible" header="编辑持仓" width="min(960px, 94vw)" :footer="false">
     <t-form :data="form" layout="inline" class="editor-form">
       <t-form-item name="account" label="账户">
-        <t-select v-model="form.account" :options="accountOpts" style="width: 104px" />
+        <t-select v-model="form.account" :options="accountOpts" style="width: 130px" />
       </t-form-item>
       <t-form-item name="code" label="代码">
         <t-input v-model="form.code" placeholder="510300 / 600519" style="width: 170px" clearable @blur="lookupCode" />
@@ -21,22 +21,17 @@
       <t-form-item name="cost" label="成本">
         <t-input-number v-model="form.cost" :min="0" :decimal-places="4" style="width: 150px" />
       </t-form-item>
-      <t-form-item :label="`股票现金 ¥${invest.cash.stock.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`">
+      <t-form-item
+        v-for="acc in invest.activeAccounts"
+        :key="acc.id"
+        :label="`${acc.name}现金 ¥${cashOf(acc.id).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`"
+      >
         <t-input-number
-          :value="invest.cash.stock"
+          :value="cashOf(acc.id)"
           :min="0"
           :decimal-places="0"
-          style="width: 220px"
-          @change="(v) => invest.setCash('stock', Number(v) || 0)"
-        />
-      </t-form-item>
-      <t-form-item :label="`ETF 现金 ¥${invest.cash.etf.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`">
-        <t-input-number
-          :value="invest.cash.etf"
-          :min="0"
-          :decimal-places="0"
-          style="width: 220px"
-          @change="(v) => invest.setCash('etf', Number(v) || 0)"
+          style="width: 200px"
+          @change="(v) => invest.setCash(acc.id, Number(v) || 0)"
         />
       </t-form-item>
       <t-form-item>
@@ -45,7 +40,7 @@
     </t-form>
     <div class="table-wrap">
       <t-table :data="rows" :columns="cols" row-key="rowKey" size="small" style="margin-top: 16px">
-        <template #account="{ row }">{{ row.account === 'stock' ? '股票' : 'ETF' }}</template>
+        <template #account="{ row }">{{ invest.accountName(row.account) }}</template>
         <template #op="{ row }">
           <t-space>
             <t-link theme="primary" @click="fill(row)">改</t-link>
@@ -71,11 +66,21 @@ const invest = useInvestStore();
 const saving = ref(false);
 
 const form = reactive({
-  account: 'etf' as AccountId,
+  account: '' as AccountId,
   code: '',
   quantity: 0,
   cost: 0,
 });
+
+// 新持仓默认落到第一个账户。等注册表从云端/备份恢复后，若当前选择已不存在，跟着修正
+const cashOf = (id: AccountId) => invest.cash[id] ?? 0;
+watch(
+  () => invest.activeAccounts,
+  (list) => {
+    if (!list.some((a) => a.id === form.account)) form.account = list[0]?.id ?? 'stock';
+  },
+  { immediate: true },
+);
 
 const previewInfo = reactive({
   name: '',
@@ -121,10 +126,8 @@ async function lookupCode() {
   }
 }
 
-const accountOpts = [
-  { label: '股票', value: 'stock' },
-  { label: 'ETF', value: 'etf' },
-];
+// 只能记到在用账户上；归档账户仍会被填回（fill）以支持迁移
+const accountOpts = computed(() => invest.activeAccounts.map((a) => ({ label: a.name, value: a.id })));
 
 const cols = [
   { colKey: 'account', title: '账户', width: 80 },

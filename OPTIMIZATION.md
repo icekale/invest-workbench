@@ -53,17 +53,17 @@
 ### 第 1 批（1 次会话，本次已含一部分）
 - [x] 时区统一：`todayCN()/formatCN()` 落地 store/ledger（已完成）
 - [x] 估值历史确定性 + 弹窗「示意」标注（已完成）
-- [x] 万得失败诚实展示 + 状态灯（已完成）
-- [x] 再平衡佣金最低 5 元（已完成）
+- [x] ~~万得失败诚实展示 + 状态灯~~ —— 已作废：`src/utils/wind.ts` 在 8be8e39 删除，全库已无「万得」，此项失去对象
+- [ ] 再平衡佣金最低 5 元 —— 未做。`src/utils/accounts.ts:58` 的 `feeOf` 是 `Math.max(0, amount * rateOf(...))`，下限 0，不是 5 元
 - [x] A2 每日市值快照落库（`recordDailySnapshot()` 每次行情刷新同日覆盖；AccountPanel 有 ≥2 日快照自动切真实净值，否则回退示意）
 - [x] C2 图片懒加载（已在迭代中落地）
 
 ### 第 2 批（1 次会话）
-- [x] B1 fetch 封装重试（`src/utils/http.ts`，已接入 qt/sina/szse；fund.ts 内建重试保留）
-- [x] B2 localStorage 清理策略（`runStorageHygiene()`：过期万得缓存 + 流水 5000 条上限，main.ts 启动执行）
+- [~] B1 fetch 封装重试 —— 只做了一半。`src/utils/http.ts` 已接入 calendar / macro-cn / valuation / sw-valuation / briefs / briefing；但 `src/utils/quote.ts:82` 与 `src/utils/backup.ts:33,71` 仍是裸 `fetch`，无重试
+- [ ] B2 localStorage 清理策略 —— 未做。`runStorageHygiene()` 全库不存在，`main.ts` 未接
 - [x] B3 快照周提醒（7 天未导出在驾驶舱提示一次；导出自动记录 lastBackupAt）
-- [x] A4 交易手续费输入（自动估算万 2.5/最低 5 元可手改；买入计入加权成本、卖出扣回款，现金校验含费）
-- [x] D2 rebalance 测试用例进 check-book（买卖方向/整百/手续费下限/注入资金/待办生成）
+- [~] A4 交易手续费输入 —— 只做了一半。`estimatedFee`（`src/components/TradeDialog.vue:360`）已计入现金校验与加权成本，但模板里不渲染（用户看不到实际要付多少）；无手改入口；估算按 `rateOf` 纯比例，无最低 5 元
+- [ ] D2 rebalance 测试用例进 check-book —— 未做。所有 `scripts/check-*.ts` 中没有一处 rebalance
 
 ### 第 3 批（需用户决策后执行）
 - [ ] A1 万得充值 vs 免费源替换（需要你定：充值可保留现 UI；换源则约一次会话工作量）
@@ -72,7 +72,7 @@
 - [ ] D1 Key 迁移（10 分钟，VPS 操作）
 
 ### 不做（明确排除）
-- 不引入后端服务/数据库——单人工具，Caddy + localStorage 是正确的复杂度。
+- ~~不引入后端服务/数据库~~ —— 已推翻：`scripts/sync-server.py` + SQLite 已上线（多账户跨设备同步）。「单人工具该保持低复杂度」这个判断仍然成立，但边界已从「纯 Caddy + localStorage」变成「Caddy + localStorage + 单文件同步服务」。
 - 不做多用户/权限。
 - 不把方法论页的静态研报改成 CMS。
 
@@ -80,6 +80,6 @@
 
 每批完成后：
 1. `vue-tsc / eslint / stylelint / build` 全绿；
-2. 四个 check 脚本通过（新增逻辑必须带断言）;
+2. `npm run check:*` 全部通过（现有 14 个，新增逻辑必须带断言）;
 3. `npm run build` 后按 DEPLOY.md 发布；
 4. 线上冒烟：首页 200、/qt /em /sina /szse 四路 API、登录后驾驶舱数据渲染。

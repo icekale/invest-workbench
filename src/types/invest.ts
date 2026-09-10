@@ -1,4 +1,22 @@
-export type AccountId = 'stock' | 'etf';
+/** 账户 id。账户是自定义资金桶，不限于股票/基金两支；'stock'/'etf' 只是两个默认账户的 id。 */
+export type AccountId = string;
+
+/**
+ * 账户性质。计价单位、默认佣金率、取数口径都看它 —— 不看账户叫什么名字。
+ * 所以「打新账户(kind: 'stock')」自动拿到「股」与万 0.8。
+ */
+export type AccountKind = 'stock' | 'etf';
+
+/** 一个资金桶：独立现金、持仓、费率、净值曲线。 */
+export interface Account {
+  id: AccountId;
+  name: string;
+  kind: AccountKind;
+  /** 佣金率。缺省按 kind 取默认值（股票万 0.8 / ETF 万 0.5） */
+  feeRate?: number;
+  /** 软删：保留持仓与账本历史，界面默认不列出 */
+  archived?: boolean;
+}
 export type Health = 'healthy' | 'watch' | 'alert';
 export type ActionPoint = 'hold' | 'add' | 'reduce' | 'exit';
 export type ThesisStatus = 'valid' | 'watch' | 'invalid';

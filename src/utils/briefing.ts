@@ -1,4 +1,5 @@
 import type {
+  Account,
   AccountId,
   BriefingCite,
   BriefingStance,
@@ -10,6 +11,7 @@ import type {
   TradeSide,
   TradeTodo,
 } from '../types/invest.ts';
+import { activeOf } from './accounts.ts';
 import { authHeader } from './cloud-sync.ts';
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
@@ -95,6 +97,8 @@ export interface FactPackInput {
   valuation: ValuationSlice[];
   holdings: HoldingSlice[];
   cash: Record<string, number>;
+  /** 账户注册表。不传就只从 cash/持仓里现推（老路径，仍能跑）。 */
+  accounts?: Account[];
   todos: TradeTodo[];
   alerts: TradeAlert[];
   yesterdayStance: BriefingStance | null;
@@ -213,9 +217,15 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
       deltaSpan: v.deltaPct == null ? null : (v.deltaSpan ?? null),
     }));
 
-  // 账户列表从数据里现推，和 recordDailySnapshot 同口径：新建账户后晨会立刻能看到它，
-  // 不用另一处跟着改。阶段二接账户注册表时只换这行。
-  const accountIds = [...new Set([...Object.keys(input.cash), ...input.holdings.map((h) => h.account)])];
+  // 账户列表从注册表来：刚建的空账户（还没持仓、現金为 0）也要让模型看见。
+  // 再并上 cash/持仓里出现过的 id，防止老数据里的账户发不出声。
+  const accountIds = [
+    ...new Set([
+      ...activeOf(input.accounts ?? []).map((a) => a.id),
+      ...Object.keys(input.cash),
+      ...input.holdings.map((h) => h.account),
+    ]),
+  ];
   const accounts: BriefingFactPack['accounts'] = accountIds.map((id) => {
     const rows = input.holdings.filter((h) => h.account === id);
     const mv = rows.reduce((s, h) => s + num(h.marketValue), 0);
@@ -224,7 +234,8 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
     const picked = [...rows].sort((a, b) => Math.abs(num(b.pnlPct)) - Math.abs(num(a.pnlPct))).slice(0, 20);
     return {
       id,
-      cash: input.cash[id],
+      // 账户可能在 cash 里没有键（老备份/刚建的桶），不能把 undefined 传给模型
+      cash: num(input.cash[id]),
       marketValue: mv,
       pnl,
       pnlPct: cost === 0 ? 0 : pnl / cost,
@@ -388,13 +399,16 @@ export function parseBriefing(raw: unknown, pack: BriefingFactPack, today: strin
   if (!Array.isArray(o.risks) || o.risks.length > 3) throw new Error('bad risks');
   if (!Array.isArray(o.todos) || o.todos.length > 3) throw new Error('bad todos');
   const codes = allowedCodes(pack);
+  const knownAccounts = new Set(pack.accounts.map((a) => a.id));
   const todos: BriefingTodoDraft[] = o.todos.map((row) => {
     if (!row || typeof row !== 'object') throw new Error('bad todo');
     const t = row as Record<string, unknown>;
-    const account = t.account as AccountId;
+    const account = asString(t.account).trim();
     const side = t.side as TradeSide;
     const code = asString(t.code);
-    if (account !== 'stock' && account !== 'etf') throw new Error('bad account');
+    // 账户必须在交给模型的清单里；清单就是注册表，所以自建账户名也能过。
+    // 一个账户都没有时（空仓新装）放行，交给 matchAccount 兜底，不白白丢掉整份简报。
+    if (!account || (knownAccounts.size && !knownAccounts.has(account))) throw new Error('bad account');
     if (side !== 'buy' && side !== 'sell') throw new Error('bad side');
     if (code && !codes.has(code)) throw new Error('unknown code');
     const quantity = num(typeof t.quantity === 'number' ? t.quantity : Number(t.quantity));

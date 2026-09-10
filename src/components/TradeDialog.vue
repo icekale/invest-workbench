@@ -41,8 +41,9 @@
           <t-col :span="6">
             <t-form-item label="归属账户">
               <t-radio-group v-model="form.account" variant="default-filled" @change="onAccountChange">
-                <t-radio-button value="stock">股票账户</t-radio-button>
-                <t-radio-button value="etf">ETF 账户</t-radio-button>
+                <t-radio-button v-for="a in invest.activeAccounts" :key="a.id" :value="a.id">
+                  {{ a.name }}
+                </t-radio-button>
               </t-radio-group>
             </t-form-item>
           </t-col>
@@ -201,6 +202,7 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
+import { rateOf } from '@/utils/accounts';
 import { tradeFee } from '@/utils/ledger';
 import { fetchQuotes, normalizeCode } from '@/utils/quote';
 
@@ -234,7 +236,9 @@ watch(
   (visible) => {
     if (visible) {
       const opts = invest.tradeModal.options;
-      form.account = opts.account || 'stock';
+      // 打开时传来的账户可能已被归档，落回一个在用的
+      const usable = invest.activeAccounts.some((a) => a.id === opts.account);
+      form.account = (usable ? opts.account : invest.activeAccounts[0]?.id) || 'stock';
       form.side = opts.side || 'buy';
       form.code = opts.code || '';
       form.name = opts.name || '';
@@ -353,8 +357,8 @@ function fillLivePrice() {
 
 // 交易金额
 const tradeAmount = computed(() => Number((form.price * form.quantity).toFixed(2)));
-const estimatedFee = computed(() => tradeFee(form.account, tradeAmount.value));
-const feeRate = computed(() => (form.account === 'etf' ? 0.00005 : 0.00008));
+const estimatedFee = computed(() => tradeFee(form.account, tradeAmount.value, invest.accounts));
+const feeRate = computed(() => rateOf(invest.accounts, form.account));
 
 // 最大可买股数 (按整百股向下取整，预留佣金)
 const maxBuyQuantity = computed(() => {
