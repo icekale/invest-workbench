@@ -468,7 +468,8 @@ const lookCovered = computed(() => {
   if (!l?.rows.length) return '';
   return `覆盖净值 ${l.coverage.toFixed(0)}%`;
 });
-/* 覆盖不全的原因要说清楚，否则“怎么只有 60%”看着像算错了 */
+/* 覆盖不全的原因要说清楚，否则“怎么只有 60%”看着像算错了；
+   表里只列前若干大，而覆盖度是按全部披露行算的 —— 得说清，不然看着像对不上账。 */
 const lookNote = computed(() => {
   const l = look.value;
   if (!l?.rows.length) return '';
@@ -476,7 +477,8 @@ const lookNote = computed(() => {
   const tail = miss > 0 ? `，其中 ${miss} 只未拿到披露数据` : '';
   const bonds = l.rows.filter((r) => r.kind === '债券').length;
   const mix = bonds ? `前十重仓股与 ${bonds} 笔披露债券` : '前十大重仓股';
-  return `季报只披露${mix}，这张表覆盖了基金净值的 ${l.coverage.toFixed(0)}%${tail}；剩下的是现金、未披露的持仓与其他资产。`;
+  const shown = `共 ${l.rows.length} 项，此处只列前 ${lookTop.value.length} 大`;
+  return `季报只披露${mix}，${shown}；按披露权重加权后覆盖基金净值的 ${l.coverage.toFixed(0)}%${tail}，剩下的是现金、未披露的持仓与其他资产。`;
 });
 const alloc = computed(() => {
   // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
