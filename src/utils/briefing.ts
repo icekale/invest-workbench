@@ -5,7 +5,6 @@ import type {
   BriefingTodoDraft,
   DailyBriefing,
   MacroEvent,
-  MacroIndicator,
   MacroWeather,
   TradeAlert,
   TradeSide,
@@ -84,7 +83,7 @@ export interface ValuationSlice {
 export interface FactPackInput {
   date: string;
   weather: MacroWeather;
-  indicators: MacroIndicator[];
+  indicators: Array<{ name: string; value: string; status: string }>;
   events: MacroEvent[];
   valuation: ValuationSlice[];
   holdings: HoldingSlice[];
