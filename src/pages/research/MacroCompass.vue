@@ -3,26 +3,24 @@
     <t-card class="macro-weather-card">
       <div class="macro-weather-header">
         <div class="weather-header-left">
-          <span class="weather-title">宏观周期罗盘与大类定调</span>
-          <span class="weather-sub">人工定调 · 下方为统计局 / 央行公开数据</span>
+          <span class="weather-title">仓位立场</span>
+          <span class="weather-sub">对照账本 · 人工改</span>
         </div>
         <div class="weather-header-right">
           <t-space :size="8" align="center">
-            <span class="sub-action-text">{{ invest.macroWeather?.updatedAt || '每日 08:30 投研定调' }}</span>
-            <t-button size="small" variant="text" theme="primary" @click="openMacroModal">
-              + 记研判/会议/产业
-            </t-button>
+            <span class="sub-action-text">{{ invest.macroWeather?.updatedAt || '还没改过' }}</span>
+            <t-button size="small" variant="text" theme="primary" @click="openMacroModal">改仓位</t-button>
           </t-space>
         </div>
       </div>
 
       <div class="macro-weather-bar">
         <div class="weather-col main-cycle">
-          <div class="weather-label">宏观周期定调</div>
-          <div class="weather-val">{{ invest.macroWeather?.cycle }}</div>
+          <div class="weather-label">一句话</div>
+          <div class="weather-val">{{ invest.macroWeather?.cycle || '未写' }}</div>
         </div>
         <div class="weather-col sentiment-badge">
-          <div class="weather-label">市场风险偏好</div>
+          <div class="weather-label">立场</div>
           <t-tag
             size="small"
             :theme="
@@ -38,16 +36,32 @@
           </t-tag>
         </div>
         <div class="weather-col position-guide">
-          <div class="weather-label">建议基准仓位</div>
+          <div class="weather-label">仓位</div>
           <div class="weather-val pos-text">
-            股票 <strong>{{ invest.macroWeather?.suggestedStockPos }}</strong> · ETF
-            <strong>{{ invest.macroWeather?.suggestedEtfPos }}</strong>
+            <div>
+              股票 现 {{ fmtPct(stockActual) }}
+              <template v-if="invest.macroWeather?.suggestedStockPos">
+                · 目标 {{ invest.macroWeather.suggestedStockPos }}
+              </template>
+              <t-tag v-if="stockGap" size="small" variant="light" :theme="stockGap === '超配' ? 'danger' : 'warning'">
+                {{ stockGap }}
+              </t-tag>
+            </div>
+            <div>
+              ETF 现 {{ fmtPct(etfActual) }}
+              <template v-if="invest.macroWeather?.suggestedEtfPos">
+                · 目标 {{ invest.macroWeather.suggestedEtfPos }}
+              </template>
+              <t-tag v-if="etfGap" size="small" variant="light" :theme="etfGap === '超配' ? 'danger' : 'warning'">
+                {{ etfGap }}
+              </t-tag>
+            </div>
           </div>
         </div>
       </div>
     </t-card>
 
-    <t-card title="宏观四大支柱" subtitle="PMI / CPI / GDP 来自东财，社融来自央行。点卡片看历史折线">
+    <t-card title="宏观数据" subtitle="PMI / CPI / GDP 东财，社融央行。点卡片看折线">
       <template #actions>
         <t-space :size="8" align="center">
           <span v-if="macroErrorMsg" class="sync-time-hint" style="color: var(--td-error-color)">
@@ -290,67 +304,31 @@
       </div>
     </t-dialog>
 
-    <!-- 记研判/会议/产业管理弹窗 -->
     <t-dialog
       v-model:visible="macroModalVisible"
-      header="宏观研判与投研管理"
-      :confirm-btn="{ content: '保存更新', theme: 'primary' }"
+      header="改仓位立场"
+      :confirm-btn="{ content: '保存', theme: 'primary' }"
       @confirm="submitMacroModal"
     >
-      <t-tabs v-model="macroManageTab" theme="card">
-        <t-tab-panel value="weather" label="调宏观天气与仓位" />
-        <t-tab-panel value="brief" label="记一条晨会研判" />
-      </t-tabs>
-
-      <div v-if="macroManageTab === 'weather'" style="margin-top: 16px">
-        <t-form :data="weatherForm" label-align="left" :label-width="100">
-          <t-form-item label="宏观周期定调">
-            <t-input v-model="weatherForm.cycle" placeholder="如：弱复苏·宽货币·信用温和扩张" />
-          </t-form-item>
-          <t-form-item label="市场风险偏好">
-            <t-radio-group v-model="weatherForm.sentiment">
-              <t-radio-button value="偏多">偏多</t-radio-button>
-              <t-radio-button value="中性">中性</t-radio-button>
-              <t-radio-button value="防守">防守</t-radio-button>
-            </t-radio-group>
-          </t-form-item>
-          <t-form-item label="建议股票仓位">
-            <t-input v-model="weatherForm.suggestedStockPos" placeholder="如：60% ~ 70%" />
-          </t-form-item>
-          <t-form-item label="建议 ETF 仓位">
-            <t-input v-model="weatherForm.suggestedEtfPos" placeholder="如：75% ~ 85%" />
-          </t-form-item>
-        </t-form>
-      </div>
-
-      <div v-else-if="macroManageTab === 'brief'" style="margin-top: 16px">
-        <t-form :data="briefForm" label-align="left" :label-width="90">
-          <t-form-item label="标题">
-            <t-input v-model="briefForm.title" placeholder="如：央行二季度货币政策报告定调适度宽松" />
-          </t-form-item>
-          <t-form-item label="领域分类">
-            <t-radio-group v-model="briefForm.topic">
-              <t-radio-button value="增长">增长</t-radio-button>
-              <t-radio-button value="流动性">流动性</t-radio-button>
-              <t-radio-button value="政策">政策</t-radio-button>
-              <t-radio-button value="海外">海外</t-radio-button>
-            </t-radio-group>
-          </t-form-item>
-          <t-form-item label="定调倾向">
-            <t-radio-group v-model="briefForm.tone">
-              <t-radio-button value="利多">利多</t-radio-button>
-              <t-radio-button value="中性">中性</t-radio-button>
-              <t-radio-button value="警惕">警惕</t-radio-button>
-            </t-radio-group>
-          </t-form-item>
-          <t-form-item label="研判正文">
-            <t-textarea v-model="briefForm.body" placeholder="填写核心观点与逻辑..." :rows="3" />
-          </t-form-item>
-          <t-form-item label="应对策略">
-            <t-input v-model="briefForm.actionAdvice" placeholder="如：逢低增配核心宽基底仓" />
-          </t-form-item>
-        </t-form>
-      </div>
+      <t-form :data="weatherForm" label-align="left" :label-width="88">
+        <t-form-item label="一句话">
+          <t-input v-model="weatherForm.cycle" placeholder="如：钱松、别追高" />
+        </t-form-item>
+        <t-form-item label="立场">
+          <t-radio-group v-model="weatherForm.sentiment">
+            <t-radio-button value="偏多">偏多</t-radio-button>
+            <t-radio-button value="中性">中性</t-radio-button>
+            <t-radio-button value="谨慎">谨慎</t-radio-button>
+            <t-radio-button value="防守">防守</t-radio-button>
+          </t-radio-group>
+        </t-form-item>
+        <t-form-item label="股票目标">
+          <t-input v-model="weatherForm.suggestedStockPos" placeholder="如：60% ~ 70%" />
+        </t-form-item>
+        <t-form-item label="ETF 目标">
+          <t-input v-model="weatherForm.suggestedEtfPos" placeholder="如：75% ~ 85%" />
+        </t-form-item>
+      </t-form>
     </t-dialog>
   </div>
 </template>
@@ -365,13 +343,31 @@ import { afreToSeries, fetchAfre } from '@/utils/afre';
 import { loadEcharts } from '@/utils/load-echarts';
 import type { MacroSeries } from '@/utils/macro-cn';
 import { fetchMacroBundle, peekMacroBundle } from '@/utils/macro-cn';
+import { accountPos, fmtPct, parsePosRange, posStatus } from '@/utils/position';
 
 import { macroState } from './state';
 
-type MacroTone = '利多' | '中性' | '警惕' | '待定';
-type MacroTopic = '增长' | '流动性' | '政策' | '海外';
+type Stance = '偏多' | '中性' | '谨慎' | '防守';
 
 const invest = useInvestStore();
+
+function mvOf(account: 'stock' | 'etf') {
+  return invest.enriched
+    .filter((h) => h.account === account)
+    .reduce((s, h) => s + (h.marketValue ?? h.cost * h.quantity), 0);
+}
+
+function gapLabel(actual: number | null, target: string | undefined) {
+  const s = posStatus(actual, parsePosRange(target));
+  if (s === 'over') return '超配';
+  if (s === 'under') return '低配';
+  return '';
+}
+
+const stockActual = computed(() => accountPos(mvOf('stock'), invest.cash.stock));
+const etfActual = computed(() => accountPos(mvOf('etf'), invest.cash.etf));
+const stockGap = computed(() => gapLabel(stockActual.value, invest.macroWeather?.suggestedStockPos));
+const etfGap = computed(() => gapLabel(etfActual.value, invest.macroWeather?.suggestedEtfPos));
 const macroLoading = ref(false);
 const macroSyncTime = ref('');
 const macroErrorMsg = ref('');
@@ -394,60 +390,34 @@ const metricChartEl = ref<HTMLDivElement | null>(null);
 let chartInstance: ECharts | null = null;
 
 const macroModalVisible = ref(false);
-const macroManageTab = ref('weather');
 const weatherForm = reactive({
   cycle: '',
-  sentiment: '偏多' as '偏多' | '中性' | '防守',
+  sentiment: '中性' as Stance,
   suggestedStockPos: '',
   suggestedEtfPos: '',
 });
 
-const briefForm = reactive({
-  title: '',
-  topic: '增长' as MacroTopic,
-  tone: '利多' as MacroTone,
-  body: '',
-  actionAdvice: '',
-});
-
 function openMacroModal() {
   weatherForm.cycle = invest.macroWeather?.cycle || '';
-  weatherForm.sentiment = (invest.macroWeather?.sentiment as any) || '偏多';
+  weatherForm.sentiment = (invest.macroWeather?.sentiment as Stance) || '中性';
   weatherForm.suggestedStockPos = invest.macroWeather?.suggestedStockPos || '60% ~ 70%';
   weatherForm.suggestedEtfPos = invest.macroWeather?.suggestedEtfPos || '75% ~ 85%';
   macroModalVisible.value = true;
 }
 
 function submitMacroModal() {
-  if (macroManageTab.value === 'weather') {
-    if (!weatherForm.cycle.trim()) {
-      MessagePlugin.warning('请填写宏观周期定调');
-      return;
-    }
-    invest.updateMacroWeather({
-      cycle: weatherForm.cycle.trim(),
-      sentiment: weatherForm.sentiment,
-      suggestedStockPos: weatherForm.suggestedStockPos,
-      suggestedEtfPos: weatherForm.suggestedEtfPos,
-      updatedAt: `今日 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 投研定调`,
-    });
-    MessagePlugin.success('宏观天气与基准仓位已更新');
-  } else {
-    if (!briefForm.title.trim() || !briefForm.body.trim()) {
-      MessagePlugin.warning('请填写研判标题和正文');
-      return;
-    }
-    invest.addMacroBrief({
-      title: briefForm.title.trim(),
-      time: '今日',
-      tone: briefForm.tone,
-      topic: briefForm.topic,
-      account: 'all',
-      body: briefForm.body.trim(),
-      actionAdvice: briefForm.actionAdvice.trim() || undefined,
-    });
-    MessagePlugin.success('已添加一条晨会宏观研判');
+  if (!weatherForm.cycle.trim()) {
+    MessagePlugin.warning('写一句仓位理由');
+    return;
   }
+  invest.updateMacroWeather({
+    cycle: weatherForm.cycle.trim(),
+    sentiment: weatherForm.sentiment,
+    suggestedStockPos: weatherForm.suggestedStockPos,
+    suggestedEtfPos: weatherForm.suggestedEtfPos,
+    updatedAt: `今日 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 已改`,
+  });
+  MessagePlugin.success('仓位立场已保存');
   macroModalVisible.value = false;
 }
 

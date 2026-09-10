@@ -2,8 +2,8 @@
   <t-space class="page" direction="vertical" :size="16" style="width: 100%">
     <div class="overview-strip">
       <button type="button" class="overview-strip__item" @click="openTab('macro')">
-        <span class="overview-strip__label">宏观周期定调</span>
-        <span class="overview-strip__val highlight">{{ invest.macroWeather?.sentiment }} <small>偏好</small></span>
+        <span class="overview-strip__label">仓位立场</span>
+        <span class="overview-strip__val highlight">{{ invest.macroWeather?.sentiment }}</span>
       </button>
       <div class="overview-strip__divider" />
       <button type="button" class="overview-strip__item" @click="router.push('/review/index')">
@@ -33,7 +33,7 @@
     </div>
 
     <t-radio-group v-model="tab" variant="default-filled" class="research-nav">
-      <t-radio-button value="macro">宏观定调</t-radio-button>
+      <t-radio-button value="macro">仓位定调</t-radio-button>
       <t-radio-button value="catalyst">事件催化</t-radio-button>
       <t-radio-button value="valuation">估值信号</t-radio-button>
     </t-radio-group>

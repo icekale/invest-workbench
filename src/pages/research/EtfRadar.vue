@@ -1,6 +1,6 @@
 <template>
   <!-- 宏观驱动因子 → ETF 资产配置雷达与标的建议 -->
-  <t-card title="宏观因子 → ETF 资产配置雷达" subtitle="将宏观定调（弱复苏·宽货币·资产荒）精准映射至可执行标的">
+  <t-card title="ETF 对照" subtitle="常用底仓，点一下进待办">
     <t-row :gutter="[16, 16]">
       <t-col :xs="12" :md="4">
         <div class="radar-group">
