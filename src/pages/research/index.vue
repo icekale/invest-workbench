@@ -89,7 +89,7 @@ import BriefingCard from './BriefingCard.vue';
 import EtfRadar from './EtfRadar.vue';
 import MacroCompass from './MacroCompass.vue';
 import ResearchDesk from './ResearchDesk.vue';
-import { bargainCount, briefing, briefingStatus, macroState, valuationItems } from './state';
+import { bargainCount, briefing, briefingStatus, ensureValuations, macroState, valuationItems } from './state';
 import ValuationRadar from './ValuationRadar.vue';
 
 defineOptions({ name: 'ResearchIndex' });
@@ -200,7 +200,7 @@ async function bootBriefing(force = false) {
   if (!force) await waitQuotes();
   await loadSw();
   const liveP = liveMacroIndicators().catch(() => [] as Awaited<ReturnType<typeof liveMacroIndicators>>);
-  const extra: Promise<unknown>[] = [liveP];
+  const extra: Promise<unknown>[] = [liveP, ensureValuations().catch(() => {})];
   if (!invest.macroEventsLastUpdated) extra.push(invest.refreshMacroEvents().catch(() => {}));
   if (!invest.industryFocusLastUpdated) extra.push(invest.refreshIndustryFocus().catch(() => {}));
   await Promise.all(extra);

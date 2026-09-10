@@ -1,11 +1,7 @@
 <template>
   <div>
     <!-- 核心指数估值分位与买卖信号 (Valuation Radar & Signals) -->
-    <t-card
-      class="valuation-radar-card"
-      title="A股核心指数估值分位与买卖信号"
-      subtitle="实时追踪核心宽基与行业 PE/PB 历史百分位与估值温度计，以安全边际与击球点指引仓位动态增减"
-    >
+    <t-card class="valuation-radar-card" title="估值分位" subtitle="宽基与行业 PE 分位">
       <template #actions>
         <div class="val-header-actions">
           <t-radio-group v-model="valFilter" variant="default-filled" size="small">
@@ -24,7 +20,7 @@
             variant="outline"
             :loading="valLoading"
             style="margin-left: 8px"
-            @click="loadValuations"
+            @click="loadValuations(true)"
           >
             <template #icon><t-icon name="refresh" /></template>
             刷新估值
@@ -35,16 +31,13 @@
       <!-- 估值分位图例与状态提示条 -->
       <div class="val-legend-strip">
         <div class="legend-items">
-          <span class="legend-dot green">🟢 &lt;20% 极度低估 (强力买入)</span>
-          <span class="legend-dot teal">🟢 20%~40% 合理偏低 (积极加仓)</span>
-          <span class="legend-dot yellow">🟡 40%~60% 合理中枢 (中性持有)</span>
-          <span class="legend-dot orange">🟠 60%~80% 合理偏高 (适度止盈)</span>
-          <span class="legend-dot red">🔴 &gt;80% 极度高估 (风险防守)</span>
+          <span class="legend-dot green">&lt;40% 偏低</span>
+          <span class="legend-dot yellow">40%~60% 中性</span>
+          <span class="legend-dot red">&gt;60% 偏高</span>
         </div>
         <div class="val-summary-text">
           <span
-            >共跟踪 <strong>{{ valList.length }}</strong> 只核心指数 · 处于低估机会区
-            <strong>{{ bargainCount }}</strong> 只</span
+            >共跟踪 <strong>{{ valList.length }}</strong> 只 · 偏低 <strong>{{ bargainCount }}</strong> 只</span
           >
         </div>
       </div>
@@ -296,13 +289,13 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import { loadEcharts } from '@/utils/load-echarts';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
-import { fetchIndexPeHistory, fetchIndexValuations, generateValuationHistorySeries } from '@/utils/valuation';
+import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/valuation';
 
-import { bargainCount, valuationItems } from './state';
+import { bargainCount, ensureValuations, valuationItems } from './state';
 import { todoDialogVisible, todoForm } from './todo';
 
 const valLoading = ref(false);
-const valList = ref<IndexValuationItem[]>([]);
+const valList = computed(() => valuationItems.value);
 const valFilter = ref<'all' | IndexCategory>('all');
 const valViewMode = ref<'cards' | 'table'>('cards');
 const selectedValuation = ref<IndexValuationItem | null>(null);
@@ -322,17 +315,15 @@ const valTableColumns: PrimaryTableCol[] = [
   { colKey: 'priceInfo', title: '最新点位 / 涨跌', width: 130 },
   { colKey: 'peInfo', title: 'PE (TTM)', width: 120 },
   { colKey: 'percentileInfo', title: '历史估值分位', width: 160 },
-  { colKey: 'signalInfo', title: '估值状态 / 信号', width: 110 },
-  { colKey: 'adviceInfo', title: '仓位建议 / 偏离指引', minWidth: 240 },
+  { colKey: 'signalInfo', title: '分位', width: 80 },
+  { colKey: 'adviceInfo', title: '偏离', minWidth: 160 },
   { colKey: 'op', title: '操作', width: 120, fixed: 'right' },
 ];
 
-async function loadValuations() {
+async function loadValuations(force = true) {
   valLoading.value = true;
   try {
-    valList.value = await fetchIndexValuations();
-    valuationItems.value = valList.value;
-    bargainCount.value = valList.value.filter((v) => v.pePercentile < 40).length;
+    await ensureValuations(force);
   } catch (e) {
     console.error('加载估值数据失败:', e);
   } finally {
@@ -444,7 +435,7 @@ function quickAddValuationTodo(item: IndexValuationItem) {
   todoForm.name = item.etfName;
   todoForm.side = item.pePercentile < 50 ? 'buy' : 'sell';
   todoForm.quantity = 1000;
-  todoForm.reason = `【估值信号】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，配置偏离建议 ${item.allocationTilt}`;
+  todoForm.reason = `【估值分位】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，偏离 ${item.allocationTilt}`;
   todoDialogVisible.value = true;
 }
 
@@ -453,7 +444,7 @@ function onResize() {
 }
 
 onMounted(() => {
-  loadValuations();
+  loadValuations(false);
   window.addEventListener('resize', onResize);
 });
 

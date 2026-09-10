@@ -1,13 +1,4 @@
-/**
- * A股核心指数估值分位数与买卖信号系统
- * 基于历史估值分布（PE/PB分位数）与实时行情动态计算
- * 规则：
- *  - 分位数 < 20%: 极度低估 (机会区，强力买入 / 绿灯 🟢)
- *  - 分位数 20% ~ 40%: 合理偏低 (偏低区，积极加仓 / 浅绿灯 🟢)
- *  - 分位数 40% ~ 60%: 合理中枢 (中性区，持有标配 / 黄灯 🟡)
- *  - 分位数 60% ~ 80%: 合理偏高 (偏高区，适度止盈 / 浅红灯 🟠)
- *  - 分位数 > 80%: 极度高估 (高危区，坚决减仓 / 红灯 🔴)
- */
+/** PE 分位：<40 偏低，40–60 中性，>60 偏高。桶仍用 20/50/80 插值。 */
 import { fetchOk, withRetry } from './http.ts';
 
 export type ValuationSignal = 'STRONG_BUY' | 'BUY' | 'HOLD' | 'REDUCE' | 'SELL';
@@ -269,50 +260,50 @@ export function deriveValuationSignal(pct: number): {
   if (pct < 20) {
     return {
       signal: 'STRONG_BUY',
-      label: '强力买入',
+      label: '偏低',
       statusTag: 'success',
       color: '#16815f',
       tilt: '+10% ~ +15%',
-      advice: '估值位于历史后20%机会区，具备极高安全边际与击球点，建议果断分批重仓配置。',
+      advice: '分位偏低',
     };
   }
   if (pct < 40) {
     return {
       signal: 'BUY',
-      label: '积极加仓',
+      label: '偏低',
       statusTag: 'primary',
       color: '#2a9d8f',
       tilt: '+5% ~ +10%',
-      advice: '估值处于合理偏低水位，性价比优良，建议维持核心配置并逢市场调整积极定投。',
+      advice: '分位偏低',
     };
   }
   if (pct < 60) {
     return {
       signal: 'HOLD',
-      label: '中性持有',
+      label: '中性',
       statusTag: 'warning',
       color: '#b8782d',
-      tilt: '标配持平 (0%)',
-      advice: '估值运行在历史中枢合理区间，盈利驱动为主，建议严格保持基准仓位，耐心持有。',
+      tilt: '标配 (0%)',
+      advice: '分位中性',
     };
   }
   if (pct < 80) {
     return {
       signal: 'REDUCE',
-      label: '适度止盈',
+      label: '偏高',
       statusTag: 'warning',
       color: '#e76f51',
       tilt: '-5% ~ -10%',
-      advice: '估值已攀升至偏高区域，未来收益空间收窄，建议逢高分批减仓，锁定已有浮盈。',
+      advice: '分位偏高',
     };
   }
   return {
     signal: 'SELL',
-    label: '风险减仓',
+    label: '偏高',
     statusTag: 'danger',
     color: '#b8433e',
     tilt: '-10% ~ -20%',
-    advice: '估值处于前20%危险警戒区，泡沫化风险加剧，建议坚决防御防守，切忌盲目追高。',
+    advice: '分位偏高',
   };
 }
 
