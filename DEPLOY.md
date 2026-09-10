@@ -16,20 +16,20 @@
   - SPA fallback：`try_files {path} /index.html`
   - 数据源反代（浏览器同源路径 → 上游）：
 
-    | 路径 | 上游 | 备注 |
-    | --- | --- | --- |
-    | `/qt/*` | `https://qt.gtimg.cn` | 腾讯行情，GBK 由前端解码 |
-    | `/em/*` | `https://fundmobapi.eastmoney.com` | 带 Referer `fund.eastmoney.com` |
-    | `/sina/*` | `https://hq.sinajs.cn` | 带 Referer `finance.sina.com.cn`（新浪备用行情） |
-    | `/szse/*` | `https://www.szse.cn` | 深交所交易日历（备用数据源） |
-    | `/llm/*` | 本机 OpenAI 兼容代理（先探 cli-proxy-api，不通再用 grok-caddy:8096） | 浏览器只打同源 `/llm/v1/chat/completions`；Bearer 只写 Caddyfile |
-    | `/wscn/*` | `https://api-one-wscn.awtmt.com` | 华尔街见闻快讯/宏观日历 |
-    | `/xgb/*` | `https://flash-api.xuangubao.cn` | 选股宝板块异动 |
-    | `/em-dc/*` | `https://datacenter-web.eastmoney.com` | 东财数据中心宏观报表（PMI/CPI/PPI/GDP） |
-    | `/push2/*` | `https://push2delay.eastmoney.com` | 东财行情列表（申万二级 f100；push2 会 302） |
-    | `/csindex/*` | `https://www.csindex.com.cn` | 中证指数 PE 历史真实曲线 |
-    | `/legulegu/*` | `https://www.legulegu.com` | 申万一级 PE/分位（乐咕乐股 HTML） |
-    | `/sync` | `invest-sync:3003` | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
+    | 路径          | 上游                                                                 | 备注                                                                         |
+    | ------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+    | `/qt/*`       | `https://qt.gtimg.cn`                                                | 腾讯行情，GBK 由前端解码                                                     |
+    | `/em/*`       | `https://fundmobapi.eastmoney.com`                                   | 带 Referer `fund.eastmoney.com`                                              |
+    | `/sina/*`     | `https://hq.sinajs.cn`                                               | 带 Referer `finance.sina.com.cn`（新浪备用行情）                             |
+    | `/szse/*`     | `https://www.szse.cn`                                                | 深交所交易日历（备用数据源）                                                 |
+    | `/llm/*`      | 本机 OpenAI 兼容代理（先探 cli-proxy-api，不通再用 grok-caddy:8096） | 浏览器只打同源 `/llm/v1/chat/completions`；Bearer 只写 Caddyfile             |
+    | `/wscn/*`     | `https://api-one-wscn.awtmt.com`                                     | 华尔街见闻快讯/宏观日历                                                      |
+    | `/xgb/*`      | `https://flash-api.xuangubao.cn`                                     | 选股宝板块异动                                                               |
+    | `/em-dc/*`    | `https://datacenter-web.eastmoney.com`                               | 东财数据中心宏观报表（PMI/CPI/PPI/GDP）                                      |
+    | `/push2/*`    | `https://push2delay.eastmoney.com`                                   | 东财行情列表（申万二级 f100；push2 会 302）                                  |
+    | `/csindex/*`  | `https://www.csindex.com.cn`                                         | 中证指数 PE 历史真实曲线                                                     |
+    | `/legulegu/*` | `https://www.legulegu.com`                                           | 申万一级 PE/分位（乐咕乐股 HTML）                                            |
+    | `/sync`       | `invest-sync:3003`                                                   | 按用户拆表的账本 SQLite（`holdings`/`cash`/`transactions`/`kv`），Basic 认证 |
 
 - Cloudflare：`stock.053727.xyz` **必须保持橙云代理 + zone SSL 模式 Flexible**（2026-09-08 设定，https 全通）。⚠️ 两勿：勿把 SSL 模式改回 Full（回源撞 xray 443 → 525）；勿关橙云加速（灰云后浏览器 https 直连 xray 握手失败 → 无法访问，且灰云久了 Universal SSL 证书会被停用，重开橙云后要等边缘重新部署，期间 https 间歇 403/TLS 错误）。
 
@@ -84,7 +84,7 @@ openssl md5 -r dist/index.html          # 本机（macOS 无 md5sum）
 ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/site/index.html'
 ```
 
-  哈希产物（`/assets/*`）不受影响，仍然逐字节比。另外要确认线上 HTML 指向的是新产物名（`rg -o 'index-[A-Za-z0-9_]+-b[A-Za-z0-9]+\.js' /tmp/live.html`）—— 字节比对查不出引用是不是更新了。
+哈希产物（`/assets/*`）不受影响，仍然逐字节比。另外要确认线上 HTML 指向的是新产物名（`rg -o 'index-[A-Za-z0-9_]+-b[A-Za-z0-9]+\.js' /tmp/live.html`）—— 字节比对查不出引用是不是更新了。
 
 - 产物名带构建时间戳（`vite.config.ts` 的 `BUILD_STAMP`），每次构建换一批 URL，这类污染就碰不到真文件；
 - 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
@@ -109,10 +109,10 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 **⚠️ 切勿把 223.5.5.5 / 119.29.29.29 等中国解析器设为首选。**这台机器在美国，用中国解析器查「在中国被墙的域名」会拿到 GFW 伪造答案，实测：
 
-| 查询 | 1.1.1.1 / 8.8.8.8 | 223.5.5.5 |
-| --- | --- | --- |
-| `api.x.ai` | `104.18.18.80`（Cloudflare） | `31.13.95.34`、`2a03:2880:f12c:183:face:b00c`（Facebook 段） |
-| `api.openai.com` | `172.66.0.243`、`162.159.140.245`（Cloudflare） | `2a03:2880:...:face:b00c`、`104.244.46.185` |
+| 查询             | 1.1.1.1 / 8.8.8.8                               | 223.5.5.5                                                    |
+| ---------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| `api.x.ai`       | `104.18.18.80`（Cloudflare）                    | `31.13.95.34`、`2a03:2880:f12c:183:face:b00c`（Facebook 段） |
+| `api.openai.com` | `172.66.0.243`、`162.159.140.245`（Cloudflare） | `2a03:2880:...:face:b00c`、`104.244.46.185`                  |
 
 `face:b00c` 是 Facebook 的招牌段，见到就是被投毒。这会直接打挂 `cli-proxy-api`（它无上游代理，纯靠 DNS 直连 `api.x.ai` / `api.openai.com`）。
 
@@ -122,12 +122,12 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 反代按域名回源，**每次新建连接都要解析**，容器内嵌 DNS 转发超时约 3s，超时即 `502` + 日志 `dial tcp: lookup <domain>: i/o timeout`。1.1.1.1 对 `awtmt.com` 是病态的：
 
-| 上游 | 1.1.1.1 | 8.8.8.8 |
-| --- | --- | --- |
+| 上游                                | 1.1.1.1              | 8.8.8.8              |
+| ----------------------------------- | -------------------- | -------------------- |
 | `api-one-wscn.awtmt.com`（`/wscn`） | **3174ms**（超时！） | 522ms（最差 1112ms） |
-| `www.csindex.com.cn` | 663ms | **129ms** |
-| `flash-api.xuangubao.cn` | 439ms（最差 689ms） | 343ms |
-| 其余 7 个上游 | 108–300ms | 108–362ms |
+| `www.csindex.com.cn`                | 663ms                | **129ms**            |
+| `flash-api.xuangubao.cn`            | 439ms（最差 689ms）  | 343ms                |
+| 其余 7 个上游                       | 108–300ms            | 108–362ms            |
 
 8.8.8.8 是唯一同时满足「境外答案干净」+「所有中文上游 ≤1112ms（离 3s 有 3 倍余量）」的选择，所以**无需改 Caddyfile、无需给容器单独配 DNS**。
 
