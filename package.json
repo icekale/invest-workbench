@@ -36,7 +36,7 @@
     "check:sw-valuation": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-sw-valuation.ts"
   },
   "dependencies": {
-    "@vueuse/core": "^14.3.0",
+    "@vueuse/core": "^14.4.0",
     "axios": "^1.20.0",
     "dayjs": "^1.11.23",
     "echarts": "^6.1.0",
