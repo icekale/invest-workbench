@@ -31,7 +31,7 @@
           <div class="kpi-value num-hero">{{ (summary.turnoverRate * 100).toFixed(1) }}%</div>
           <div class="kpi-tip">
             <t-tag size="small" variant="light" :theme="turnoverTag.theme">{{ turnoverTag.text }}</t-tag>
-            共 {{ summary.tradeCount }} 笔流水
+            <span>共 {{ summary.tradeCount }} 笔流水</span>
           </div>
         </t-card>
       </t-col>
@@ -464,5 +464,35 @@ function handleApplyHoldings() {
 .error-title {
   font-weight: 600;
   margin-bottom: 4px;
+}
+
+/* 手机端 4 张 KPI 卡仍是两列（:xs="6"），但 24px 卡体内边距 + 20px 金额字号在
+   320~390px 宽下会把「¥323,030」顶出卡片（实测溢出 9~44px，且换手率卡的标签行溢出 54px）。
+   这里只收紧内边距与字号：clamp 下限保持 15px，保证 320px 下最长金额仍完整。
+   注意：本文件是纯 CSS（非 less），:deep() 必须平铺写；嵌套写会被编译成
+   `.ledger-kpi-card [data-v-x] .t-card__body`（中间多一层），永远匹配不到。 */
+@media (width <= 767px) {
+  .ledger-kpi-card {
+    padding: 12px;
+  }
+
+  .ledger-kpi-card :deep(.t-card__body) {
+    padding: 12px 10px;
+    overflow: hidden;
+  }
+
+  .kpi-value {
+    font-size: clamp(15px, 4.4vw, 20px);
+  }
+
+  /* 标签 + 笔数文案要能折行，否则整行顶出卡片 */
+  .kpi-tip {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .kpi-tip :deep(.t-tag) {
+    font-size: 11px;
+  }
 }
 </style>
