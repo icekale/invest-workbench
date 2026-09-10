@@ -11,6 +11,7 @@ import type {
   TradeSide,
   TradeTodo,
 } from '../types/invest.ts';
+import { authHeader } from './cloud-sync.ts';
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
 
@@ -432,7 +433,7 @@ export async function requestBriefing(
   const res = await withRetry(async () => {
     const r = await fetchImpl('/llm/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
       body: JSON.stringify({
         model: BRIEFING_MODEL,
         temperature: 0.2,

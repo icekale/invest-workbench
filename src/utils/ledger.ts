@@ -13,6 +13,8 @@ import type {
 } from '@/types/invest';
 import type { Quote } from '@/utils/quote';
 
+import { formatCN, todayCN } from './date.ts';
+
 /** 佣金：股票万 0.8，ETF 万 0.5。无最低佣金。 */
 export function tradeFee(account: AccountId, amount: number): number {
   const rate = account === 'etf' ? 0.00005 : 0.00008;
@@ -60,15 +62,11 @@ export function parseTransactionsCsv(text: string): {
     // 容错解析
     const [rawDate, rawAccount, rawCode, rawName, rawSide, rawPrice, rawQty, rawFee, rawNote] = parts;
 
-    // 日期标准化
+    // 日期标准化（北京自然日）
     let date = rawDate;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const d = new Date(rawDate);
-      if (!Number.isNaN(d.getTime())) {
-        date = d.toISOString().slice(0, 10);
-      } else {
-        date = new Date().toISOString().slice(0, 10);
-      }
+      date = Number.isNaN(d.getTime()) ? todayCN() : formatCN(d);
     }
 
     // 账户判断
@@ -259,7 +257,11 @@ export function scanTradeAlerts(
   prefs?: Prefs,
 ): TradeAlert[] {
   const alerts: TradeAlert[] = [];
-  const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(
+    2,
+    '0',
+  )} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   const stopLossPct = prefs?.stopLossPct ?? -0.08; // 默认 -8%
   const takeProfitPct = prefs?.takeProfitPct ?? 0.25; // 默认 +25%
