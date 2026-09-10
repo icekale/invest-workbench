@@ -4,6 +4,7 @@ import type { HoldingSlice, LookThrough } from '../src/utils/fund.ts';
 import {
   combineEqualNav,
   dailyReturnHist,
+  fetchFundPosition,
   isShareClass,
   lookThrough,
   mergePositions,
@@ -285,5 +286,31 @@ assert.equal(
   lookThrough([{ value: 1000, positions: [{ name: 'x', code: 'x', kind: '股票', weight: 0 }] }]).rows.length,
   0,
 );
+
+// 进上游的码必须剥掉 `of` 前缀。传前缀不报错而是回空表（实测 fundStocks=0），
+// 会静默呈现成「这只基金没披露」—— 所以拿真实请求 URL 钉住。
+{
+  const realFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: string | URL) => {
+    urls.push(String(input));
+    return new Response(
+      JSON.stringify({ Datas: { fundStocks: [{ GPDM: '600519', GPJC: '贵州茅台', JZBL: '6.45' }] } }),
+      {
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+  }) as typeof fetch;
+  try {
+    await fetchFundPosition('of000001');
+    assert.ok(urls[0].includes('FCODE=000001'), `要发裸码，实际发了 ${urls[0]}`);
+    assert.ok(!urls[0].includes('of000001'), '不能把 of 前缀发上去');
+    // 大写/带空白的也算同一种写法
+    await fetchFundPosition(' OF519066 ');
+    assert.ok(urls[1].includes('FCODE=519066'), `要去空白且小写，实际发了 ${urls[1]}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
 
 console.log('check-fund ok');

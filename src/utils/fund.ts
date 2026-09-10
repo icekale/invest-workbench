@@ -393,7 +393,17 @@ export function mergePositions(bags: HoldingSlice[][]): HoldingSlice[] {
 }
 
 export async function fetchFundPosition(code: string): Promise<HoldingSlice[]> {
-  const url = `/em/FundMNewApi/FundMNInverstPosition?FCODE=${encodeURIComponent(code)}&${APP}`;
+  // 上游只认裸 6 位：
+  // 传 `of000001` 不报错，而是回一个空 Datas（实测 fundStocks=0），
+  // 静默呈现成「这只基金没披露」—— 凡进 API 的码一律在边界处剥前缀，
+  // 免得又变成「每个调用方都得记得剥」的约定。
+  // 这里不 import utils/quote.ts 的 bareFundCode：quote.ts 反过来 import 本文件的
+  // fetchFundDetail，会成环。前缀规则以 quote.ts 为准（两边同一个正则）。
+  const bare = String(code ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^of/, '');
+  const url = `/em/FundMNewApi/FundMNInverstPosition?FCODE=${encodeURIComponent(bare)}&${APP}`;
   let last = 'fund position empty';
   for (let i = 0; i < 2; i++) {
     try {
@@ -487,7 +497,7 @@ export async function cachedFundPosition(code: string): Promise<HoldingSlice[]> 
   return rows;
 }
 
-/** 一次拿到多只基金的穿透表。`code` 用东财的裸 6 位（`of` 前缀由调用方剥掉，见 utils/quote.ts）。 */
+/** 一次拿到多只基金的穿透表。传 `of` 前缀的码也行 —— 剥前缀在 fetchFundPosition 的边界处做（上游只认裸 6 位，传前缀会静默返回空表）。 */
 export async function fetchFundLookThrough(funds: { code: string; value: number }[]): Promise<LookThrough> {
   const bags = await Promise.all(
     funds.map(async (f) => ({ value: f.value, positions: await cachedFundPosition(f.code) })),

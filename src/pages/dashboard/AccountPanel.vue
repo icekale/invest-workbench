@@ -285,7 +285,7 @@
                     :style="{ background: p.kind === '股票' ? 'var(--td-brand-color)' : 'var(--td-warning-color)' }"
                   />
                   <span class="leg-name">{{ p.name }}</span>
-                  <span class="leg-code">{{ p.code }}</span>
+                  <span class="leg-code">{{ p.kind }} {{ p.code }}</span>
                   <span class="leg-num">{{ pctOf(p.weight) }}</span>
                 </div>
               </div>
@@ -474,7 +474,9 @@ const lookNote = computed(() => {
   if (!l?.rows.length) return '';
   const miss = l.total - l.done;
   const tail = miss > 0 ? `，其中 ${miss} 只未拿到披露数据` : '';
-  return `季报只披露前十大重仓，这张表覆盖了基金净值的 ${l.coverage.toFixed(0)}%${tail}；剩下的含现金、债券与其他未披露持仓。`;
+  const bonds = l.rows.filter((r) => r.kind === '债券').length;
+  const mix = bonds ? `前十重仓股与 ${bonds} 笔披露债券` : '前十大重仓股';
+  return `季报只披露${mix}，这张表覆盖了基金净值的 ${l.coverage.toFixed(0)}%${tail}；剩下的是现金、未披露的持仓与其他资产。`;
 });
 const alloc = computed(() => {
   // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
