@@ -246,8 +246,8 @@ export interface ExecuteTradeParams {
 /** 每日收盘快照：账户总资产（持仓市值 + 现金），用于绘制真实净值曲线 */
 export interface NavSnapshot {
   date: string; // YYYY-MM-DD（北京自然日）
-  stockTotal: number;
-  etfTotal: number;
+  /** 账户 id → 当日总资产。账户是自定义资金桶，加账户后旧快照自然缺这条键 */
+  totals: Record<string, number>;
 }
 
 export interface ExecuteTradeResult {

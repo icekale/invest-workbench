@@ -94,7 +94,7 @@ export interface FactPackInput {
   events: MacroEvent[];
   valuation: ValuationSlice[];
   holdings: HoldingSlice[];
-  cash: { stock: number; etf: number };
+  cash: Record<string, number>;
   todos: TradeTodo[];
   alerts: TradeAlert[];
   yesterdayStance: BriefingStance | null;
@@ -113,7 +113,7 @@ export interface BriefingFactPack {
   events: Array<{ date: string; title: string; level: string; impact: string }>;
   valuation: ValuationSlice[];
   accounts: Array<{
-    id: AccountId;
+    id: string;
     cash: number;
     marketValue: number;
     pnl: number;
@@ -213,7 +213,10 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
       deltaSpan: v.deltaPct == null ? null : (v.deltaSpan ?? null),
     }));
 
-  const accounts: BriefingFactPack['accounts'] = (['stock', 'etf'] as AccountId[]).map((id) => {
+  // 账户列表从数据里现推，和 recordDailySnapshot 同口径：新建账户后晨会立刻能看到它，
+  // 不用另一处跟着改。阶段二接账户注册表时只换这行。
+  const accountIds = [...new Set([...Object.keys(input.cash), ...input.holdings.map((h) => h.account)])];
+  const accounts: BriefingFactPack['accounts'] = accountIds.map((id) => {
     const rows = input.holdings.filter((h) => h.account === id);
     const mv = rows.reduce((s, h) => s + num(h.marketValue), 0);
     const cost = rows.reduce((s, h) => s + h.cost * h.quantity, 0);

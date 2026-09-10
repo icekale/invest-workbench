@@ -33,6 +33,7 @@ import { scheduleCloudPush, setHydrating } from '@/utils/cloud-sync';
 import { todayCN } from '@/utils/date';
 import { fetchLiveIndustryCatalysts } from '@/utils/industry';
 import { calculateLedger, recalculateHoldingsFromTransactions, scanTradeAlerts, tradeFee } from '@/utils/ledger';
+import { normalizeNavSnapshots } from '@/utils/nav-history';
 import type { Quote } from '@/utils/quote';
 import { calcHolding, fetchQuotes, normalizeCode } from '@/utils/quote';
 import { defaultScenario } from '@/utils/scenario';
@@ -93,7 +94,8 @@ export const useInvestStore = defineStore('invest', {
     journal: [] as JournalEntry[],
     theses: [] as Thesis[],
     priceScenarios: [] as PriceScenario[],
-    cash: { stock: 0, etf: 0 },
+    // 账户是自定义资金桶，键不固定；加账户时这句和类型都不用再动
+    cash: { stock: 0, etf: 0 } as Record<string, number>,
     opportunities: [] as Opportunity[],
     transactions: [] as Transaction[],
     prefs: normalizePrefs({}),
@@ -157,13 +159,16 @@ export const useInvestStore = defineStore('invest', {
     /** 每次行情刷新后落一条当日快照（同日覆盖），用于绘制真实净值曲线 */
     recordDailySnapshot() {
       const rows = this.enriched;
-      const sumAccount = (acc: AccountId) =>
-        rows.filter((r) => r.account === acc).reduce((s, r) => s + (r.marketValue ?? r.cost * r.quantity), 0);
-      const entry: NavSnapshot = {
-        date: todayCN(),
-        stockTotal: Number((sumAccount('stock') + this.cash.stock).toFixed(2)),
-        etfTotal: Number((sumAccount('etf') + this.cash.etf).toFixed(2)),
-      };
+      // 账户列表从现金表和持仓里现推，不写死两支 —— 加账户/改桶时这里不用动
+      const ids = new Set<string>([...Object.keys(this.cash), ...rows.map((r) => r.account)]);
+      const totals: Record<string, number> = {};
+      for (const acc of ids) {
+        const mv = rows
+          .filter((r) => r.account === acc)
+          .reduce((s, r) => s + (r.marketValue ?? r.cost * r.quantity), 0);
+        totals[acc] = Number((mv + (this.cash[acc] ?? 0)).toFixed(2));
+      }
+      const entry: NavSnapshot = { date: todayCN(), totals };
       const list = this.navSnapshots.filter((s) => s.date !== entry.date);
       list.push(entry);
       // 只保留最近 400 个自然日
@@ -751,7 +756,7 @@ export const useInvestStore = defineStore('invest', {
         const custom = data.industryFocus.filter((i: IndustryFocus) => i.id.startsWith('ind_'));
         this.industryFocus = [...custom, ...live];
       }
-      if (Array.isArray(data.navSnapshots)) this.navSnapshots = data.navSnapshots;
+      if (Array.isArray(data.navSnapshots)) this.navSnapshots = normalizeNavSnapshots(data.navSnapshots);
 
       persist();
       this.refreshQuotes();

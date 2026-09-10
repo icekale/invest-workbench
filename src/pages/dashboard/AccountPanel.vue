@@ -47,8 +47,14 @@
       <t-col :xs="12" :xl="8">
         <t-space direction="vertical" :size="16" style="width: 100%">
           <t-card class="gl-mod" title="组合净值">
-            <template #actions><span class="card-cap">单位净值 · 近 30 个交易日</span></template>
-            <div ref="lineEl" class="nav-line" />
+            <template #actions
+              ><span class="card-cap">{{ navCaption }}</span></template
+            >
+            <div v-if="curve" ref="lineEl" class="nav-line" />
+            <div v-else class="nav-line nav-empty">
+              <p>净值从今天开始攒。</p>
+              <p class="nav-empty-sub">每日收盘自动落一条快照，满两个交易日后这里出现真曲线 —— 不画插值的假线。</p>
+            </div>
           </t-card>
           <t-card class="gl-mod holdings-mod" title="持仓与买卖点">
             <template #actions>
@@ -311,7 +317,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { planTargets } from '@/mock/invest';
 import { useInvestStore } from '@/store';
-import { allocation, healthNote, healthScore, risks, shortCode, sparkSeries, summarize } from '@/utils/book';
+import { allocation, healthNote, healthScore, risks, shortCode, summarize } from '@/utils/book';
+import { navCurveFor } from '@/utils/nav-history';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
@@ -353,20 +360,6 @@ function cssVar(name: string, fallback: string) {
   return v || fallback;
 }
 
-function lastWeekdays(n = 30) {
-  const out: string[] = [];
-  const d = new Date();
-  while (out.length < n) {
-    const w = d.getDay();
-    if (w && w < 6) {
-      out.push(`${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`);
-    }
-    d.setDate(d.getDate() - 1);
-  }
-  return out.reverse();
-}
-const navDates = lastWeekdays(30);
-
 const money = (n: number | null) => (n == null ? '—' : n.toLocaleString('zh-CN', { maximumFractionDigits: 0 }));
 const signed = (n: number | null) =>
   n == null ? '—' : `${n >= 0 ? '+' : '-'}${Math.abs(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
@@ -379,6 +372,11 @@ const pnlColor = (n: number | null) => {
 };
 
 const account = computed(() => (props.title.includes('ETF') ? 'etf' : 'stock'));
+/** 真净值曲线：首个记录日 = 1。不足两个点时为 null，界面如实说还在攒。 */
+const curve = computed(() => navCurveFor(invest.navSnapshots, account.value));
+const navCaption = computed(() =>
+  curve.value ? `单位净值 · 自 ${curve.value.baseDate} 起（${curve.value.ys.length} 个交易日）` : '单位净值 · 待累计',
+);
 const targets = computed(() => planTargets.filter((t) => t.account === account.value));
 const stats = computed(() => summarize(props.rows, props.cash));
 const swMap = ref<Record<string, SwClass>>({});
@@ -445,7 +443,7 @@ const donutBg = computed(() => {
 });
 const health = computed(() => healthScore(props.rows, invest.theses, invest.journal, props.cash));
 const note = computed(() => healthNote(health.value.total, alloc.value.find((a) => a.name !== '现金')?.name));
-const series = computed(() => sparkSeries(stats.value.pnlPct ?? 0));
+const series = computed(() => curve.value?.ys ?? []);
 const riskItems = computed(() =>
   risks(
     props.rows,
@@ -554,8 +552,14 @@ const columns = [
 
 function renderLine() {
   if (!lineEl.value) return;
+  // v-if 切换（无净值 → 有净值）后旧实例挂在一个已经摘掉的 DOM 上，不重建就是白图
+  if (chart && chart.getDom() !== lineEl.value) {
+    chart.dispose();
+    chart = null;
+  }
   if (!chart) chart = echarts.init(lineEl.value);
   const ys = series.value;
+  if (!ys.length) return;
   const n = ys.length;
   const last = n - 1;
   const narrow = lineEl.value.clientWidth < 520;
@@ -581,7 +585,7 @@ function renderLine() {
       xAxis: {
         type: 'category',
         boundaryGap: false,
-        data: navDates,
+        data: curve.value?.dates ?? [],
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { show: false },
@@ -593,7 +597,7 @@ function renderLine() {
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: gridLine } },
-        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => v.toFixed(2) },
+        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => v.toFixed(3) },
       },
       series: [
         {
@@ -629,7 +633,7 @@ onMounted(() => {
   renderLine();
   void loadSw();
 });
-watch(series, renderLine);
+watch(series, renderLine, { flush: 'post' });
 watch(
   () => props.rows.map((r) => r.code).join(','),
   () => void loadSw(),
@@ -700,6 +704,28 @@ onUnmounted(() => {
 
 .nav-line {
   height: 260px;
+}
+
+/* 还没有两个点时不画图，但高度得占住，否则卡片会跟着数据长高长矮 */
+.nav-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--td-text-color-placeholder);
+  font-size: 13px;
+}
+
+.nav-empty p {
+  margin: 0;
+}
+
+.nav-empty-sub {
+  max-width: 30em;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .alloc {
