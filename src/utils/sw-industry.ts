@@ -93,9 +93,10 @@ export function swGroupOf(
   return c?.l1 || p.tag || p.name;
 }
 
-export async function fetchSwClass(codes: string[]): Promise<Record<string, SwClass>> {
+export async function fetchSwClass(codes: string[], force = false): Promise<Record<string, SwClass>> {
   const ids = [...new Set(codes.map(toSecid).filter((x): x is string => !!x))];
-  const miss = ids.filter((id) => !memo[id.slice(id.indexOf('.') + 1)]);
+  // force 时连模块级 memo 也不信：自检要的是真打一次 /push2
+  const miss = force ? ids : ids.filter((id) => !memo[id.slice(id.indexOf('.') + 1)]);
   for (let i = 0; i < miss.length; i += 80) {
     const q = miss.slice(i, i + 80).join(',');
     const res = await fetch(`/push2/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f100&secids=${q}`, {

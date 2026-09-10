@@ -9,92 +9,103 @@
     @close-btn-click="handleCloseDrawer"
   >
     <div class="setting-container">
-      <t-form :data="formData" label-align="left">
-        <div class="setting-group-title">{{ t('layout.setting.theme.mode') }}</div>
-        <t-radio-group v-model="formData.mode">
-          <div v-for="(item, index) in MODE_OPTIONS" :key="index" class="setting-layout-drawer">
-            <div>
-              <t-radio-button :key="index" :value="item.type"
-                ><component :is="getModeIcon(item.type)"
-              /></t-radio-button>
-              <p :style="{ textAlign: 'center', marginTop: '8px' }">{{ item.text }}</p>
-            </div>
-          </div>
-        </t-radio-group>
-        <div class="setting-group-title">{{ t('layout.setting.theme.color') }}</div>
-        <t-radio-group v-model="formData.brandTheme">
-          <div v-for="(item, index) in DEFAULT_COLOR_OPTIONS" :key="index" class="setting-layout-drawer">
-            <t-radio-button :key="index" :value="item" class="setting-layout-color-group">
-              <color-container :value="item" />
-            </t-radio-button>
-          </div>
-          <div class="setting-layout-drawer">
-            <t-popup
-              destroy-on-close
-              expand-animation
-              placement="bottom-right"
-              trigger="click"
-              :visible="isColoPickerDisplay"
-              :overlay-style="{ padding: 0 }"
-              @visible-change="onPopupVisibleChange"
+      <t-tabs v-model="activeTab" class="setting-tabs">
+        <t-tab-panel value="look" label="外观">
+          <t-form :data="formData" label-align="left">
+            <div class="setting-group-title">{{ t('layout.setting.theme.mode') }}</div>
+            <t-radio-group v-model="formData.mode">
+              <div v-for="(item, index) in MODE_OPTIONS" :key="index" class="setting-layout-drawer">
+                <div>
+                  <t-radio-button :key="index" :value="item.type"
+                    ><component :is="getModeIcon(item.type)"
+                  /></t-radio-button>
+                  <p :style="{ textAlign: 'center', marginTop: '8px' }">{{ item.text }}</p>
+                </div>
+              </div>
+            </t-radio-group>
+            <div class="setting-group-title">{{ t('layout.setting.theme.color') }}</div>
+            <t-radio-group v-model="formData.brandTheme">
+              <div v-for="(item, index) in DEFAULT_COLOR_OPTIONS" :key="index" class="setting-layout-drawer">
+                <t-radio-button :key="index" :value="item" class="setting-layout-color-group">
+                  <color-container :value="item" />
+                </t-radio-button>
+              </div>
+              <div class="setting-layout-drawer">
+                <t-popup
+                  destroy-on-close
+                  expand-animation
+                  placement="bottom-right"
+                  trigger="click"
+                  :visible="isColoPickerDisplay"
+                  :overlay-style="{ padding: 0 }"
+                  @visible-change="onPopupVisibleChange"
+                >
+                  <template #content>
+                    <t-color-picker-panel
+                      :on-change="changeColor"
+                      :color-modes="['monochrome']"
+                      format="HEX"
+                      :swatch-colors="[]"
+                    />
+                  </template>
+                  <t-radio-button :value="dynamicColor" class="setting-layout-color-group dynamic-color-btn">
+                    <color-container :value="dynamicColor" />
+                  </t-radio-button>
+                </t-popup>
+              </div>
+            </t-radio-group>
+            <div class="setting-group-title">{{ t('layout.setting.navigationLayout') }}</div>
+            <t-radio-group v-model="formData.layout">
+              <div v-for="(item, index) in LAYOUT_OPTION" :key="index" class="setting-layout-drawer">
+                <t-radio-button :key="index" :value="item">
+                  <thumbnail :src="getThumbnailUrl(item)" />
+                </t-radio-button>
+              </div>
+            </t-radio-group>
+
+            <t-form-item v-show="formData.layout === 'mix'" :label="t('layout.setting.splitMenu')" name="splitMenu">
+              <t-switch v-model="formData.splitMenu" />
+            </t-form-item>
+            <t-form-item
+              v-show="formData.layout === 'mix'"
+              :label="t('layout.setting.fixedSidebar')"
+              name="isSidebarFixed"
             >
-              <template #content>
-                <t-color-picker-panel
-                  :on-change="changeColor"
-                  :color-modes="['monochrome']"
-                  format="HEX"
-                  :swatch-colors="[]"
-                />
-              </template>
-              <t-radio-button :value="dynamicColor" class="setting-layout-color-group dynamic-color-btn">
-                <color-container :value="dynamicColor" />
-              </t-radio-button>
-            </t-popup>
-          </div>
-        </t-radio-group>
-        <div class="setting-group-title">{{ t('layout.setting.navigationLayout') }}</div>
-        <t-radio-group v-model="formData.layout">
-          <div v-for="(item, index) in LAYOUT_OPTION" :key="index" class="setting-layout-drawer">
-            <t-radio-button :key="index" :value="item">
-              <thumbnail :src="getThumbnailUrl(item)" />
-            </t-radio-button>
-          </div>
-        </t-radio-group>
+              <t-switch v-model="formData.isSidebarFixed" />
+            </t-form-item>
 
-        <t-form-item v-show="formData.layout === 'mix'" :label="t('layout.setting.splitMenu')" name="splitMenu">
-          <t-switch v-model="formData.splitMenu" />
-        </t-form-item>
-        <t-form-item v-show="formData.layout === 'mix'" :label="t('layout.setting.fixedSidebar')" name="isSidebarFixed">
-          <t-switch v-model="formData.isSidebarFixed" />
-        </t-form-item>
-
-        <div class="setting-group-title">{{ t('layout.setting.element.title') }}</div>
-        <t-form-item :label="t('layout.setting.sideMode')" name="sideMode">
-          <t-radio-group v-model="formData.sideMode" class="side-mode-radio">
-            <t-radio-button key="light" value="light" :label="t('layout.setting.theme.options.light')" />
-            <t-radio-button key="dark" value="dark" :label="t('layout.setting.theme.options.dark')" />
-          </t-radio-group>
-        </t-form-item>
-        <t-form-item
-          v-show="formData.layout === 'side'"
-          :label="t('layout.setting.element.showHeader')"
-          name="showHeader"
-        >
-          <t-switch v-model="formData.showHeader" />
-        </t-form-item>
-        <t-form-item :label="t('layout.setting.element.showBreadcrumb')" name="showBreadcrumb">
-          <t-switch v-model="formData.showBreadcrumb" />
-        </t-form-item>
-        <t-form-item :label="t('layout.setting.element.showFooter')" name="showFooter">
-          <t-switch v-model="formData.showFooter" />
-        </t-form-item>
-        <t-form-item :label="t('layout.setting.element.useTagTabs')" name="isUseTabsRouter">
-          <t-switch v-model="formData.isUseTabsRouter"></t-switch>
-        </t-form-item>
-        <t-form-item :label="t('layout.setting.element.menuAutoCollapsed')" name="menuAutoCollapsed">
-          <t-switch v-model="formData.menuAutoCollapsed"></t-switch>
-        </t-form-item>
-      </t-form>
+            <div class="setting-group-title">{{ t('layout.setting.element.title') }}</div>
+            <t-form-item :label="t('layout.setting.sideMode')" name="sideMode">
+              <t-radio-group v-model="formData.sideMode" class="side-mode-radio">
+                <t-radio-button key="light" value="light" :label="t('layout.setting.theme.options.light')" />
+                <t-radio-button key="dark" value="dark" :label="t('layout.setting.theme.options.dark')" />
+              </t-radio-group>
+            </t-form-item>
+            <t-form-item
+              v-show="formData.layout === 'side'"
+              :label="t('layout.setting.element.showHeader')"
+              name="showHeader"
+            >
+              <t-switch v-model="formData.showHeader" />
+            </t-form-item>
+            <t-form-item :label="t('layout.setting.element.showBreadcrumb')" name="showBreadcrumb">
+              <t-switch v-model="formData.showBreadcrumb" />
+            </t-form-item>
+            <t-form-item :label="t('layout.setting.element.showFooter')" name="showFooter">
+              <t-switch v-model="formData.showFooter" />
+            </t-form-item>
+            <t-form-item :label="t('layout.setting.element.useTagTabs')" name="isUseTabsRouter">
+              <t-switch v-model="formData.isUseTabsRouter"></t-switch>
+            </t-form-item>
+            <t-form-item :label="t('layout.setting.element.menuAutoCollapsed')" name="menuAutoCollapsed">
+              <t-switch v-model="formData.menuAutoCollapsed"></t-switch>
+            </t-form-item>
+          </t-form>
+        </t-tab-panel>
+        <t-tab-panel value="research" label="研判">
+          <research-settings />
+        </t-tab-panel>
+      </t-tabs>
       <div class="setting-info">
         <p>{{ t('layout.setting.tips') }}</p>
         <t-button theme="primary" variant="text" @click="handleCopy">
@@ -114,6 +125,7 @@ import SettingAutoIcon from '@/assets/assets-setting-auto.svg';
 import SettingDarkIcon from '@/assets/assets-setting-dark.svg';
 import SettingLightIcon from '@/assets/assets-setting-light.svg';
 import ColorContainer from '@/components/color/index.vue';
+import ResearchSettings from '@/components/research-settings/index.vue';
 import Thumbnail from '@/components/thumbnail/index.vue';
 import { DEFAULT_COLOR_OPTIONS } from '@/config/color';
 import STYLE_CONFIG from '@/config/style';
@@ -121,6 +133,9 @@ import { t } from '@/locales';
 import { useSettingStore } from '@/store';
 
 const settingStore = useSettingStore();
+
+/** 外观 = 原来那堆主题项；研判 = 档位/模型/自检。 */
+const activeTab = ref('look');
 
 const LAYOUT_OPTION = ['side', 'top', 'mix'];
 

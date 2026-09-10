@@ -14,8 +14,8 @@ import { authHeader } from './cloud-sync.ts';
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
 import { parsePosRange } from './position.ts';
+import { briefingModel } from './research-settings.ts';
 
-export const BRIEFING_MODEL = 'gemini-3.8-flash-high';
 export const FAIL_COOLDOWN_MS = 10 * 60 * 1000;
 export const QUOTE_WAIT_MS = 8000;
 const FAIL_AT_KEY = 'invest-briefing-fail-at';
@@ -34,6 +34,8 @@ export const SYSTEM_PROMPT = [
   '持仓含 last（现价）、cost（成本）、baseTarget（基准目标价）、baseUpside（相对现价空间，小数）、industry（申万一级）。',
   'events 是未来7天会议，重大优先。industries 是产业催化。',
   'indicators 是 PMI/CPI/GDP/社融最新值，有则引用数字，没有则写数据不足。',
+  'valuation 每行是行业/指数分位：heldPct 是它在你股票仓里的占比（null=没持仓，不是 0），deltaPct 是近 deltaSpan 天的分位变化（正=变贵）。',
+  '读 valuation 时必须把「分位高低」和「是否已持仓」一起看：低估且 heldPct 为 null 才是加仓机会；低估但 heldPct 已经很高是超配，该分批止盈；分位不高但 deltaPct 连续为正要先停手。',
   'yesterdayStance 是昨日立场（偏多最松，防守最紧）；headline 或 notes 写清比昨天更紧/更松/持平，没有则写数据不足。',
   'stockNote/etfNote 必须点名空间最极端或行业最集中的持仓，禁止只写宏观套话。',
   '点名会议、估值、持仓时必须用事实包里的 title、name、code 原文。',
@@ -78,6 +80,11 @@ export interface ValuationSlice {
   pe: number;
   percentile: number;
   advice: string;
+  /** 该行业在股票市值中的占比(%)；null = 当前没持仓，不是 0。 */
+  heldPct?: number | null;
+  /** 近 deltaSpan 天分位变化（正 = 变贵）。样本不足时为 null。 */
+  deltaPct?: number | null;
+  deltaSpan?: number | null;
 }
 
 export interface FactPackInput {
@@ -188,7 +195,12 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
     .map((e) => ({ date: e.date, title: e.title, level: e.level, impact: e.impact }));
 
   const valuation = [...input.valuation]
-    .sort((a, b) => Math.abs(b.percentile - 50) - Math.abs(a.percentile - 50))
+    // 有持仓的先排前面：它才是能动手的，纯看分位会把仓位已重的行业挤出去
+    .sort((a, b) => {
+      const ha = a.heldPct == null ? 1 : 0;
+      const hb = b.heldPct == null ? 1 : 0;
+      return ha - hb || Math.abs(b.percentile - 50) - Math.abs(a.percentile - 50);
+    })
     .slice(0, 8)
     .map((v) => ({
       name: v.name,
@@ -196,6 +208,9 @@ export function buildFactPack(input: FactPackInput): BriefingFactPack {
       pe: v.pe,
       percentile: v.percentile,
       advice: v.advice,
+      heldPct: v.heldPct ?? null,
+      deltaPct: v.deltaPct ?? null,
+      deltaSpan: v.deltaPct == null ? null : (v.deltaSpan ?? null),
     }));
 
   const accounts: BriefingFactPack['accounts'] = (['stock', 'etf'] as AccountId[]).map((id) => {
@@ -469,7 +484,7 @@ export async function requestBriefing(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
       body: JSON.stringify({
-        model: BRIEFING_MODEL,
+        model: briefingModel.value,
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [

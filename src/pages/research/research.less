@@ -1021,6 +1021,15 @@
     text-align: right;
   }
 
+  /* 近一月分位方向：↑ 变贵（下行风险），↓ 变便宜（潜在机会） */
+  .rk-delta {
+    flex: none;
+    min-width: 34px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--td-text-color-secondary);
+  }
+
   .rk-bar {
     height: 8px;
     border-radius: 4px;
@@ -1437,6 +1446,12 @@
         font-size: 12px;
         font-weight: 700;
         font-family: var(--td-font-family-mono, monospace);
+
+        .pct-delta {
+          margin-left: 4px;
+          font-weight: 400;
+          color: var(--td-text-color-secondary);
+        }
       }
 
       .pct-bar {

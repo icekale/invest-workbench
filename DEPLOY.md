@@ -40,6 +40,24 @@ tar -C dist -cf - . | ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 \
 ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 ```
 
+### 验证必须在**上传之后**
+
+不要先 `curl` 未来版本的文件名再看 200 —— 那不是验证，是下毒。Caddyfile 里：
+
+```caddy
+try_files {path} /index.html      # 缺失的 /assets/x.js 回退成 index.html，状态码 200
+header @immutable Cache-Control "public, max-age=31536000, immutable"   # 该头按请求路径匹配
+```
+
+两者叠加，一个不存在的 `/assets/x.js` 会以 **200 + HTML + immutable** 应答，CF 橙云会把这坨 HTML 缓存**一年**。之后真文件传上去，该 URL 仍然吐 HTML，浏览器按 MIME 拒执行 → 白屏。一个提前探测就能永久锁死一个产物文件名（2026-09-10 踩过，四个文件）。
+
+所以：
+
+- 验证放在上传 + 重启之后；
+- 用字节比对而不是看状态码：`curl -s URL -o /tmp/live.bin && cmp dist/<file> /tmp/live.bin`（`curl -o /dev/null -w %{http_code}` 对 SPA 回退也会回 200，毫无信息量）；
+- 产物名带构建时间戳（`vite.config.ts` 的 `BUILD_STAMP`），每次构建换一批 URL，这类污染就碰不到真文件；
+- 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
+
 改 Caddyfile 后 `docker restart invest-caddy` 即可；改配置无需重新上传站点。
 
 ## 持仓 SQLite 同步

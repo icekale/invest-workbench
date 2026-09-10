@@ -169,9 +169,9 @@ async function fetchMacrodatas(start: number, end: number) {
   }
 }
 
-export async function fetchLiveMacroEvents(days = 30): Promise<MacroEvent[]> {
+export async function fetchLiveMacroEvents(days = 30, force = false): Promise<MacroEvent[]> {
   const cacheKey = `invest-wscn:events:v3:${days}`;
-  const hit = await marketGet<MacroEvent[]>(cacheKey, CATALYST_TTL_MS);
+  const hit = await marketGet<MacroEvent[]>(cacheKey, CATALYST_TTL_MS, force);
   if (hit?.length) return hit;
   const start = shanghaiDayStartUnix();
   const end = start + 86400 * Math.max(7, days);

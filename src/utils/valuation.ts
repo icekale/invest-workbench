@@ -1,7 +1,14 @@
-/** PE 分位：<40 偏低，40–60 中性，>60 偏高。桶仍用 20/50/80 插值。 */
+/**
+ * PE 分位与买卖信号。分档线当前取 20/40/60/80（可在设置里改，见 research-settings.ts），
+ * 宽基分位优先用中证官网真实历史分布，无数据源时退回手填参数。
+ */
 import { fetchOk, withRetry } from './http.ts';
+import { marketGet, marketPut } from './market-cache.ts';
+import { bands } from './research-settings.ts';
 import type { SwL1Row } from './sw-valuation';
 import { fetchSwL1Rows } from './sw-valuation';
+import type { PctDelta } from './val-history';
+import { daysBetween } from './val-history';
 
 export type ValuationSignal = 'STRONG_BUY' | 'BUY' | 'HOLD' | 'REDUCE' | 'SELL';
 
@@ -59,6 +66,10 @@ export interface IndexValuationItem {
   allocationTilt: string; // 仓位偏离建议，如 "+10%" 或 "-5%"
   updatedAt: string;
   count?: number; // 申万一级成分家数
+  /** peStats 的来源：real = 中证官网近十年真实分布，manual = 手填基准参数（该指数无公开历史序列） */
+  peStatsBasis?: 'real' | 'manual';
+  /** 近约一月分位变化。宽基来自中证真历史（当天即有）；申万来自自积累快照（要攒两周）。 */
+  pctDelta?: PctDelta | null;
 }
 
 export const INDEX_VALUATION_CONFIGS: IndexValuationConfig[] = [
@@ -150,14 +161,16 @@ export const INDEX_VALUATION_CONFIGS: IndexValuationConfig[] = [
 
   // 2. 红利价值与防守底仓
   {
-    code: 'sh000015',
+    // 中证红利低波动指数。场内 512890 跟踪的正是它（500 家中证官网名称「红利低波」）。
+    // 注：代码含字母，/qt/ 报不到行情，价格/PE 由中证官网 index-perf 提供。
+    code: 'H30269',
     name: '红利低波',
     category: 'dividend',
     categoryLabel: '红利防守',
     etfCode: '512890',
     etfName: '红利低波ETF',
     description: '高股息 + 低波动双因子筛选，防守配置压舱石与股息复利神器',
-    peStats: { min: 5.2, p20: 5.8, p50: 6.6, p80: 7.8, max: 9.2, avg: 6.7 },
+    peStats: { min: 4.6, p20: 5.8, p50: 7.0, p80: 8.3, max: 14.6, avg: 7.2 },
     pbStats: { min: 0.62, p20: 0.72, p50: 0.82, p80: 0.94, max: 1.15 },
     defaultDividendYield: 5.45,
   },
@@ -199,9 +212,169 @@ export function calcPercentile(val: number, stats: IndexValuationConfig['peStats
   return Math.round(80 + ((val - stats.p80) / (stats.max - stats.p80)) * 19);
 }
 
+/** 中证官网近 N 年每日 PE 分布（index-perf 的 peg 字段即当日市盈率）。 */
+export interface PeDistribution {
+  /** quantiles[i] = 第 i 百分位对应的 PE(TTM)，数组长度 101 */
+  quantiles: number[];
+  currentPe: number;
+  lastClose: number;
+  lastChangePct: number;
+  lastDate: string;
+  years: number;
+  /**
+   * 近约一月分位变化：同一份十年序列里再取一个月前那条算出来的，无需自积累。
+   * 源序列只有 PE、没有历史分位，但分位本就是相对十年分布算的，
+   * 所以用同一套 quantiles 分别算两个时点的分位就得到方向。序列太短时为 null。
+   */
+  pctDelta?: PctDelta | null;
+}
+
+export const PE_DIST_YEARS = 10;
+const PE_DIST_TTL_MS = 6 * 3600 * 1000;
+
+/** 由升序分位数组线性插值求某 PE 所处的百分位（0~100）。 */
+export function percentileFromQuantiles(pe: number, quantiles: number[]): number {
+  const q = quantiles;
+  if (!(pe > 0) || q.length < 2) return 50;
+  if (pe <= q[0]) return 0;
+  if (pe >= q[q.length - 1]) return 100;
+  for (let i = 1; i < q.length; i++) {
+    if (pe <= q[i]) {
+      const lo = q[i - 1];
+      const hi = q[i];
+      const frac = hi === lo ? 0 : (pe - lo) / (hi - lo);
+      return Math.round(((i - 1 + frac) * 100) / (q.length - 1));
+    }
+  }
+  return 100;
+}
+
+/** 从升序分位数组抽出 min/p20/p50/p80/max，用于图示的历史区间基准线。 */
+export function statsFromQuantiles(q: number[]): IndexValuationConfig['peStats'] {
+  const at = (p: number) => q[Math.round((p * (q.length - 1)) / 100)] ?? 0;
+  const avg = q.reduce((s, v) => s + v, 0) / q.length;
+  return { min: at(0), p20: at(20), p50: at(50), p80: at(80), max: at(100), avg: Number(avg.toFixed(2)) };
+}
+
+function quantilesOf(values: number[]): number[] {
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = 100;
+  const out: number[] = [];
+  for (let i = 0; i <= n; i++) {
+    out.push(Number(sorted[Math.round((i / n) * (sorted.length - 1))].toFixed(2)));
+  }
+  return out;
+}
+
+/**
+ * 取中证官网近 N 年逐日 PE，压成 101 个经验分位点。
+ * 结果只有约 700 字节，缓存 6h；源数据 115KB（已 gzip），所以缓存分发而非原始序列。
+ * 不在中证指数序列内的标的（如创业板指 399006）返回 null。
+ */
+export async function fetchIndexPeDistribution(
+  prefixedCode: string,
+  years = PE_DIST_YEARS,
+  force = false,
+): Promise<PeDistribution | null> {
+  const key = `csidx-pe-dist-v2-${prefixedCode}-${years}`;
+  if (!force) {
+    const hit = await marketGet<PeDistribution>(key, PE_DIST_TTL_MS);
+    if (hit?.quantiles?.length) return hit;
+  }
+  const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - years);
+
+  const res = await fetchOk(
+    `/csindex/csindex-home/perf/index-perf?indexCode=${code6}&startDate=${fmt(start)}&endDate=${fmt(end)}`,
+    {
+      headers: { Referer: 'https://www.csindex.com.cn/' },
+      signal: AbortSignal.timeout(30000),
+    },
+  );
+  const json = (await res.json()) as { data?: Array<Record<string, unknown>> };
+  const rows = Array.isArray(json.data) ? json.data : [];
+  const pes: number[] = [];
+  const samples: Array<{ d: string; pe: number }> = [];
+  let last: Record<string, unknown> | null = null;
+  for (const row of rows) {
+    const pe = Number(row.peg);
+    if (!Number.isFinite(pe) || pe <= 0) continue;
+    pes.push(pe);
+    const d = isoDate(String(row.tradeDate ?? ''));
+    if (d) samples.push({ d, pe });
+    last = row;
+  }
+  // 样本过少说明该指数不在中证序列，宁可不给分布也不用垃圾数据算分位
+  if (pes.length < 120 || !last) return null;
+  const quantiles = quantilesOf(pes);
+  const dist: PeDistribution = {
+    quantiles,
+    currentPe: Number(Number(last.peg).toFixed(2)),
+    lastClose: Number(last.close) || 0,
+    lastChangePct: Number(last.changePct) || 0,
+    lastDate: isoDate(String(last.tradeDate ?? '')),
+    years,
+    pctDelta: realPctDelta(samples, quantiles),
+  };
+  marketPut(key, dist, PE_DIST_TTL_MS);
+  return dist;
+}
+
+/** 中证官网 tradeDate 是 YYYYMMDD，统一成 YYYY-MM-DD；异常返回空串。 */
+export function isoDate(raw: string): string {
+  const m = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+}
+
+/** 回看窗口：与 val-history 的「近1月」对齐，留一点容错。 */
+const REAL_LOOKBACK_DAYS = 35;
+const REAL_MIN_SPAN_DAYS = 10;
+
+/**
+ * 从已下载的序列里取窗口内最早一条当基准，算分位变化。
+ * 跟 val-history.pctDeltaOf 同语义（取最早而非最近，跨越不足不给），
+ * 但基准来自真实历史而非自积累快照，所以宽基当天就能看到方向。
+ */
+export function realPctDelta(samples: Array<{ d: string; pe: number }>, quantiles: number[]): PctDelta | null {
+  if (samples.length < 2) return null;
+  const now = samples[samples.length - 1];
+  const base = samples.find((s) => daysBetween(s.d, now.d) <= REAL_LOOKBACK_DAYS);
+  if (!base || base.d === now.d) return null;
+  const span = daysBetween(base.d, now.d);
+  if (span < REAL_MIN_SPAN_DAYS) return null;
+  const from = percentileFromQuantiles(base.pe, quantiles);
+  const to = percentileFromQuantiles(now.pe, quantiles);
+  return { span, delta: to - from, from, to };
+}
+
 /**
  * 根据分位数推导买卖信号与操作指引
  */
+/**
+ * 每档的视觉表达按**档位序号**固定，不跟着用户改的文案走 ——
+ * 改了「偏低」的叫法不该让颜色和 tag 也跟着变，否则调一次阈值就把整套视觉调乱了。
+ */
+const BAND_STYLES = [
+  { signal: 'STRONG_BUY', statusTag: 'success', color: '#16815f' },
+  { signal: 'BUY', statusTag: 'primary', color: '#2a9d8f' },
+  { signal: 'HOLD', statusTag: 'warning', color: '#b8782d' },
+  { signal: 'REDUCE', statusTag: 'warning', color: '#e76f51' },
+  { signal: 'SELL', statusTag: 'danger', color: '#b8433e' },
+] as const;
+
+/** 分位落在第几档（0 起）。传 list 便于测试；默认用当前生效的设置。 */
+export function bandIndexOf(pct: number, list: Array<{ max: number }> = bands.value): number {
+  for (let i = 0; i < list.length; i++) {
+    if (pct < list[i]!.max) return i;
+  }
+  return Math.max(0, list.length - 1);
+}
+
 export function deriveValuationSignal(pct: number): {
   signal: ValuationSignal;
   label: string;
@@ -210,53 +383,17 @@ export function deriveValuationSignal(pct: number): {
   tilt: string;
   advice: string;
 } {
-  if (pct < 20) {
-    return {
-      signal: 'STRONG_BUY',
-      label: '偏低',
-      statusTag: 'success',
-      color: '#16815f',
-      tilt: '+10% ~ +15%',
-      advice: '分位偏低',
-    };
-  }
-  if (pct < 40) {
-    return {
-      signal: 'BUY',
-      label: '偏低',
-      statusTag: 'primary',
-      color: '#2a9d8f',
-      tilt: '+5% ~ +10%',
-      advice: '分位偏低',
-    };
-  }
-  if (pct < 60) {
-    return {
-      signal: 'HOLD',
-      label: '中性',
-      statusTag: 'warning',
-      color: '#b8782d',
-      tilt: '标配 (0%)',
-      advice: '分位中性',
-    };
-  }
-  if (pct < 80) {
-    return {
-      signal: 'REDUCE',
-      label: '偏高',
-      statusTag: 'warning',
-      color: '#e76f51',
-      tilt: '-5% ~ -10%',
-      advice: '分位偏高',
-    };
-  }
+  const list = bands.value;
+  const i = bandIndexOf(pct, list);
+  const band = list[i]!;
+  const style = BAND_STYLES[i]!;
   return {
-    signal: 'SELL',
-    label: '偏高',
-    statusTag: 'danger',
-    color: '#b8433e',
-    tilt: '-10% ~ -20%',
-    advice: '分位偏高',
+    signal: style.signal,
+    label: band.label,
+    statusTag: style.statusTag,
+    color: style.color,
+    tilt: band.tilt,
+    advice: `分位${band.label}`,
   };
 }
 
@@ -298,12 +435,74 @@ function swToItem(row: SwL1Row, nowStr: string): IndexValuationItem {
   };
 }
 
+/**
+ * 单独组装一条估值。
+ * 价格/涨跌优先用 /qt/ 实时行情，缺失则退回中证官网收盘值（EOD）；两者都无则置 0
+ * （UI 显示 —），**不编造点位**。分位优先用真实历史分布，无数据源时退回手填参数并标 manual。
+ */
+function buildItem(
+  cfg: IndexValuationConfig,
+  q: { price: number; changePct: number; pe: number; pb: number } | undefined,
+  dist: PeDistribution | null,
+  nowStr: string,
+): IndexValuationItem {
+  const peStats = dist ? statsFromQuantiles(dist.quantiles) : cfg.peStats;
+  const rawPe = q?.pe && q.pe > 0 ? q.pe : dist?.currentPe || cfg.peStats.p50;
+  const livePrice = !!(q?.price && q.price > 0);
+  const price = livePrice ? q!.price : dist?.lastClose || 0;
+  const changePct = livePrice ? q!.changePct : (dist?.lastChangePct ?? 0);
+  const pb = q?.pb && q.pb > 0 ? q.pb : (cfg.pbStats?.p50 ?? 1.5);
+  const pePercentile = dist ? percentileFromQuantiles(rawPe, dist.quantiles) : calcPercentile(rawPe, cfg.peStats);
+  const pbPercentile = cfg.pbStats ? calcPercentile(pb, { ...cfg.peStats, ...cfg.pbStats, avg: cfg.pbStats.p50 }) : 50;
+  const sig = deriveValuationSignal(pePercentile);
+  return {
+    code: cfg.code,
+    name: cfg.name,
+    category: cfg.category,
+    categoryLabel: cfg.categoryLabel,
+    etfCode: cfg.etfCode,
+    etfName: cfg.etfName,
+    description: cfg.description,
+    price: Number(price.toFixed(2)),
+    changePct: Number(changePct.toFixed(2)),
+    pe: Number(rawPe.toFixed(2)),
+    pePercentile,
+    pb: Number(pb.toFixed(2)),
+    pbPercentile,
+    dividendYield: cfg.defaultDividendYield ?? 2.5,
+    peStats,
+    peStatsBasis: dist ? 'real' : 'manual',
+    pctDelta: dist?.pctDelta ?? null,
+    signal: sig.signal,
+    signalLabel: sig.label,
+    statusTag: sig.statusTag,
+    color: sig.color,
+    advice: sig.advice,
+    allocationTilt: sig.tilt,
+    updatedAt: nowStr,
+  };
+}
+
+async function fetchDistributions(force: boolean): Promise<Map<string, PeDistribution | null>> {
+  const out = new Map<string, PeDistribution | null>();
+  await Promise.all(
+    INDEX_VALUATION_CONFIGS.map(async (cfg) => {
+      out.set(cfg.code, await fetchIndexPeDistribution(cfg.code, PE_DIST_YEARS, force).catch(() => null));
+    }),
+  );
+  return out;
+}
+
 export async function fetchIndexValuations(force = false): Promise<IndexValuationItem[]> {
   const codes = INDEX_VALUATION_CONFIGS.map((c) => c.code);
   const nowStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  // 真实分位分布与 /qt/ 行情相互独立：行情接口挂了也能照常算分位
+  const dists = await fetchDistributions(force);
 
   try {
-    const res = await fetch(`/qt/q=${codes.join(',')}`);
+    const res = await fetch(`/qt/q=${codes.join(',')}`, {
+      signal: AbortSignal.timeout(15000),
+    });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
@@ -325,78 +524,14 @@ export async function fetchIndexValuations(force = false): Promise<IndexValuatio
       quoteMap.set(key, { price, changePct, pe, pb });
     }
 
-    const core = INDEX_VALUATION_CONFIGS.map((cfg) => {
-      const q = quoteMap.get(cfg.code.toLowerCase());
-      const rawPe = q?.pe && q.pe > 0 ? q.pe : cfg.peStats.p50;
-      const price = q?.price && q.price > 0 ? Number(q.price.toFixed(2)) : Number((cfg.peStats.p50 * 100).toFixed(2));
-      const changePct = q ? Number(q.changePct.toFixed(2)) : 0;
-      const pb = q?.pb && q.pb > 0 ? Number(q.pb.toFixed(2)) : (cfg.pbStats?.p50 ?? 1.5);
-
-      const pePercentile = calcPercentile(rawPe, cfg.peStats);
-      const pbPercentile = cfg.pbStats
-        ? calcPercentile(pb, { ...cfg.peStats, ...cfg.pbStats, avg: cfg.pbStats.p50 })
-        : 50;
-
-      const sig = deriveValuationSignal(pePercentile);
-
-      return {
-        code: cfg.code,
-        name: cfg.name,
-        category: cfg.category,
-        categoryLabel: cfg.categoryLabel,
-        etfCode: cfg.etfCode,
-        etfName: cfg.etfName,
-        description: cfg.description,
-        price,
-        changePct,
-        pe: Number(rawPe.toFixed(2)),
-        pePercentile,
-        pb: Number(pb.toFixed(2)),
-        pbPercentile,
-        dividendYield: cfg.defaultDividendYield ?? 2.5,
-        peStats: cfg.peStats,
-        signal: sig.signal,
-        signalLabel: sig.label,
-        statusTag: sig.statusTag,
-        color: sig.color,
-        advice: sig.advice,
-        allocationTilt: sig.tilt,
-        updatedAt: nowStr,
-      };
-    });
+    const core = INDEX_VALUATION_CONFIGS.map((cfg) =>
+      buildItem(cfg, quoteMap.get(cfg.code.toLowerCase()), dists.get(cfg.code) ?? null, nowStr),
+    );
     return appendSw(core, nowStr, force);
   } catch (err) {
-    console.warn('获取实时指数行情降级为基准参数:', err);
-    // 降级：价格置 0（UI 显示 —），估值用历史中枢，不编造点位
-    const core = INDEX_VALUATION_CONFIGS.map((cfg) => {
-      const pe = cfg.peStats.p50;
-      const pePercentile = 50;
-      const sig = deriveValuationSignal(pePercentile);
-      return {
-        code: cfg.code,
-        name: cfg.name,
-        category: cfg.category,
-        categoryLabel: cfg.categoryLabel,
-        etfCode: cfg.etfCode,
-        etfName: cfg.etfName,
-        description: cfg.description,
-        price: 0,
-        changePct: 0,
-        pe,
-        pePercentile,
-        pb: cfg.pbStats?.p50 ?? 1.5,
-        pbPercentile: 50,
-        dividendYield: cfg.defaultDividendYield ?? 2.5,
-        peStats: cfg.peStats,
-        signal: sig.signal,
-        signalLabel: sig.label,
-        statusTag: sig.statusTag,
-        color: sig.color,
-        advice: sig.advice,
-        allocationTilt: sig.tilt,
-        updatedAt: nowStr,
-      };
-    });
+    console.warn('获取实时指数行情降级为中证官网收盘值:', err);
+    // 降级：价格退回中证官网收盘值（无则置 0，UI 显示 —），不编造点位
+    const core = INDEX_VALUATION_CONFIGS.map((cfg) => buildItem(cfg, undefined, dists.get(cfg.code) ?? null, nowStr));
     return appendSw(core, nowStr, force);
   }
 }
@@ -409,57 +544,6 @@ async function appendSw(core: IndexValuationItem[], nowStr: string, force: boole
   return [...core, ...sw.map((r) => swToItem(r, nowStr))];
 }
 
-/**
- * 生成指数估值走势序列（用于 ECharts 下钻走势弹窗）。
- * ⚠️ 当前没有可用的指数 PE 历史数据源，序列是基于当前 PE 与历史分位参数的
- * 确定性示意模拟（同一指数每次生成结果一致，不含随机数），
- * 仅用于展示「当前值落在历史区间的位置」，不能当作真实历史行情。
- * 图表标题与注释必须带「示意」字样。
- * 优先使用 fetchIndexPeHistory() 的中证官网真实历史。
- */
-export function generateValuationHistorySeries(item: IndexValuationItem, years = 3) {
-  const dates: string[] = [];
-  const peValues: number[] = [];
-  const now = new Date();
-  const totalMonths = years * 12;
-
-  const base = item.peStats.p50;
-  const amp = (item.peStats.max - item.peStats.min) * 0.38;
-  // 以指数代码派生稳定相位，保证同一指数多次生成结果一致
-  const phase = (item.code.charCodeAt(3) % 5) + (item.code.charCodeAt(4) % 3) * 0.4;
-
-  for (let i = totalMonths; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    dates.push(dateStr);
-
-    if (i === 0) {
-      peValues.push(item.pe);
-    } else {
-      // 周期波动形态 + 均值回归（确定性，无随机数）
-      const cycle = Math.sin((i / 12) * Math.PI * 1.5 + phase);
-      const noise = Math.sin(i * 2.3 + phase) * 0.06 * base;
-      const simulated = Math.max(
-        item.peStats.min * 1.02,
-        Math.min(item.peStats.max * 0.98, base + cycle * amp + noise),
-      );
-      peValues.push(Number(simulated.toFixed(2)));
-    }
-  }
-
-  return {
-    dates,
-    peValues,
-    currentPe: item.pe,
-    p20: item.peStats.p20,
-    p50: item.peStats.p50,
-    p80: item.peStats.p80,
-    min: item.peStats.min,
-    max: item.peStats.max,
-    isSimulated: true,
-  };
-}
-
 export interface IndexPeHistory {
   dates: string[]; // YYYY-MM-DD
   peValues: number[];
@@ -468,7 +552,7 @@ export interface IndexPeHistory {
 
 /**
  * 从中证官网（经 /csindex/ 反代）拉取指数真实 PE 历史。
- * 数据源字段 peg 即每日收盘对应的市盈率。失败或样本过少返回 null（调用方回退示意序列）。
+ * 数据源字段 peg 即每日收盘对应的市盈率。失败或样本过少返回 null（调用方显示无数据提示，不再回退假序列）。
  */
 export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Promise<IndexPeHistory | null> {
   const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
@@ -490,9 +574,9 @@ export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Prom
     const peValues: number[] = [];
     for (const row of rows) {
       const peg = Number(row.peg);
-      const day = String(row.tradeDate ?? '');
-      if (!Number.isFinite(peg) || peg <= 0 || day.length !== 8) continue;
-      dates.push(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`);
+      const d = isoDate(String(row.tradeDate ?? ''));
+      if (!Number.isFinite(peg) || peg <= 0 || !d) continue;
+      dates.push(d);
       peValues.push(Number(peg.toFixed(2)));
     }
     if (dates.length < 10) return null;

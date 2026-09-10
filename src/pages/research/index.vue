@@ -89,7 +89,17 @@ import BriefingCard from './BriefingCard.vue';
 import EtfRadar from './EtfRadar.vue';
 import MacroCompass from './MacroCompass.vue';
 import ResearchDesk from './ResearchDesk.vue';
-import { bargainCount, briefing, briefingStatus, ensureValuations, macroState, valuationItems } from './state';
+import {
+  bargainCount,
+  briefing,
+  briefingStatus,
+  ensureHeldIndustryWeights,
+  ensureValuations,
+  heldIndustryWeights,
+  macroState,
+  valuationDeltas,
+  valuationItems,
+} from './state';
 import ValuationRadar from './ValuationRadar.vue';
 
 defineOptions({ name: 'ResearchIndex' });
@@ -151,14 +161,28 @@ function factInput(): FactPackInput {
     indicators: [],
     events: invest.macroEvents,
     valuation: valuationItems.value
-      .filter((v) => v.category !== 'sector' || v.pePercentile < 40 || v.pePercentile > 60)
-      .map((v) => ({
-        name: v.name,
-        code: v.code,
-        pe: v.pe,
-        percentile: v.pePercentile,
-        advice: v.advice,
-      })),
+      .filter(
+        (v) =>
+          v.category !== 'sector' ||
+          v.pePercentile < 40 ||
+          v.pePercentile > 60 ||
+          // 已持仓的行业无论分位高低都要给模型看，否则看不出「低估但已超配」
+          heldIndustryWeights.value[v.name] != null,
+      )
+      .map((v) => {
+        // 宽基自带中证真历史方向，申万只能靠自积累快照；两者取有值的那个
+        const d = v.pctDelta ?? valuationDeltas.value[v.name];
+        return {
+          name: v.name,
+          code: v.code,
+          pe: v.pe,
+          percentile: v.pePercentile,
+          advice: v.advice,
+          heldPct: heldIndustryWeights.value[v.name] ?? null,
+          deltaPct: d?.delta ?? null,
+          deltaSpan: d?.span ?? null,
+        };
+      }),
     holdings,
     cash: invest.cash,
     todos: invest.todos,
@@ -203,6 +227,12 @@ async function bootBriefing(force = false) {
   await loadSw();
   const liveP = liveMacroIndicators().catch(() => [] as Awaited<ReturnType<typeof liveMacroIndicators>>);
   const extra: Promise<unknown>[] = [liveP, ensureValuations().catch(() => {})];
+  // 持仓行业权重与分位方向要赶在 factInput() 之前就位，否则事实包里的 heldPct/deltaPct 是空的
+  extra.push(
+    ensureHeldIndustryWeights()
+      .then(() => ensureValuations())
+      .catch(() => {}),
+  );
   if (!invest.macroEventsLastUpdated) extra.push(invest.refreshMacroEvents().catch(() => {}));
   if (!invest.industryFocusLastUpdated) extra.push(invest.refreshIndustryFocus().catch(() => {}));
   await Promise.all(extra);

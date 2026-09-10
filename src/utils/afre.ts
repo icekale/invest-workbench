@@ -20,9 +20,9 @@ export interface AfreRow {
 
 export type AfreKind = 'flow' | 'stock';
 
-export async function fetchAfre(kind: AfreKind = 'flow'): Promise<AfreRow[]> {
+export async function fetchAfre(kind: AfreKind = 'flow', force = false): Promise<AfreRow[]> {
   const key = kind === 'stock' ? 'pbc:afre-stock' : 'pbc:afre';
-  const hit = await marketGet<AfreRow[]>(key, MARKET_TTL_MS);
+  const hit = await marketGet<AfreRow[]>(key, MARKET_TTL_MS, force);
   if (hit?.length) return hit;
   if (!hasSyncCreds()) throw new Error('未登录');
   const q = kind === 'stock' ? '?kind=stock' : '';

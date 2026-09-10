@@ -77,8 +77,8 @@ export function parseLiveBriefs(payload: unknown): MacroBrief[] {
   return out;
 }
 
-export async function fetchLiveMacroBriefs(): Promise<MacroBrief[]> {
-  const hit = await marketGet<MacroBrief[]>('invest-wscn:lives', CATALYST_TTL_MS);
+export async function fetchLiveMacroBriefs(force = false): Promise<MacroBrief[]> {
+  const hit = await marketGet<MacroBrief[]>('invest-wscn:lives', CATALYST_TTL_MS, force);
   if (hit?.length) return hit;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

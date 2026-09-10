@@ -73,8 +73,8 @@ interface XuangubaoPlateDetail {
 /**
  * 实时从选股宝 / 核心题材库采集产业风口与重大催化信息
  */
-export async function fetchLiveIndustryCatalysts(): Promise<IndustryFocus[]> {
-  const hit = await marketGet<IndustryFocus[]>('invest-xgb:plates', CATALYST_TTL_MS);
+export async function fetchLiveIndustryCatalysts(force = false): Promise<IndustryFocus[]> {
+  const hit = await marketGet<IndustryFocus[]>('invest-xgb:plates', CATALYST_TTL_MS, force);
   if (hit?.length) return hit;
   try {
     const res = await fetch('/xgb/api/surge_stock/plates', {

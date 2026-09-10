@@ -1,6 +1,6 @@
 /** 乐咕乐股申万一级 PE/分位。HTML 切片，无官方 JSON。 */
-import { todayCN } from './date';
 import { fetchOk, withRetry } from './http.ts';
+import { marketGet, marketPut } from './market-cache.ts';
 
 export interface SwL1Row {
   code: string;
@@ -61,11 +61,18 @@ export function isSwL1(item: { code: string }): boolean {
   return item.code.endsWith('.SI');
 }
 
-let cache: { day: string; rows: SwL1Row[] } | null = null;
+/**
+ * 源页面约 1.17MB，而 31 行结果只有约 2KB，所以缓存的是解析后的结果而非 HTML。
+ * 走项目既有的服务端缓存（/sync/cache，默认 TTL 6h），跨刷新/跨设备都命中；
+ * 无同步凭据时 marketGet 退化为内存缓存，仍可正常工作。
+ */
+const SW_L1_CACHE_KEY = 'sw-l1-pe-v1';
 
 export async function fetchSwL1Rows(force = false): Promise<SwL1Row[]> {
-  const day = todayCN();
-  if (!force && cache?.day === day) return cache.rows;
+  if (!force) {
+    const hit = await marketGet<SwL1Row[]>(SW_L1_CACHE_KEY);
+    if (hit && hit.length >= 20) return hit;
+  }
   const res = await withRetry(() =>
     fetchOk('/legulegu/stockdata/sw-industry-overview', {
       signal: AbortSignal.timeout(15000),
@@ -74,6 +81,6 @@ export async function fetchSwL1Rows(force = false): Promise<SwL1Row[]> {
   );
   const rows = parseSwL1Html(await res.text());
   if (rows.length < 20) throw new Error(`申万一级条数不足: ${rows.length}`);
-  cache = { day, rows };
+  marketPut(SW_L1_CACHE_KEY, rows);
   return rows;
 }

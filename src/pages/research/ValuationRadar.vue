@@ -101,6 +101,7 @@
               />
             </div>
             <strong class="rk-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
+            <span v-if="deltaOf(item)" class="rk-delta" :title="deltaTitle(item)">{{ deltaLabel(item) }}</span>
             <span class="rk-tag">{{ item.signalLabel }}</span>
             <button type="button" class="rk-action" @click.stop="runRowAction(item)">{{ rowActionLabel(item) }}</button>
           </div>
@@ -149,7 +150,10 @@
 
         <template #percentileInfo="{ row }">
           <div class="table-pct-cell">
-            <div class="pct-num" :style="{ color: row.color }">{{ row.pePercentile }}%</div>
+            <div class="pct-num" :style="{ color: row.color }">
+              {{ row.pePercentile }}%
+              <span v-if="deltaOf(row)" class="pct-delta" :title="deltaTitle(row)">{{ deltaLabel(row) }}</span>
+            </div>
             <t-progress :percentage="row.pePercentile" :color="row.color" :label="false" size="small" class="pct-bar" />
           </div>
         </template>
@@ -185,8 +189,8 @@
       v-model:visible="valChartModalVisible"
       :header="
         selectedValuation
-          ? `${selectedValuation.name} (${selectedValuation.code.toUpperCase()}) · 估值走势（示意）`
-          : '估值走势（示意）'
+          ? `${selectedValuation.name} (${selectedValuation.code.toUpperCase()}) · PE(TTM) 历史走势`
+          : 'PE(TTM) 历史走势'
       "
       width="740px"
       :footer="false"
@@ -227,7 +231,17 @@
           </t-radio-group>
         </div>
 
-        <div ref="valChartEl" style="height: 340px; width: 100%; margin-top: 12px" />
+        <div v-if="chartNoData" class="val-chart-empty">
+          <strong>这个指数拿不到真实 PE 历史，所以不画图。</strong>
+          <p>
+            中证指数公司公开序列里没有 {{ selectedValuation.code.toUpperCase() }}（创业板指归深证/国证，不在中证系）。
+            与其画一条编造的曲线，不如直接不画。
+          </p>
+          <p v-if="selectedValuation.peStatsBasis === 'manual'" class="warn">
+            注意：该指数当前 {{ selectedValuation.pePercentile }}% 分位是用手填基准参数估算的，不是真实历史分布。
+          </p>
+        </div>
+        <div v-show="!chartNoData" ref="valChartEl" style="height: 340px; width: 100%; margin-top: 12px" />
 
         <div class="val-dialog-advice-card" :style="{ borderColor: selectedValuation.color }">
           <div class="card-hd">
@@ -259,15 +273,19 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useInvestStore } from '@/store';
-import { allocation } from '@/utils/book';
 import { loadEcharts } from '@/utils/load-echarts';
-import type { SwClass } from '@/utils/sw-industry';
-import { bareCode, fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 import { isSwL1 } from '@/utils/sw-valuation';
+import type { PctDelta } from '@/utils/val-history';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
-import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/valuation';
+import { fetchIndexPeHistory } from '@/utils/valuation';
 
-import { ensureValuations, valuationItems } from './state';
+import {
+  ensureHeldIndustryWeights,
+  ensureValuations,
+  heldIndustryWeights,
+  valuationDeltas,
+  valuationItems,
+} from './state';
 import { todoDialogVisible, todoForm } from './todo';
 
 const VAL_VIEW_KEY = 'invest-valuation-view';
@@ -307,29 +325,36 @@ watch([valFilter, valViewMode, signalFilter], () => {
   );
 });
 
-/** 股票仓按申万一级归集，给出各行业在股票市值中的占比。 */
-const swMap = ref<Record<string, SwClass>>({});
+/** 各申万一级行业在股票仓中的占比(%)，由 state 维护，估值表与晨报共用同一份。 */
+const heldMap = heldIndustryWeights;
 const stockRows = computed(() => invest.enriched.filter((h) => h.account === 'stock'));
-const heldMap = computed<Record<string, number>>(() => {
-  if (!Object.keys(swMap.value).length) return {};
-  const rows = stockRows.value.filter((r) => swMap.value[bareCode(r.code)]);
-  if (!rows.length) return {};
-  const out: Record<string, number> = {};
-  for (const a of allocation(rows, 0, [], (p) => swGroupOf(p, swMap.value, 'l1'))) {
-    if (a.pct > 0) out[a.name] = Math.round(a.pct * 1000) / 10;
-  }
-  return out;
-});
+
 const heldCount = computed(() => Object.keys(heldMap.value).length);
 
+/** 近一月分位变化：正 = 变贵（↑），负 = 变便宜（↓）。
+ *  宽基走中证真历史（item.pctDelta，开箱即有）；申万走自积累快照（要攒两周）。 */
+function deltaOf(item: IndexValuationItem): PctDelta | null {
+  return item.pctDelta ?? valuationDeltas.value[item.name] ?? null;
+}
+
+function deltaLabel(item: IndexValuationItem) {
+  const d = deltaOf(item);
+  if (!d) return '';
+  const arrow = d.delta > 0 ? '↑' : d.delta < 0 ? '↓' : '→';
+  return `${arrow}${Math.abs(d.delta)}`;
+}
+
+function deltaTitle(item: IndexValuationItem) {
+  const d = deltaOf(item);
+  if (!d) return '历史样本不足，暂时看不出方向（需累积约两周快照）';
+  const dir = d.delta > 0 ? '走高（变贵）' : d.delta < 0 ? '走低（变便宜）' : '持平';
+  const src = item.pctDelta ? '中证官网历史序列' : '本工作台每日快照';
+  return `近${d.span}天分位${dir}：${d.from}% → ${d.to}%（${src}）`;
+}
+
 async function loadHeldIndustries() {
-  const codes = stockRows.value.map((h) => h.code);
-  if (!codes.length) return;
-  try {
-    swMap.value = await fetchSwClass(codes);
-  } catch {
-    /* 上游失败则不标持仓，不影响估值展示 */
-  }
+  if (!stockRows.value.length) return;
+  await ensureHeldIndustryWeights();
 }
 
 function rowActionLabel(item: IndexValuationItem) {
@@ -350,6 +375,7 @@ function runRowAction(item: IndexValuationItem) {
 }
 const selectedValuation = ref<IndexValuationItem | null>(null);
 const valChartModalVisible = ref(false);
+const chartNoData = ref(false);
 const valChartPeriod = ref<number>(3);
 const valChartEl = ref<HTMLDivElement | null>(null);
 let valChartInstance: ECharts | null = null;
@@ -425,16 +451,23 @@ function openValChartModal(item: IndexValuationItem) {
 }
 
 async function renderValuationChart() {
+  chartNoData.value = false;
   await nextTick(async () => {
     if (!valChartEl.value || !selectedValuation.value) return;
+    const item = selectedValuation.value;
+    const real = await fetchIndexPeHistory(item.code, valChartPeriod.value).catch(() => null);
+    // 拿不到真实历史就不画：不再用正弦函数模拟序列冒充历史
+    if (!real) {
+      chartNoData.value = true;
+      valChartInstance?.clear();
+      return;
+    }
     const echarts = await loadEcharts();
     if (!valChartInstance) {
       valChartInstance = echarts.init(valChartEl.value);
     }
-    const item = selectedValuation.value;
-    const real = await fetchIndexPeHistory(item.code, valChartPeriod.value).catch(() => null);
-    const seriesData = real ?? generateValuationHistorySeries(item, valChartPeriod.value);
-    const sourceNote = real ? '数据源：中证指数有限公司' : '示意序列（非真实历史）';
+    const seriesData = real;
+    const sourceNote = '数据源：中证指数有限公司';
 
     valChartInstance.setOption(
       {

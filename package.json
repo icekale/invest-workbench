@@ -27,7 +27,9 @@
     "check:briefing": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-briefing.ts",
     "check:valuation": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-valuation.ts",
     "test": "echo \"no test specified,work in process\"",
-    "test:coverage": "echo \"no test:coverage specified,work in process\""
+    "test:coverage": "echo \"no test:coverage specified,work in process\"",
+    "check:settings": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-research-settings.ts",
+    "check:val-history": "node --import ./scripts/loader.mjs --experimental-strip-types scripts/check-val-history.ts"
   },
   "dependencies": {
     "@vueuse/core": "^14.3.0",
