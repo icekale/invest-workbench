@@ -290,10 +290,15 @@ const drillL1 = ref<string | null>(null);
 
 // 从估值分位页跳过来时带上 ?l1=行业名，直接下钻该一级行业
 const route = useRoute();
-if (typeof route.query.l1 === 'string' && route.query.l1) {
-  accountView.value = 'stock';
-  drillL1.value = route.query.l1;
-}
+watch(
+  () => route.query.l1,
+  (l1) => {
+    if (typeof l1 !== 'string' || !l1) return;
+    accountView.value = 'stock';
+    drillL1.value = l1;
+  },
+  { immediate: true },
+);
 
 async function loadSw() {
   const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);
