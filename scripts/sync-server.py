@@ -30,6 +30,10 @@ CACHE_TTL = 6 * 3600
 PBKDF2_ROUNDS = 120_000
 USER_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 LOCK = threading.Lock()
+REGISTER_ENABLED = os.environ.get("SYNC_REGISTER", "on").lower() != "off"
+AUTH_FAILS: dict[str, list[float]] = {}
+AUTH_FAIL_WINDOW = 600  # 10 分钟内失败 ≥10 次则 429
+AUTH_FAIL_LIMIT = 10
 
 KV_KEYS = (
     "todos",
@@ -205,6 +209,20 @@ def auth_user(conn: sqlite3.Connection, header: str | None) -> str | None:
     if not row or not check_pass(p, row[0]):
         return None
     return u
+
+
+def auth_throttled(ip: str) -> bool:
+    """10 分钟窗口内失败 ≥10 次的 IP 临时拒绝（防 Basic auth 爆破）。"""
+    now = time.time()
+    with LOCK:
+        fails = [t for t in AUTH_FAILS.get(ip, []) if now - t < AUTH_FAIL_WINDOW]
+        AUTH_FAILS[ip] = fails
+        return len(fails) >= AUTH_FAIL_LIMIT
+
+
+def record_auth_fail(ip: str) -> None:
+    with LOCK:
+        AUTH_FAILS.setdefault(ip, []).append(time.time())
 
 
 def put_snapshot(conn: sqlite3.Connection, user: str, data: dict) -> int:
@@ -752,13 +770,30 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+    def _auth_guard(self) -> str | None:
+        """认证并限速：成功返回用户名；失败返回 None 并已发送 401/429。"""
+        ip = self.client_address[0]
+        if auth_throttled(ip):
+            self.send_response(429)
+            self.send_header("Retry-After", "300")
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return None
+        user = self._user()
+        if not user:
+            record_auth_fail(ip)
+            self._unauth()
+            return None
+        return user
+
     def do_GET(self) -> None:  # noqa: N802
         path = self._path()
         if path not in ("/sync", "/sync/holdings", "/sync/transactions", "/sync/cache", "/sync/afre"):
             return self._send(404, b'{"error":"not found"}')
-        user = self._user()
+        user = self._auth_guard()
         if not user:
-            return self._unauth()
+            return
         if path == "/sync/afre":
             kind = (parse_qs(urlparse(self.path).query).get("kind") or ["flow"])[0]
             if kind != "stock":
@@ -819,9 +854,9 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         if path not in ("/sync", "/sync/cache"):
             return self._send(404, b'{"error":"not found"}')
-        user = self._user()
+        user = self._auth_guard()
         if not user:
-            return self._unauth()
+            return
         if path == "/sync/cache":
             k = cache_key_of(self.path)
             if not k:
@@ -862,6 +897,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if self._path() != "/sync/register":
             return self._send(404, b'{"error":"not found"}')
+        if not REGISTER_ENABLED:
+            return self._send(403, b'{"error":"registration disabled"}')
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > 4096:
             return self._send(413, b'{"error":"too large"}')
