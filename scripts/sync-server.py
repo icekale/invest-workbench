@@ -50,6 +50,8 @@ KV_KEYS = (
     "macroEvents",
     "industryFocus",
     "navSnapshots",
+    "accounts",
+    "priceScenarios",
 )
 
 
