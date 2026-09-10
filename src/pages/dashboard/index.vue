@@ -19,8 +19,6 @@
           <template #dropdown>
             <t-dropdown-item @click="editOpen = true"> <t-icon name="edit" />手工校准持仓 </t-dropdown-item>
             <t-dropdown-item @click="ocrOpen = true"> <t-icon name="scan" />截图导入持仓 </t-dropdown-item>
-            <t-dropdown-item @click="exportSnap"> <t-icon name="download" />导出快照 </t-dropdown-item>
-            <t-dropdown-item @click="triggerImport"> <t-icon name="upload" />导入快照 </t-dropdown-item>
             <t-dropdown-item divided @click="manageOpen = true"> <t-icon name="setting" />管理账户 </t-dropdown-item>
           </template>
         </t-dropdown>
@@ -41,17 +39,10 @@
     <holdings-editor v-model:visible="editOpen" />
     <import-holdings-ocr v-model:visible="ocrOpen" />
     <manage-accounts-dialog v-model:visible="manageOpen" />
-    <input
-      ref="fileInputRef"
-      type="file"
-      accept=".json,application/json"
-      style="display: none"
-      @change="handleFileChange"
-    />
   </t-space>
 </template>
 <script setup lang="ts">
-import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
+import { MessagePlugin } from 'tdesign-vue-next';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
@@ -114,7 +105,7 @@ function remindBackupIfNeeded() {
   const last = invest.prefs.lastBackupAt ?? 0;
   if (Date.now() - last < 7 * 86400_000) return;
   backupReminded = true;
-  MessagePlugin.warning('云端同步暂不可用，且超过 7 天未导出快照。建议点击「导出快照」存档。', 6000);
+  MessagePlugin.warning('云端同步暂不可用，且超过 7 天未备份。建议打开「账户管理 → 管理账户」导出快照存档。', 6000);
 }
 
 async function refresh(silent = false) {
@@ -127,61 +118,6 @@ async function refresh(silent = false) {
 
 function onTab(value: string | number) {
   MessagePlugin.info(`已切换到${invest.accountName(value as AccountId)}`);
-}
-
-function exportSnap() {
-  const blob = new Blob([JSON.stringify(invest.snapshot(), null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `invest-snapshot-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  invest.setPref('lastBackupAt', Date.now());
-  MessagePlugin.success('快照已下载');
-}
-
-const fileInputRef = ref<HTMLInputElement | null>(null);
-
-function triggerImport() {
-  if (fileInputRef.value) {
-    fileInputRef.value.value = '';
-    fileInputRef.value.click();
-  }
-}
-
-function handleFileChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(String(reader.result));
-      if (!data || typeof data !== 'object' || !Array.isArray(data.holdings) || !data.cash) {
-        MessagePlugin.error('快照文件解析失败：缺少持仓或资金字段');
-        return;
-      }
-      const dialog = DialogPlugin.confirm({
-        header: '确认导入并恢复快照？',
-        body: `检测到快照包含 ${data.holdings.length} 条持仓、${data.transactions?.length || 0} 笔交易记录。导入将覆盖当前浏览器数据，确认执行？`,
-        confirmBtn: '确认恢复',
-        cancelBtn: '取消',
-        onConfirm: () => {
-          const res = invest.restoreSnapshot(data);
-          if (res.success) {
-            MessagePlugin.success(
-              `已成功恢复快照：${res.counts?.holdings ?? 0} 只持仓、${res.counts?.transactions ?? 0} 笔交易流水`,
-            );
-          } else {
-            MessagePlugin.error(res.message);
-          }
-          dialog.destroy();
-        },
-      });
-    } catch {
-      MessagePlugin.error('无法解析该快照文件，请确保其为有效的 JSON 格式');
-    }
-  };
-  reader.readAsText(file);
 }
 </script>
 <style scoped lang="less">

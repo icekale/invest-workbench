@@ -60,18 +60,115 @@
       </template>
     </t-table>
     <p class="acct-hint">账户不能删除：账本记的是钱，删了就找不回。不需要的账户归档即可，历史照旧可查。</p>
+
+    <div class="backup-block">
+      <div class="backup-title">备份与恢复</div>
+      <div class="backup-row">
+        <span class="backup-label">云同步</span>
+        <span class="backup-val">{{ lastSyncText }}</span>
+        <t-button size="small" variant="outline" :loading="syncing" @click="syncNow">立即同步</t-button>
+      </div>
+      <div class="backup-row">
+        <span class="backup-label">本地快照</span>
+        <t-space :size="8">
+          <t-button size="small" variant="outline" @click="exportSnap">导出快照</t-button>
+          <t-button size="small" variant="outline" @click="fileInput?.click()">导入快照</t-button>
+        </t-space>
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".json,application/json"
+          style="display: none"
+          @change="onFileChange"
+        />
+      </div>
+      <p class="backup-hint">
+        数据自动同步到服务器；快照是独立副本，不依赖服务器。建议每周导出一份存到网盘或本地。导入会覆盖当前浏览器数据。
+      </p>
+    </div>
   </t-dialog>
 </template>
 <script setup lang="ts">
-import { MessagePlugin } from 'tdesign-vue-next';
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
 import { computed, reactive, ref } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, AccountKind } from '@/types/invest';
 import { rateOf } from '@/utils/accounts';
+import { hydrateFromCloud } from '@/utils/cloud-sync';
+import { formatCN } from '@/utils/date';
 
 const visible = defineModel<boolean>({ default: false });
 const invest = useInvestStore();
+
+/* 备份与恢复 */
+const syncing = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+const lastSyncText = computed(() => {
+  const ts = invest.prefs.lastCloudSyncAt;
+  if (!ts) return '尚未同步';
+  return `上次同步 ${formatCN(ts)} ${new Date(ts).toTimeString().slice(0, 5)}`;
+});
+
+async function syncNow() {
+  syncing.value = true;
+  try {
+    const action = await hydrateFromCloud(invest);
+    if (action === 'pull') MessagePlugin.success('已从云端恢复最新数据');
+    else if (action === 'push') MessagePlugin.success('本地数据已推送到云端');
+    else if (action === 'noop') MessagePlugin.info('云端与本地数据一致');
+    else MessagePlugin.error('同步服务未连接');
+  } finally {
+    syncing.value = false;
+  }
+}
+
+function exportSnap() {
+  const blob = new Blob([JSON.stringify(invest.snapshot(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `invest-snapshot-${formatCN(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  invest.setPref('lastBackupAt', Date.now());
+  MessagePlugin.success('快照已下载');
+}
+
+function onFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result));
+      if (!data || typeof data !== 'object' || !Array.isArray(data.holdings) || !data.cash) {
+        MessagePlugin.error('快照文件解析失败：缺少持仓或资金字段');
+        return;
+      }
+      const dialog = DialogPlugin.confirm({
+        header: '确认导入并恢复快照？',
+        body: `检测到快照包含 ${data.holdings.length} 条持仓、${data.transactions?.length || 0} 笔交易记录。导入将覆盖当前数据，确认执行？`,
+        confirmBtn: '确认恢复',
+        cancelBtn: '取消',
+        onConfirm: () => {
+          const res = invest.restoreSnapshot(data);
+          if (res.success) {
+            MessagePlugin.success(
+              `已成功恢复快照：${res.counts?.holdings ?? 0} 只持仓、${res.counts?.transactions ?? 0} 笔交易流水`,
+            );
+          } else {
+            MessagePlugin.error(res.message);
+          }
+          dialog.destroy();
+        },
+      });
+    } catch {
+      MessagePlugin.error('无法解析该快照文件，请确保其为有效的 JSON 格式');
+    }
+  };
+  reader.readAsText(file);
+}
 
 const editingId = ref<AccountId | null>(null);
 // t-input-number 的 v-model 不接受 null：留空用 undefined
@@ -167,5 +264,45 @@ function setArchived(id: AccountId, archived: boolean) {
   color: var(--td-text-color-placeholder);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.backup-block {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--td-component-stroke, #e2e8f0);
+  border-radius: 8px;
+}
+
+.backup-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.backup-label {
+  flex: 0 0 4.5em;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.backup-val {
+  flex: 1;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.backup-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--td-text-color-placeholder);
 }
 </style>
