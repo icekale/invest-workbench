@@ -14,6 +14,7 @@ import type {
 import { authHeader } from './cloud-sync.ts';
 import { formatCN } from './date.ts';
 import { withRetry } from './http.ts';
+import { parsePosRange } from './position.ts';
 
 export const BRIEFING_MODEL = 'gemini-3.8-flash-high';
 export const FAIL_COOLDOWN_MS = 10 * 60 * 1000;
@@ -27,6 +28,7 @@ export const SYSTEM_PROMPT = [
   '数字必须来自事实包；没有的字段写「数据不足」，不许编造。',
   '只输出一个 JSON 对象，不要 markdown、不要代码围栏。',
   '字段：date（必须与事实包 date 相同）, headline, stance（偏多|中性|谨慎|防守）,',
+  'suggestedStockPos, suggestedEtfPos（字符串，如 60% ~ 70%；基于事实包 weather 微调，无依据则原样抄写）,',
   'stockNote, etfNote, risks（0-3 条字符串）,',
   'todos（0-3 条：account=stock|etf, code, name, side=buy|sell, quantity 数字, reason）。',
   'code 必须是事实包中出现过的代码，或空字符串。',
@@ -314,6 +316,36 @@ export function stanceConflicts(b: Pick<DailyBriefing, 'stance' | 'todos'>): str
   return [];
 }
 
+function posField(v: unknown): string | undefined {
+  const s = asString(v).trim();
+  return parsePosRange(s) ? s : undefined;
+}
+
+export function weatherFromBriefing(
+  b: Pick<DailyBriefing, 'headline' | 'stance' | 'suggestedStockPos' | 'suggestedEtfPos'>,
+  prev?: MacroWeather | null,
+  now = new Date(),
+): MacroWeather {
+  return {
+    cycle: b.headline,
+    sentiment: b.stance,
+    suggestedStockPos: posField(b.suggestedStockPos) ?? prev?.suggestedStockPos ?? '',
+    suggestedEtfPos: posField(b.suggestedEtfPos) ?? prev?.suggestedEtfPos ?? '',
+    updatedAt: `今日 ${now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 晨会写入`,
+  };
+}
+
+export function weatherMatchesBriefing(
+  w: MacroWeather | null | undefined,
+  b: Pick<DailyBriefing, 'headline' | 'stance' | 'suggestedStockPos' | 'suggestedEtfPos'>,
+): boolean {
+  if (!w) return false;
+  if (w.cycle !== b.headline || w.sentiment !== b.stance) return false;
+  if (posField(b.suggestedStockPos) && w.suggestedStockPos !== b.suggestedStockPos) return false;
+  if (posField(b.suggestedEtfPos) && w.suggestedEtfPos !== b.suggestedEtfPos) return false;
+  return true;
+}
+
 export function decorateBriefing(b: DailyBriefing, pack: BriefingFactPack): DailyBriefing {
   const seen = new Set<string>();
   const todos = b.todos.filter((t) => {
@@ -366,6 +398,8 @@ export function parseBriefing(raw: unknown, pack: BriefingFactPack, today: strin
       etfNote: asString(o.etfNote),
       risks: o.risks.map((r) => asString(r)).filter(Boolean),
       todos,
+      suggestedStockPos: posField(o.suggestedStockPos),
+      suggestedEtfPos: posField(o.suggestedEtfPos),
     },
     pack,
   );

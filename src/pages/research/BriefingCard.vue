@@ -8,15 +8,30 @@
         </t-tag>
         <t-tag v-if="briefing?.conflicts?.length" size="small" theme="danger" variant="light">冲突</t-tag>
       </div>
-      <t-button size="small" variant="outline" :loading="briefingStatus === 'loading'" @click="$emit('retry')">
-        {{ briefingStatus === 'ready' ? '重新生成' : '重试' }}
-      </t-button>
+      <t-space :size="8">
+        <t-button
+          v-if="briefing && briefingStatus === 'ready'"
+          size="small"
+          theme="primary"
+          variant="outline"
+          :disabled="applied"
+          @click="$emit('apply-weather')"
+        >
+          {{ applied ? '已写入立场' : '写入仓位立场' }}
+        </t-button>
+        <t-button size="small" variant="outline" :loading="briefingStatus === 'loading'" @click="$emit('retry')">
+          {{ briefingStatus === 'ready' ? '重新生成' : '重试' }}
+        </t-button>
+      </t-space>
     </div>
 
     <div v-if="briefingStatus === 'loading'" class="briefing-card__muted">正在生成今日研判…</div>
     <div v-else-if="briefingStatus !== 'ready' || !briefing" class="briefing-card__muted">今日研判未生成</div>
     <template v-else>
       <p class="briefing-card__headline">{{ briefing.headline }}</p>
+      <p v-if="briefing.suggestedStockPos || briefing.suggestedEtfPos" class="briefing-card__pos">
+        目标 股票 {{ briefing.suggestedStockPos || '—' }} · ETF {{ briefing.suggestedEtfPos || '—' }}
+      </p>
       <p v-if="briefing.conflicts?.length" class="briefing-card__conflict">{{ briefing.conflicts[0] }}</p>
       <div v-if="briefing.cites?.length" class="briefing-card__cites">
         <span>依据</span>
@@ -57,8 +72,9 @@ import { briefing, briefingStatus } from './state';
 
 defineProps<{
   written: Set<string>;
+  applied?: boolean;
 }>();
-defineEmits<{ retry: []; commit: [todo: BriefingTodoDraft] }>();
+defineEmits<{ retry: []; commit: [todo: BriefingTodoDraft]; 'apply-weather': [] }>();
 
 const stanceTheme = computed(() => {
   const s = briefing.value?.stance;

@@ -11,6 +11,8 @@ import {
   parseModelContent,
   readCachedBriefing,
   shouldSkipAutoFetch,
+  weatherFromBriefing,
+  weatherMatchesBriefing,
   writeCachedBriefing,
   writeFailAt,
 } from '../src/utils/briefing.ts';
@@ -265,5 +267,17 @@ assert.equal(shouldSkipAutoFetch(storage, 1_000_000 + 11 * 60_000), false);
 
 assert.equal(alreadyOpen(input.todos, sellDraft), true);
 assert.equal(alreadyOpen([], sellDraft), false);
+
+const withPos = parseBriefing({ ...ok, suggestedStockPos: '50% ~ 55%', suggestedEtfPos: 'bogus' }, pack, today);
+assert.equal(withPos.suggestedStockPos, '50% ~ 55%');
+assert.equal(withPos.suggestedEtfPos, undefined);
+const applied = weatherFromBriefing(withPos, input.weather, new Date('2026-09-09T08:30:00+08:00'));
+assert.equal(applied.cycle, ok.headline);
+assert.equal(applied.sentiment, '中性');
+assert.equal(applied.suggestedStockPos, '50% ~ 55%');
+assert.equal(applied.suggestedEtfPos, '75% ~ 85%');
+assert.equal(applied.updatedAt.includes('晨会写入'), true);
+assert.equal(weatherMatchesBriefing(applied, withPos), true);
+assert.equal(weatherMatchesBriefing(input.weather, withPos), false);
 
 console.log('check-briefing ok');

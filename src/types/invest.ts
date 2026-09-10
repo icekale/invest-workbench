@@ -296,6 +296,8 @@ export interface DailyBriefing {
   etfNote: string;
   risks: string[];
   todos: BriefingTodoDraft[];
+  suggestedStockPos?: string;
+  suggestedEtfPos?: string;
   cites?: BriefingCite[];
   conflicts?: string[];
 }

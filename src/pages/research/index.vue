@@ -39,7 +39,13 @@
     </t-radio-group>
 
     <div v-show="tab === 'macro'" class="research-pane">
-      <briefing-card :written="writtenKeys" @retry="bootBriefing(true)" @commit="commitBriefingTodo" />
+      <briefing-card
+        :written="writtenKeys"
+        :applied="weatherApplied"
+        @retry="bootBriefing(true)"
+        @commit="commitBriefingTodo"
+        @apply-weather="applyBriefingWeather"
+      />
       <macro-compass />
       <etf-radar />
     </div>
@@ -70,6 +76,8 @@ import {
   readCachedBriefing,
   shiftDate,
   todoDraftKey,
+  weatherFromBriefing,
+  weatherMatchesBriefing,
 } from '@/utils/briefing';
 import { todayCN } from '@/utils/date';
 import { impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
@@ -99,6 +107,7 @@ const writtenKeys = computed(() => {
   }
   return s;
 });
+const weatherApplied = computed(() => !!briefing.value && weatherMatchesBriefing(invest.macroWeather, briefing.value));
 
 function openTab(next: Tab) {
   tab.value = next;
@@ -214,6 +223,12 @@ function commitBriefingTodo(todo: BriefingTodoDraft) {
     reason: todo.reason,
   });
   MessagePlugin.success('已写入交易计划');
+}
+
+function applyBriefingWeather() {
+  if (!briefing.value) return;
+  invest.updateMacroWeather(weatherFromBriefing(briefing.value, invest.macroWeather));
+  MessagePlugin.success('已写入仓位立场');
 }
 
 onMounted(() => {
