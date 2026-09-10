@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -770,9 +771,21 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+    def _client_ip(self) -> str:
+        """反代后取真实客户端 IP：仅当对端是内网（Caddy 网关）时信任 X-Forwarded-For。"""
+        peer = self.client_address[0]
+        try:
+            if ipaddress.ip_address(peer).is_private:
+                xff = self.headers.get("X-Forwarded-For")
+                if xff:
+                    return xff.split(",")[0].strip()
+        except ValueError:
+            pass
+        return peer
+
     def _auth_guard(self) -> str | None:
         """认证并限速：成功返回用户名；失败返回 None 并已发送 401/429。"""
-        ip = self.client_address[0]
+        ip = self._client_ip()
         if auth_throttled(ip):
             self.send_response(429)
             self.send_header("Retry-After", "300")
@@ -995,6 +1008,11 @@ def selftest() -> None:
     assert parse_stock_month("2026.1", None) == "2026-01"
     assert parse_stock_month("2026.1", "2026-09") == "2026-10"
     assert parse_stock_month("2026.10", "2026-09") == "2026-10"
+    # 认证失败限速：同 IP 10 分钟内失败 ≥10 次触发，其他 IP 不受影响
+    for _ in range(10):
+        record_auth_fail("203.0.113.7")
+    assert auth_throttled("203.0.113.7")
+    assert not auth_throttled("198.51.100.9")
     stock_grid = [
         ["社会融资规模存量统计表"],
         [None, "2026.1", None, "2026.2", None, "2026.10"],
