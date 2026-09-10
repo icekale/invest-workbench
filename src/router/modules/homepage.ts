@@ -51,7 +51,7 @@ export default [
     name: 'review',
     redirect: '/review/index',
     meta: {
-      title: { zh_CN: '持有与复盘', en_US: 'Review' },
+      title: { zh_CN: '复盘', en_US: 'Review' },
       icon: shallowRef(ChartIcon),
       orderNo: 2,
       single: true,
@@ -61,7 +61,7 @@ export default [
         path: 'index',
         name: 'ReviewIndex',
         component: () => import('@/pages/review/index.vue'),
-        meta: { title: { zh_CN: '持有与复盘', en_US: 'Review' } },
+        meta: { title: { zh_CN: '复盘', en_US: 'Review' } },
       },
     ],
   },

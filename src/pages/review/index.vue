@@ -30,20 +30,16 @@
     </t-row>
 
     <!-- 投资组合全貌 -->
-    <t-card title="投资组合持仓">
+    <t-card title="行业占比">
       <div class="hold-toolbar">
         <t-radio-group v-model="accountView" variant="default-filled" size="small">
           <t-radio-button v-for="acc in invest.activeAccounts" :key="acc.id" :value="acc.id">
             {{ acc.name }}
           </t-radio-button>
         </t-radio-group>
-        <t-radio-group v-model="holdView" variant="default-filled" size="small">
-          <t-radio-button value="list">明细</t-radio-button>
-          <t-radio-button value="weight">行业占比</t-radio-button>
-        </t-radio-group>
       </div>
-      <t-empty v-if="!activeRows.length" description="暂无持仓数据" />
-      <div v-else-if="holdView === 'weight'" class="weight-view">
+      <t-empty v-if="!activeRows.length" description="暂无持仓" />
+      <div v-else class="weight-view">
         <div v-if="drillL1" class="weight-back">
           <t-link hover="color" @click="drillL1 = null">返回一级</t-link>
           <span>{{ drillL1 }}</span>
@@ -64,32 +60,6 @@
             </div>
           </div>
         </div>
-      </div>
-      <div v-else class="table-wrap">
-        <t-table :data="activeRows" :columns="cols" row-key="code" size="small" hover>
-          <template #name="{ row }">
-            <t-space align="center" :size="8">
-              <span class="stock-name">{{ row.name }}</span>
-              <t-tag size="small" variant="light">{{ shortCode(row.code) }}</t-tag>
-            </t-space>
-          </template>
-          <template #quantity="{ row }">{{ row.quantity?.toLocaleString('zh-CN') }}</template>
-          <template #cost="{ row }">¥{{ row.cost?.toFixed(2) }}</template>
-          <template #mv="{ row }">{{ money(row.marketValue) }}</template>
-          <template #weight="{ row }">{{ weightOf(row.marketValue) }}</template>
-          <template #pnl="{ row }">
-            <div class="pnl-cell" :style="{ color: pnlColor(row.pnl) }">
-              <span>{{ signed(row.pnl) }}</span>
-              <span v-if="row.pnlPct != null" class="pnl-pct">({{ pct(row.pnlPct) }})</span>
-            </div>
-          </template>
-          <template #op="{ row }">
-            <t-space :size="4">
-              <t-link theme="danger" hover="color" @click="tradeRow(row, 'buy')">买</t-link>
-              <t-link theme="success" hover="color" @click="tradeRow(row, 'sell')">卖</t-link>
-            </t-space>
-          </template>
-        </t-table>
       </div>
     </t-card>
 
@@ -227,7 +197,7 @@ import { useRoute } from 'vue-router';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
-import type { AccountId, PriceScenario, TodoStatus, TradeSide } from '@/types/invest';
+import type { AccountId, PriceScenario, TodoStatus } from '@/types/invest';
 import { allocation, summarize } from '@/utils/book';
 import { fmtSignedPct, impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
 import type { SwClass } from '@/utils/sw-industry';
@@ -239,7 +209,6 @@ echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
 
 const invest = useInvestStore();
 const accountView = ref<AccountId>(invest.activeAccounts[0]?.id ?? 'stock');
-const holdView = ref<'list' | 'weight'>('list');
 const pieEl = ref<HTMLDivElement>();
 let pie: echarts.ECharts | null = null;
 const scenKeys = ['bear', 'base', 'bull'] as const;
@@ -325,10 +294,6 @@ const sumOf = (id: AccountId) => summaries.value[id] ?? EMPTY_SUM;
 const cashOf = (id: AccountId) => invest.cash[id] ?? 0;
 const activeRows = computed(() => invest.rowsOf(accountView.value));
 const activeCash = computed(() => cashOf(accountView.value));
-const bookTotal = computed(() => {
-  const mv = activeRows.value.reduce((s, r) => s + (r.marketValue ?? 0), 0);
-  return mv + Math.max(0, activeCash.value);
-});
 const allocItems = computed(() => {
   // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
   if (invest.accountKind(accountView.value) !== 'stock') return allocation(activeRows.value, activeCash.value);
@@ -387,9 +352,9 @@ function renderPie() {
   );
 }
 watch(
-  [holdView, allocItems],
+  allocItems,
   async () => {
-    if (holdView.value !== 'weight') {
+    if (!activeRows.value.length) {
       pie?.dispose();
       pie = null;
       return;
@@ -397,16 +362,12 @@ watch(
     await nextTick();
     renderPie();
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 onUnmounted(() => {
   pie?.dispose();
   pie = null;
 });
-function weightOf(mv: number | null) {
-  if (mv == null || !bookTotal.value) return '—';
-  return `${((mv / bookTotal.value) * 100).toFixed(1)}%`;
-}
 
 const money = (n: number | null) => (n == null ? '—' : `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
 const targetTxt = (n: number | null) =>
@@ -420,15 +381,6 @@ const pnlColor = (n: number | null) => {
 };
 const shortCode = (c: string) => c.replace(/^(sh|sz|bj)/i, '');
 
-const cols = [
-  { colKey: 'name', title: '名称 / 代码' },
-  { colKey: 'quantity', title: '持仓量', width: 100 },
-  { colKey: 'cost', title: '持仓成本', width: 100 },
-  { colKey: 'mv', title: '市值', width: 120 },
-  { colKey: 'weight', title: '占比', width: 80 },
-  { colKey: 'pnl', title: '浮动盈亏' },
-  { colKey: 'op', title: '交易', width: 72 },
-];
 const todoCols = [
   { colKey: 'name', title: '标的' },
   { colKey: 'side', title: '方向', width: 64 },
@@ -476,39 +428,16 @@ function px(n: number) {
   return n < 10 ? n.toFixed(3) : n.toFixed(2);
 }
 
-function tradeRow(row: { code: string; name: string; last: number | null; quantity: number }, side: TradeSide) {
-  invest.openTradeModal({
-    account: accountView.value,
-    side,
-    code: row.code,
-    name: row.name,
-    price: row.last || 0,
-    quantity: side === 'sell' ? Math.min(100, row.quantity) : 100,
-  });
-}
-
 function toggleTodo(id: string, status: TodoStatus) {
   invest.setTodoStatus(id, status === 'open' ? 'done' : 'open');
 }
 </script>
 <style scoped>
-.table-wrap {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
 .kpi-num {
   font-size: 24px;
   font-weight: 600;
   color: var(--guanlan-ink);
   line-height: 1.2;
-}
-
-.kpi-unit {
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--guanlan-muted);
 }
 
 .kpi-foot {
@@ -559,52 +488,6 @@ function toggleTodo(id: string, status: TodoStatus) {
   font-family: var(--td-font-family-mono);
   font-size: 12px;
   color: var(--td-text-color-secondary, #4f5d67);
-}
-
-.dot-split {
-  color: var(--guanlan-line);
-}
-
-.health-span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.health-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.health-dot--good {
-  background: var(--guanlan-green);
-}
-
-.health-dot--warn {
-  background: var(--guanlan-amber);
-}
-
-.health-dot--alert {
-  background: var(--guanlan-red);
-}
-
-.stock-name {
-  font-weight: 500;
-  color: var(--guanlan-ink);
-}
-
-.pnl-cell {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
-}
-
-.pnl-pct {
-  font-size: 12px;
-  opacity: 0.85;
 }
 
 .card-cap {
