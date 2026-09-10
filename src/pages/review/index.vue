@@ -246,6 +246,7 @@ import { TooltipComponent } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
@@ -286,6 +287,13 @@ const subHeads = [
 
 const swMap = ref<Record<string, SwClass>>({});
 const drillL1 = ref<string | null>(null);
+
+// 从估值分位页跳过来时带上 ?l1=行业名，直接下钻该一级行业
+const route = useRoute();
+if (typeof route.query.l1 === 'string' && route.query.l1) {
+  accountView.value = 'stock';
+  drillL1.value = route.query.l1;
+}
 
 async function loadSw() {
   const codes = invest.holdings.filter((h) => h.account === 'stock').map((h) => h.code);

@@ -15,13 +15,8 @@
             <t-radio-button value="rank">分位条</t-radio-button>
             <t-radio-button value="table">明细</t-radio-button>
           </t-radio-group>
-          <t-button
-            size="small"
-            variant="outline"
-            :loading="valLoading"
-            style="margin-left: 8px"
-            @click="loadValuations(true)"
-          >
+          <t-input v-model="valQuery" size="small" clearable placeholder="搜行业 / 指数" class="val-search" />
+          <t-button size="small" variant="outline" :loading="valLoading" @click="loadValuations(true)">
             <template #icon><t-icon name="refresh" /></template>
             刷新估值
           </t-button>
@@ -71,6 +66,15 @@
           >
             全部
           </button>
+          <button
+            v-if="heldCount && valFilter === 'sector'"
+            type="button"
+            class="legend-dot"
+            :class="{ on: signalFilter === 'held' }"
+            @click="signalFilter = 'held'"
+          >
+            持仓 {{ heldCount }}
+          </button>
         </div>
         <div class="val-summary-text">按分位从便宜到贵扫</div>
       </div>
@@ -78,8 +82,17 @@
       <div v-if="valViewMode === 'rank'" class="val-rank">
         <template v-for="group in rankGroups" :key="group.key">
           <div class="val-rank-hd">{{ group.label }} · {{ group.items.length }}</div>
-          <div v-for="item in group.items" :key="item.code" class="val-rank-row" @click="onCardClick(item)">
-            <strong class="rk-name">{{ item.name }}</strong>
+          <div v-for="item in group.items" :key="item.code" class="val-rank-row" @click="runRowAction(item)">
+            <strong class="rk-name">
+              {{ item.name }}
+              <span
+                v-if="heldMap[item.name]"
+                class="rk-held"
+                :title="`股票仓中 ${item.name} 占 ${heldMap[item.name]}%`"
+              >
+                持仓 {{ heldMap[item.name] }}%
+              </span>
+            </strong>
             <span class="rk-pe">{{ Number(item.pe).toFixed(1) }}</span>
             <div class="rk-bar" aria-hidden="true">
               <span
@@ -89,7 +102,7 @@
             </div>
             <strong class="rk-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
             <span class="rk-tag">{{ item.signalLabel }}</span>
-            <button type="button" class="rk-todo" @click.stop="quickAddValuationTodo(item)">待办</button>
+            <button type="button" class="rk-action" @click.stop="runRowAction(item)">{{ rowActionLabel(item) }}</button>
           </div>
         </template>
         <div v-if="!rankGroups.length" class="val-rank-empty">这一侧没有标的</div>
@@ -102,6 +115,9 @@
             <strong class="idx-name">{{ row.name }}</strong>
             <span class="idx-code">{{ row.code.toUpperCase() }}</span>
             <t-tag size="small" variant="outline" class="idx-cat">{{ row.categoryLabel }}</t-tag>
+            <t-tag v-if="heldMap[row.name]" size="small" theme="primary" variant="light" class="idx-held">
+              持仓 {{ heldMap[row.name] }}%
+            </t-tag>
           </div>
         </template>
 
@@ -240,8 +256,13 @@
 import type { ECharts } from 'echarts/core';
 import type { PrimaryTableCol } from 'tdesign-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
+import { useInvestStore } from '@/store';
+import { allocation } from '@/utils/book';
 import { loadEcharts } from '@/utils/load-echarts';
+import type { SwClass } from '@/utils/sw-industry';
+import { bareCode, fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 import { isSwL1 } from '@/utils/sw-valuation';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
 import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/valuation';
@@ -249,14 +270,84 @@ import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/val
 import { ensureValuations, valuationItems } from './state';
 import { todoDialogVisible, todoForm } from './todo';
 
+const VAL_VIEW_KEY = 'invest-valuation-view';
+const VIEW_MODES = ['rank', 'table'] as const;
+const SIGNAL_MODES = ['ends', 'all', 'low', 'mid', 'high', 'held'] as const;
+const CATEGORIES = ['all', 'broad', 'dividend', 'growth', 'sector'] as const;
+type SignalMode = (typeof SIGNAL_MODES)[number];
+
+function pick<T extends string>(list: readonly T[], v: unknown, fallback: T): T {
+  return list.includes(v as T) ? (v as T) : fallback;
+}
+
+function readView() {
+  try {
+    return JSON.parse(localStorage.getItem(VAL_VIEW_KEY) || '{}') as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
+const saved = readView();
+const router = useRouter();
+const invest = useInvestStore();
 const valLoading = ref(false);
 const valList = computed(() => valuationItems.value);
-const valFilter = ref<'all' | IndexCategory>('all');
-const valViewMode = ref<'rank' | 'table'>('rank');
-const signalFilter = ref<'ends' | 'all' | 'low' | 'mid' | 'high'>('ends');
+const valFilter = ref<'all' | IndexCategory>(pick(CATEGORIES, saved.filter, 'all'));
+const valViewMode = ref<'rank' | 'table'>(pick(VIEW_MODES, saved.view, 'rank'));
+const signalFilter = ref<SignalMode>(pick(SIGNAL_MODES, saved.signal, 'ends'));
+const valQuery = ref('');
 watch(valFilter, (f) => {
   signalFilter.value = f === 'all' || f === 'sector' ? 'ends' : 'all';
 });
+watch([valFilter, valViewMode, signalFilter], () => {
+  localStorage.setItem(
+    VAL_VIEW_KEY,
+    JSON.stringify({ filter: valFilter.value, view: valViewMode.value, signal: signalFilter.value }),
+  );
+});
+
+/** 股票仓按申万一级归集，给出各行业在股票市值中的占比。 */
+const swMap = ref<Record<string, SwClass>>({});
+const stockRows = computed(() => invest.enriched.filter((h) => h.account === 'stock'));
+const heldMap = computed<Record<string, number>>(() => {
+  if (!Object.keys(swMap.value).length) return {};
+  const rows = stockRows.value.filter((r) => swMap.value[bareCode(r.code)]);
+  if (!rows.length) return {};
+  const out: Record<string, number> = {};
+  for (const a of allocation(rows, 0, [], (p) => swGroupOf(p, swMap.value, 'l1'))) {
+    if (a.pct > 0) out[a.name] = Math.round(a.pct * 1000) / 10;
+  }
+  return out;
+});
+const heldCount = computed(() => Object.keys(heldMap.value).length);
+
+async function loadHeldIndustries() {
+  const codes = stockRows.value.map((h) => h.code);
+  if (!codes.length) return;
+  try {
+    swMap.value = await fetchSwClass(codes);
+  } catch {
+    /* 上游失败则不标持仓，不影响估值展示 */
+  }
+}
+
+function rowActionLabel(item: IndexValuationItem) {
+  if (!isSwL1(item)) return '走势';
+  return heldMap.value[item.name] ? '看持仓' : '待办';
+}
+
+function runRowAction(item: IndexValuationItem) {
+  if (!isSwL1(item)) {
+    openValChartModal(item);
+    return;
+  }
+  if (heldMap.value[item.name]) {
+    void router.push({ path: '/review/index', query: { l1: item.name } });
+    return;
+  }
+  quickAddValuationTodo(item);
+}
 const selectedValuation = ref<IndexValuationItem | null>(null);
 const valChartModalVisible = ref(false);
 const valChartPeriod = ref<number>(3);
@@ -264,8 +355,10 @@ const valChartEl = ref<HTMLDivElement | null>(null);
 let valChartInstance: ECharts | null = null;
 
 const filteredValuations = computed(() => {
-  if (valFilter.value === 'all') return valList.value;
-  return valList.value.filter((v) => v.category === valFilter.value);
+  const q = valQuery.value.trim().toLowerCase();
+  const byCat = valFilter.value === 'all' ? valList.value : valList.value.filter((v) => v.category === valFilter.value);
+  if (!q) return byCat;
+  return byCat.filter((v) => v.name.toLowerCase().includes(q) || v.code.toLowerCase().includes(q));
 });
 
 function valBand(p: number): 'low' | 'mid' | 'high' {
@@ -282,6 +375,7 @@ const shownValuations = computed(() => {
   const list = filteredValuations.value;
   if (signalFilter.value === 'all') return list;
   if (signalFilter.value === 'ends') return list.filter((v) => valBand(v.pePercentile) !== 'mid');
+  if (signalFilter.value === 'held') return list.filter((v) => heldMap.value[v.name]);
   return list.filter((v) => valBand(v.pePercentile) === signalFilter.value);
 });
 
@@ -322,11 +416,6 @@ async function loadValuations(force = true) {
   } finally {
     valLoading.value = false;
   }
-}
-
-function onCardClick(item: IndexValuationItem) {
-  if (isSwL1(item)) return;
-  openValChartModal(item);
 }
 
 function openValChartModal(item: IndexValuationItem) {
@@ -429,13 +518,16 @@ async function renderValuationChart() {
 }
 
 function quickAddValuationTodo(item: IndexValuationItem) {
+  // 申万一级是指数，不能下单：标的留空由用户填（或选行业 ETF），数量不预设
   const sw = isSwL1(item);
-  todoForm.account = sw ? 'stock' : 'etf';
-  todoForm.code = sw ? item.code : item.etfCode;
+  todoForm.account = 'etf';
+  todoForm.code = sw ? '' : item.etfCode;
   todoForm.name = sw ? item.name : item.etfName;
   todoForm.side = item.pePercentile < 50 ? 'buy' : 'sell';
-  todoForm.quantity = 1000;
-  todoForm.reason = `【估值分位】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，偏离 ${item.allocationTilt}`;
+  todoForm.quantity = sw ? 0 : 1000;
+  todoForm.reason = sw
+    ? `【行业估值】${item.name} PE=${item.pe}（${item.pePercentile}%分位，${item.signalLabel}）· 标的待填（可用行业 ETF）`
+    : `【估值分位】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，偏离 ${item.allocationTilt}`;
   todoDialogVisible.value = true;
 }
 
@@ -445,8 +537,14 @@ function onResize() {
 
 onMounted(() => {
   loadValuations(false);
+  void loadHeldIndustries();
   window.addEventListener('resize', onResize);
 });
+
+watch(
+  () => invest.holdings.length,
+  () => void loadHeldIndustries(),
+);
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize);

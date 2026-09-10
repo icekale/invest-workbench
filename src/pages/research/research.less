@@ -905,6 +905,10 @@
 
 /* 核心指数估值分位与买卖信号看板 */
 .valuation-radar-card {
+  .val-search {
+    width: 160px;
+  }
+
   .val-header-actions {
     display: flex;
     align-items: center;
@@ -990,10 +994,24 @@
   }
 
   .rk-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .rk-held {
+    flex: none;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--td-brand-color-light, #e7f3f2);
+    color: var(--td-brand-color, #0d706d);
+    font-size: 11px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
   }
 
   .rk-pe,
@@ -1006,7 +1024,16 @@
   .rk-bar {
     height: 8px;
     border-radius: 4px;
-    background: var(--td-bg-color-secondarycontainer, #eef2f6);
+    background-color: var(--td-bg-color-secondarycontainer, #eef2f6);
+
+    /* 20/40/60/80 分位刻度：条宽只表达相对位置，刻度才能读出绝对水位 */
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(20% - 1px),
+      var(--td-border-level-2-color, #dcdcdc) calc(20% - 1px),
+      var(--td-border-level-2-color, #dcdcdc) 20%
+    );
     overflow: hidden;
   }
 
@@ -1021,7 +1048,7 @@
     color: var(--td-text-color-secondary);
   }
 
-  .rk-todo {
+  .rk-action {
     appearance: none;
     margin: 0;
     padding: 2px 0;
@@ -1031,6 +1058,25 @@
     font-size: 12px;
     color: var(--td-brand-color, #0d706d);
     cursor: pointer;
+  }
+
+  @media (width <= 720px) {
+    .val-rank-row {
+      grid-template-columns: 1fr auto auto;
+      row-gap: 6px;
+    }
+
+    .rk-name {
+      grid-column: 1 / -1;
+    }
+
+    .rk-bar {
+      grid-column: 1;
+    }
+
+    .rk-tag {
+      display: none;
+    }
   }
 
   .val-rank-empty {
