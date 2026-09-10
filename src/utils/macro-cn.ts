@@ -1,6 +1,6 @@
 /**
  * 宏观数据源：东方财富 datacenter（经 /em-dc/ 反代）。
- * 免费替代万得 EDB：PMI / CPI / PPI / GDP。社融全表走 /sync/afre（央行 xlsx）。
+ * PMI / CPI / PPI / GDP 四大支柱；社融全表走 /sync/afre（央行 xlsx）。
  */
 import { fetchOk, withRetry } from './http.ts';
 import { marketGet, marketPut } from './market-cache';
