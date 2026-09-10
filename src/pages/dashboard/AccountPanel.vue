@@ -340,7 +340,7 @@ import { unitOf } from '@/utils/accounts';
 import { allocation, healthNote, healthScore, risks, shortCode, summarize } from '@/utils/book';
 import type { LookThrough } from '@/utils/fund';
 import { fetchFundLookThrough } from '@/utils/fund';
-import { navCurveFor } from '@/utils/nav-history';
+import { navAxisDecimals, navCurveFor } from '@/utils/nav-history';
 import { bareFundCode, isOtcCode } from '@/utils/quote';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
@@ -648,6 +648,9 @@ function renderLine() {
   const last = n - 1;
   const narrow = lineEl.value.clientWidth < 520;
   const ticks = new Set([0, Math.round((n - 1) / 3), Math.round((2 * (n - 1)) / 3), last]);
+  // 刻度位数跟着这段曲线的振幅走：数据才两天、振幅 0.23% 时固定 3 位会把相邻刻度
+  // 印成同一个数（1.002 1.002 1.002），看着像画错了。公式在 nav-history.ts，自检覆盖。
+  const axisDecimals = navAxisDecimals(ys);
   const lineGreen = cssVar('--guanlan-accent', '#0d706d');
   const axisMuted = cssVar('--td-text-color-placeholder', '#5e6c76');
   const gridLine = cssVar('--td-component-stroke', '#e6eaed');
@@ -681,7 +684,7 @@ function renderLine() {
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: gridLine } },
-        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => v.toFixed(3) },
+        axisLabel: { color: axisMuted, fontSize: 12, formatter: (v: number) => v.toFixed(axisDecimals) },
       },
       series: [
         {

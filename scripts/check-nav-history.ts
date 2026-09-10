@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { navCurveFor, normalizeNavSnapshots } from '../src/utils/nav-history.ts';
+import { navAxisDecimals, navCurveFor, normalizeNavSnapshots } from '../src/utils/nav-history.ts';
 
 /* ---------- 老形状迁移：2026-09 之前的 {date, stockTotal, etfTotal} ---------- */
 const legacy = normalizeNavSnapshots([
@@ -83,5 +83,26 @@ assert.ok(gridCurve);
 assert.deepEqual(gridCurve.dates, ['09/03', '09/04'], 'grid 从它有数的第一天起');
 assert.equal(gridCurve.ys[0], 1, '新账户首个有数的日子就是它的 1，不是 0');
 assert.equal(gridCurve.ys[1], +(550 / 500).toFixed(4));
+
+/* ---------- 纵轴刻度位数：振幅这么小，固定 3 位会印出重复刻度 ---------- */
+// 真实数据：股票仓两天振幅 0.23%、ETF 仓 0.36%。6 格刻度用 3 位时会出现
+// `1.000 1.000 1.001 1.001 1.002 1.002` —— 用户看到的就是「净值出错了」。
+const dupTicks = (ys: number[]) => {
+  const lo = Math.min(...ys);
+  const span = Math.max(...ys) - lo;
+  const labels = Array.from({ length: 6 }, (_, i) => (lo + (span * i) / 5).toFixed(navAxisDecimals(ys)));
+  return labels.length - new Set(labels).size;
+};
+assert.ok(navAxisDecimals(stockCurve.ys) >= 4, '两天振幅 0.23% 至少得 4 位才分得开');
+assert.equal(dupTicks(stockCurve.ys), 0, '股票仓刻度不能重复');
+assert.equal(dupTicks(navCurveFor(two, 'etf')!.ys), 0, 'ETF 仓刻度不能重复');
+// 长曲线的位数不能反过来变多（半年 7% 振幅 2 位就够，以前是 3 位，看着啰嗦）
+assert.equal(navAxisDecimals([1, 1.012, 1.03, 1.021, 1.055, 1.048, 1.07]), 2);
+assert.equal(navAxisDecimals([1, 1.18, 1.42, 1.31, 1.56, 1.49, 1.72]), 2, '两年大振幅');
+assert.equal(dupTicks([1, 1.18, 1.42, 1.31, 1.56, 1.49, 1.72]), 0);
+// 横盘 / 空数据不许返回 NaN（toFixed 会直接印出怪东西）
+assert.equal(navAxisDecimals([1, 1, 1, 1]), 3, '横盘退回 3 位');
+assert.equal(navAxisDecimals([]), 3, '空数据退回 3 位');
+assert.equal(navAxisDecimals([Number.NaN]), 3, '全 NaN 退回 3 位');
 
 console.log('check-nav-history ✓');

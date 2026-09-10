@@ -88,3 +88,17 @@ export function navCurveFor(snapshots: NavSnapshot[], accountId: string): NavCur
     baseTotal,
   };
 }
+
+/**
+ * 净值曲线纵轴该留几位小数。
+ *
+ * 刻度是「这段区间的振幅切成 5 格」，所以位数必须跟着振幅走：数据才两天、振幅
+ * 0.23% 的时候，固定 3 位会把相邻刻度印成同一个数（`1.002 1.002 1.002`），
+ * 看着像图算错了。振幅越小位数越多，6 位是浮点噪声的边界。
+ */
+export function navAxisDecimals(ys: number[]): number {
+  const span = ys.length > 0 ? Math.max(...ys) - Math.min(...ys) : 0;
+  // 横盘 / 空数据：退回原来看惯的 3 位
+  if (!(span > 0)) return 3;
+  return Math.min(6, Math.max(2, Math.ceil(-Math.log10(span / 5))));
+}
