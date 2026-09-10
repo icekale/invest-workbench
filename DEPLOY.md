@@ -54,25 +54,52 @@ docker exec -e SYNC_DB=/data/invest.db invest-sync python /app/sync-server.py --
 
 查持仓：`sqlite3 /opt/invest-workbench/data/invest.db "SELECT user, account, code, quantity FROM holdings;"`
 
-## 容器 DNS（勿改成 1.1.1.1）
+## 容器 DNS（勿用中国解析器，会投毒）
 
-反代是按域名回源的，所以**每次请求都要解析域名**。容器 resolv.conf 是 `127.0.0.11`（Docker 内嵌 DNS），它只把外部域名转发给 `ExtServers`（取自宿主机 resolv.conf，转发超时约 3s）；宿主机 DNS 在 `/etc/netplan/60-public.yaml`。超时即 Caddy 返回 `502`，日志报 `dial tcp: lookup <domain>: i/o timeout`。
+宿主机 DNS 在 `/etc/netplan/60-public.yaml`，现为 **`8.8.8.8` + `1.1.1.1`**。
 
-各公共解析器都有**各自的病态区**（实测未命中回源耗时）：
+**⚠️ 切勿把 223.5.5.5 / 119.29.29.29 等中国解析器设为首选。**这台机器在美国，用中国解析器查「在中国被墙的域名」会拿到 GFW 伪造答案，实测：
 
-| zone | 1.1.1.1 | 8.8.8.8 | 223.5.5.5 |
-| --- | --- | --- | --- |
-| awtmt.com（`/wscn`） | **3101ms** | 14ms | 180ms |
-| szse.cn（`/szse`） | 149ms | **2207ms** | 148ms |
-| legulegu.com / eastmoney.com / gtimg.cn | 15ms | 15ms | 141–187ms |
+| 查询 | 1.1.1.1 / 8.8.8.8 | 223.5.5.5 |
+| --- | --- | --- |
+| `api.x.ai` | `104.18.18.80`（Cloudflare）| `31.13.95.34`、`2a03:2880:f12c:183:face:b00c`（Facebook 段）|
+| `api.openai.com` | `172.66.0.243`、`162.159.140.245`（Cloudflare）| `2a03:2880:...:face:b00c`、`104.244.46.185` |
 
-所以**必须用 223.5.5.5 打头**（唯一在所有区都 <200ms 的）。曾把 1.1.1.1 放第一位，导致 `/wscn`（宏观研判与事件催化页）间歇 502。改完 netplan 要 `systemctl restart systemd-resolved` + `docker restart invest-caddy` 让 ExtServers 生效。
+`face:b00c` 是 Facebook 的招牌段，见到就是被投毒。这会直接打挂 `cli-proxy-api`（它无上游代理，纯靠 DNS 直连 `api.x.ai` / `api.openai.com`）。
 
-验证（应该 <300ms，若 >3000ms 就是又要踩 3s 线了）：
+历史教训：曾用 223.5.5.5 打头解决了 `/wscn` 的慢解析，却把全机境外解析投毒了 —— **在两个区各测一半就下结论**是错的。
+
+### 为什么最终选 8.8.8.8（而非 1.1.1.1）打头
+
+反代按域名回源，**每次新建连接都要解析**，容器内嵌 DNS 转发超时约 3s，超时即 `502` + 日志 `dial tcp: lookup <domain>: i/o timeout`。1.1.1.1 对 `awtmt.com` 是病态的：
+
+| 上游 | 1.1.1.1 | 8.8.8.8 |
+| --- | --- | --- |
+| `api-one-wscn.awtmt.com`（`/wscn`）| **3174ms**（超时！）| 522ms（最差 1112ms）|
+| `www.csindex.com.cn` | 663ms | **129ms** |
+| `flash-api.xuangubao.cn` | 439ms（最差 689ms）| 343ms |
+| 其余 7 个上游 | 108–300ms | 108–362ms |
+
+8.8.8.8 是唯一同时满足「境外答案干净」+「所有中文上游 ≤1112ms（离 3s 有 3 倍余量）」的选择，所以**无需改 Caddyfile、无需给容器单独配 DNS**。
+
+### 改宿主 DNS 后必须重启受影响的容器
+
+Docker 在**容器启动时**记下 `ExtServers`（取自宿主机 resolv.conf），之后改宿主机 DNS **对已运行的容器不生效**。所以：
 
 ```sh
-n=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
-s=$(date +%s%N); docker exec invest-caddy nslookup $n.awtmt.com; echo $(( ($(date +%s%N)-s)/1000000 ))ms
+netplan apply && systemctl restart systemd-resolved
+docker restart invest-caddy        # 必需的容器要重启才吃到新 DNS
+```
+
+判断某容器是否还在用旧 DNS：`docker exec <c> getent hosts api.x.ai` —— 出现 `face:b00c` 就是还拉着旧上游。
+
+### 验证
+
+```sh
+# 境外解析必须干净（不得出现 face:b00c）
+docker exec invest-caddy getent hosts api.x.ai
+# 我的上游必须 <1200ms（awtmt 是历史上最慢的那个）
+s=$(date +%s%N); docker exec invest-caddy nslookup api-one-wscn.awtmt.com >/dev/null; echo $(( ($(date +%s%N)-s)/1000000 ))ms
 ```
 
 ## 排障
@@ -81,4 +108,5 @@ s=$(date +%s%N); docker exec invest-caddy nslookup $n.awtmt.com; echo $(( ($(dat
 - `521/522`：invest-caddy 容器没起来（`docker ps | grep invest`、`docker logs invest-caddy`）
 - `502` 且日志报 `lookup ... i/o timeout` → 看上面「容器 DNS」
 - `502` 且日志报 `connection reset by peer` → 上游自己掐连接（`/szse` 常见），重试即可
+- 境外 API 报连不上 / 连到莫名其妙的 IP → 查是否误用了中国解析器（看上面投毒表）
 - 行情接口报错：在 VPS 上直接 `curl -H "Host: stock.053727.xyz" http://127.0.0.1/qt/q=sh000001` 区分是代理层还是上游问题
