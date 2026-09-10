@@ -17,7 +17,7 @@ export async function ensureValuations(force = false) {
   if (!force && valuationInflight) return valuationInflight;
   valuationInflight = (async () => {
     try {
-      const list = await fetchIndexValuations();
+      const list = await fetchIndexValuations(force);
       valuationItems.value = list;
       bargainCount.value = list.filter((v) => v.pePercentile < 40).length;
     } finally {

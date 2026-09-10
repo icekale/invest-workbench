@@ -119,6 +119,17 @@ export default ({ mode }: ConfigEnv): UserConfig => {
             });
           },
         },
+        '/legulegu': {
+          target: 'https://www.legulegu.com',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/legulegu/, ''),
+          configure(proxy) {
+            proxy.on('proxyReq', (req) => {
+              req.setHeader('Host', 'www.legulegu.com');
+              req.setHeader('Referer', 'https://www.legulegu.com/');
+            });
+          },
+        },
         '/szse': {
           target: 'https://www.szse.cn',
           changeOrigin: true,

@@ -9,7 +9,7 @@
             <t-radio-button value="broad">大盘宽基</t-radio-button>
             <t-radio-button value="dividend">红利防守</t-radio-button>
             <t-radio-button value="growth">成长科技</t-radio-button>
-            <t-radio-button value="sector">行业赛道</t-radio-button>
+            <t-radio-button value="sector">申万一级</t-radio-button>
           </t-radio-group>
           <t-radio-group v-model="valViewMode" variant="default-filled" size="small" style="margin-left: 8px">
             <t-radio-button value="cards">卡片视图</t-radio-button>
@@ -49,7 +49,7 @@
           :key="item.code"
           class="val-card"
           :class="`val-signal-${item.signal.toLowerCase()}`"
-          @click="openValChartModal(item)"
+          @click="onCardClick(item)"
         >
           <div class="val-card-header">
             <div class="val-title-box">
@@ -74,7 +74,7 @@
                     : `${Number(item.changePct).toFixed(2)}%`
                 }}
               </span>
-              <span v-else class="val-change muted-hint">行情未同步</span>
+              <span v-else class="val-change muted-hint">{{ item.count ? `${item.count} 家` : '行情未同步' }}</span>
             </div>
             <div class="val-pe-box">
               <span class="pe-label">PE(TTM)</span>
@@ -85,7 +85,7 @@
           <!-- 分位数刻度条 -->
           <div class="val-gauge-wrapper">
             <div class="gauge-meta">
-              <span class="gauge-label">历史分位 (10年)</span>
+              <span class="gauge-label">{{ isSwL1(item) ? '历史分位' : '历史分位 (10年)' }}</span>
               <strong class="gauge-pct" :style="{ color: item.color }">{{ item.pePercentile }}%</strong>
             </div>
             <div class="gauge-bar-track">
@@ -122,13 +122,22 @@
           </div>
 
           <div class="val-card-footer" @click.stop>
-            <div class="etf-anchor" @click="openValChartModal(item)">
+            <div v-if="item.etfCode" class="etf-anchor" @click="openValChartModal(item)">
               <span class="etf-tag">标的</span>
               <span class="etf-name">{{ item.etfName }}</span>
               <span class="etf-code">({{ item.etfCode }})</span>
             </div>
+            <span v-else class="etf-name">{{ item.description }}</span>
             <div class="val-card-btns">
-              <t-button size="small" variant="text" theme="primary" @click="openValChartModal(item)"> 走势 → </t-button>
+              <t-button
+                v-if="!isSwL1(item)"
+                size="small"
+                variant="text"
+                theme="primary"
+                @click="openValChartModal(item)"
+              >
+                走势 →
+              </t-button>
               <t-button size="small" theme="primary" variant="outline" @click="quickAddValuationTodo(item)">
                 + 待办
               </t-button>
@@ -156,8 +165,8 @@
 
         <template #etfInfo="{ row }">
           <div class="table-etf-cell">
-            <span class="etf-name">{{ row.etfName }}</span>
-            <span class="etf-code">{{ row.etfCode }}</span>
+            <span class="etf-name">{{ row.etfName || row.description }}</span>
+            <span class="etf-code">{{ row.etfCode || '—' }}</span>
           </div>
         </template>
 
@@ -175,7 +184,8 @@
         <template #peInfo="{ row }">
           <div class="table-pe-cell">
             <span class="pe-val">{{ Number(row.pe).toFixed(2) }}</span>
-            <small class="pe-sub">10年中位 {{ row.peStats.p50 }}</small>
+            <small v-if="!isSwL1(row)" class="pe-sub">10年中位 {{ row.peStats.p50 }}</small>
+            <small v-else class="pe-sub">乐咕乐股</small>
           </div>
         </template>
 
@@ -201,7 +211,9 @@
 
         <template #op="{ row }">
           <t-space :size="8">
-            <t-button size="small" variant="text" theme="primary" @click="openValChartModal(row)">走势</t-button>
+            <t-button v-if="!isSwL1(row)" size="small" variant="text" theme="primary" @click="openValChartModal(row)"
+              >走势</t-button
+            >
             <t-button size="small" variant="outline" theme="primary" @click="quickAddValuationTodo(row)"
               >+待办</t-button
             >
@@ -288,6 +300,7 @@ import type { PrimaryTableCol } from 'tdesign-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import { loadEcharts } from '@/utils/load-echarts';
+import { isSwL1 } from '@/utils/sw-valuation';
 import type { IndexCategory, IndexValuationItem } from '@/utils/valuation';
 import { fetchIndexPeHistory, generateValuationHistorySeries } from '@/utils/valuation';
 
@@ -331,7 +344,13 @@ async function loadValuations(force = true) {
   }
 }
 
+function onCardClick(item: IndexValuationItem) {
+  if (isSwL1(item)) return;
+  openValChartModal(item);
+}
+
 function openValChartModal(item: IndexValuationItem) {
+  if (isSwL1(item)) return;
   selectedValuation.value = item;
   valChartModalVisible.value = true;
 }
@@ -430,9 +449,10 @@ async function renderValuationChart() {
 }
 
 function quickAddValuationTodo(item: IndexValuationItem) {
-  todoForm.account = 'etf';
-  todoForm.code = item.etfCode;
-  todoForm.name = item.etfName;
+  const sw = isSwL1(item);
+  todoForm.account = sw ? 'stock' : 'etf';
+  todoForm.code = sw ? item.code : item.etfCode;
+  todoForm.name = sw ? item.name : item.etfName;
   todoForm.side = item.pePercentile < 50 ? 'buy' : 'sell';
   todoForm.quantity = 1000;
   todoForm.reason = `【估值分位】${item.name} PE=${item.pe}(${item.pePercentile}%分位，${item.signalLabel})，偏离 ${item.allocationTilt}`;

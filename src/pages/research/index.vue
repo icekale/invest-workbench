@@ -150,13 +150,15 @@ function factInput(): FactPackInput {
     weather: invest.macroWeather,
     indicators: [],
     events: invest.macroEvents,
-    valuation: valuationItems.value.map((v) => ({
-      name: v.name,
-      code: v.code,
-      pe: v.pe,
-      percentile: v.pePercentile,
-      advice: v.advice,
-    })),
+    valuation: valuationItems.value
+      .filter((v) => v.category !== 'sector' || v.pePercentile < 40 || v.pePercentile > 60)
+      .map((v) => ({
+        name: v.name,
+        code: v.code,
+        pe: v.pe,
+        percentile: v.pePercentile,
+        advice: v.advice,
+      })),
     holdings,
     cash: invest.cash,
     todos: invest.todos,

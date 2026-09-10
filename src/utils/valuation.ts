@@ -1,5 +1,7 @@
 /** PE 分位：<40 偏低，40–60 中性，>60 偏高。桶仍用 20/50/80 插值。 */
 import { fetchOk, withRetry } from './http.ts';
+import type { SwL1Row } from './sw-valuation';
+import { fetchSwL1Rows } from './sw-valuation';
 
 export type ValuationSignal = 'STRONG_BUY' | 'BUY' | 'HOLD' | 'REDUCE' | 'SELL';
 
@@ -56,6 +58,7 @@ export interface IndexValuationItem {
   advice: string;
   allocationTilt: string; // 仓位偏离建议，如 "+10%" 或 "-5%"
   updatedAt: string;
+  count?: number; // 申万一级成分家数
 }
 
 export const INDEX_VALUATION_CONFIGS: IndexValuationConfig[] = [
@@ -170,56 +173,6 @@ export const INDEX_VALUATION_CONFIGS: IndexValuationConfig[] = [
     pbStats: { min: 0.68, p20: 0.78, p50: 0.88, p80: 1.02, max: 1.25 },
     defaultDividendYield: 5.12,
   },
-
-  // 3. 行业与主题赛道
-  {
-    code: 'sh000932',
-    name: '中证主要消费',
-    category: 'sector',
-    categoryLabel: '消费赛道',
-    etfCode: '159928',
-    etfName: '消费ETF',
-    description: '必需消费与白酒龙头，抗通胀韧性与深厚品牌护城河',
-    peStats: { min: 18.0, p20: 23.0, p50: 30.0, p80: 38.0, max: 48.0, avg: 31.0 },
-    pbStats: { min: 3.5, p20: 4.8, p50: 6.5, p80: 8.8, max: 12.0 },
-    defaultDividendYield: 2.65,
-  },
-  {
-    code: 'sh000933',
-    name: '中证医药卫生',
-    category: 'sector',
-    categoryLabel: '医药赛道',
-    etfCode: '512010',
-    etfName: '医药ETF',
-    description: '涵盖创新药、医疗器械与CXO，长期人口老龄化刚需底仓',
-    peStats: { min: 24.0, p20: 29.0, p50: 36.0, p80: 44.0, max: 58.0, avg: 37.0 },
-    pbStats: { min: 2.8, p20: 3.5, p50: 4.5, p80: 5.8, max: 7.8 },
-    defaultDividendYield: 1.62,
-  },
-  {
-    code: 'sz399975',
-    name: '证券公司',
-    category: 'sector',
-    categoryLabel: '大金融',
-    etfCode: '512880',
-    etfName: '证券ETF',
-    description: '牛市先锋与行情放大器，强Beta属性，牛市启动期进攻利器',
-    peStats: { min: 12.0, p20: 16.0, p50: 21.0, p80: 27.0, max: 38.0, avg: 22.0 },
-    pbStats: { min: 1.15, p20: 1.32, p50: 1.55, p80: 1.88, max: 2.6 },
-    defaultDividendYield: 2.15,
-  },
-  {
-    code: 'sh000977',
-    name: '内地低碳',
-    category: 'sector',
-    categoryLabel: '周期制造',
-    etfCode: '516160',
-    etfName: '新能源ETF',
-    description: '电力电网、新能源整车、储能与光伏制造全产业链',
-    peStats: { min: 16.0, p20: 22.0, p50: 32.0, p80: 45.0, max: 62.0, avg: 34.0 },
-    pbStats: { min: 1.8, p20: 2.4, p50: 3.5, p80: 4.8, max: 7.2 },
-    defaultDividendYield: 1.35,
-  },
 ];
 
 /**
@@ -310,7 +263,42 @@ export function deriveValuationSignal(pct: number): {
 /**
  * 批量拉取指数最新估值快照
  */
-export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
+function dummyPeStats(pe: number): IndexValuationConfig['peStats'] {
+  const p = pe > 0 ? pe : 1;
+  return { min: p * 0.4, p20: p * 0.7, p50: p, p80: p * 1.4, max: p * 2, avg: p };
+}
+
+function swToItem(row: SwL1Row, nowStr: string): IndexValuationItem {
+  const pct = Math.round(Math.max(0, Math.min(100, row.pePercentile)));
+  const sig = deriveValuationSignal(pct);
+  return {
+    code: row.code,
+    name: row.name,
+    category: 'sector',
+    categoryLabel: '申万一级',
+    etfCode: '',
+    etfName: '',
+    description: `申万一级 · ${row.count} 家`,
+    price: 0,
+    changePct: 0,
+    pe: Number(row.pe.toFixed(2)),
+    pePercentile: pct,
+    pb: Number(row.pb.toFixed(2)),
+    pbPercentile: Math.round(row.pbPercentile),
+    dividendYield: Number(row.dividendYield.toFixed(2)),
+    peStats: dummyPeStats(row.pe),
+    signal: sig.signal,
+    signalLabel: sig.label,
+    statusTag: sig.statusTag,
+    color: sig.color,
+    advice: sig.advice,
+    allocationTilt: sig.tilt,
+    updatedAt: nowStr,
+    count: row.count,
+  };
+}
+
+export async function fetchIndexValuations(force = false): Promise<IndexValuationItem[]> {
   const codes = INDEX_VALUATION_CONFIGS.map((c) => c.code);
   const nowStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
@@ -337,7 +325,7 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
       quoteMap.set(key, { price, changePct, pe, pb });
     }
 
-    return INDEX_VALUATION_CONFIGS.map((cfg) => {
+    const core = INDEX_VALUATION_CONFIGS.map((cfg) => {
       const q = quoteMap.get(cfg.code.toLowerCase());
       const rawPe = q?.pe && q.pe > 0 ? q.pe : cfg.peStats.p50;
       const price = q?.price && q.price > 0 ? Number(q.price.toFixed(2)) : Number((cfg.peStats.p50 * 100).toFixed(2));
@@ -376,10 +364,11 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
         updatedAt: nowStr,
       };
     });
+    return appendSw(core, nowStr, force);
   } catch (err) {
     console.warn('获取实时指数行情降级为基准参数:', err);
     // 降级：价格置 0（UI 显示 —），估值用历史中枢，不编造点位
-    return INDEX_VALUATION_CONFIGS.map((cfg) => {
+    const core = INDEX_VALUATION_CONFIGS.map((cfg) => {
       const pe = cfg.peStats.p50;
       const pePercentile = 50;
       const sig = deriveValuationSignal(pePercentile);
@@ -408,7 +397,16 @@ export async function fetchIndexValuations(): Promise<IndexValuationItem[]> {
         updatedAt: nowStr,
       };
     });
+    return appendSw(core, nowStr, force);
   }
+}
+
+async function appendSw(core: IndexValuationItem[], nowStr: string, force: boolean) {
+  const sw = await fetchSwL1Rows(force).catch((e) => {
+    console.warn('申万一级估值失败', e);
+    return [];
+  });
+  return [...core, ...sw.map((r) => swToItem(r, nowStr))];
 }
 
 /**
