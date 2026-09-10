@@ -272,6 +272,26 @@
               </div>
             </div>
           </t-card>
+          <t-card v-if="kind === 'fund'" class="gl-mod" title="穿透持仓" :loading="lookLoading">
+            <template #actions
+              ><span class="card-cap">{{ lookCovered }}</span></template
+            >
+            <t-empty v-if="!lookTop.length" :description="lookError || '暂无披露持仓'" />
+            <template v-else>
+              <div class="legend">
+                <div v-for="p in lookTop" :key="`${p.kind}-${p.code}-${p.name}`" class="leg-row">
+                  <span
+                    class="dot"
+                    :style="{ background: p.kind === '股票' ? 'var(--td-brand-color)' : 'var(--td-warning-color)' }"
+                  />
+                  <span class="leg-name">{{ p.name }}</span>
+                  <span class="leg-code">{{ p.code }}</span>
+                  <span class="leg-num">{{ pctOf(p.weight) }}</span>
+                </div>
+              </div>
+              <p class="look-note">{{ lookNote }}</p>
+            </template>
+          </t-card>
           <t-card class="gl-mod" title="风险提示">
             <template #actions><span class="card-cap">需要关注</span></template>
             <div class="risks">
@@ -318,7 +338,10 @@ import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
 import { unitOf } from '@/utils/accounts';
 import { allocation, healthNote, healthScore, risks, shortCode, summarize } from '@/utils/book';
+import type { LookThrough } from '@/utils/fund';
+import { fetchFundLookThrough } from '@/utils/fund';
 import { navCurveFor } from '@/utils/nav-history';
+import { bareFundCode, isOtcCode } from '@/utils/quote';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
 
@@ -397,6 +420,62 @@ async function loadSw() {
     /* 上游失败时仍用 tag */
   }
 }
+
+/*
+ * 穿透持仓：把持有的场外基金按季报披露的前十大重仓拆到个股。
+ * 只在公募基金账户上有意义 —— 股票账户自己就是底仓，再“穿透”是把同一份钱数两遍。
+ */
+const look = ref<LookThrough | null>(null);
+const lookLoading = ref(false);
+const lookError = ref('');
+// 行情一刷新 marketValue 就变，但持仓的基金没变 —— 只在「持了哪些基金」变化时重算
+let lookSeq = 0;
+
+async function loadLookThrough() {
+  if (kind.value !== 'fund') {
+    look.value = null;
+    return;
+  }
+  const funds = props.rows
+    .filter((r) => isOtcCode(r.code) && (r.marketValue ?? 0) > 0)
+    .map((r) => ({ code: bareFundCode(r.code), value: r.marketValue ?? 0 }));
+  if (!funds.length) {
+    look.value = null;
+    lookError.value = '';
+    return;
+  }
+  const my = ++lookSeq;
+  lookLoading.value = true;
+  try {
+    const out = await fetchFundLookThrough(funds);
+    // 切账户/改持仓时旧请求可能后到，落了它就会盖住新结果
+    if (my !== lookSeq) return;
+    look.value = out;
+    lookError.value = '';
+  } catch (e) {
+    if (my !== lookSeq) return;
+    lookError.value = e instanceof Error ? e.message : '穿透失败';
+  } finally {
+    if (my === lookSeq) lookLoading.value = false;
+  }
+}
+
+const lookTop = computed(() => (look.value?.rows ?? []).slice(0, 12));
+/** 穿透权重已经是百分数（3.3 就是 3.3%），不能再乘 100 —— 别用给小数用的 pctInt。 */
+const pctOf = (n: number) => `${n.toFixed(1)}%`;
+const lookCovered = computed(() => {
+  const l = look.value;
+  if (!l?.rows.length) return '';
+  return `覆盖净值 ${l.coverage.toFixed(0)}%`;
+});
+/* 覆盖不全的原因要说清楚，否则“怎么只有 60%”看着像算错了 */
+const lookNote = computed(() => {
+  const l = look.value;
+  if (!l?.rows.length) return '';
+  const miss = l.total - l.done;
+  const tail = miss > 0 ? `，其中 ${miss} 只未拿到披露数据` : '';
+  return `季报只披露前十大重仓，这张表覆盖了基金净值的 ${l.coverage.toFixed(0)}%${tail}；剩下的含现金、债券与其他未披露持仓。`;
+});
 const alloc = computed(() => {
   // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
   if (kind.value !== 'stock') return allocation(props.rows, props.cash, targets.value);
@@ -633,11 +712,15 @@ useResizeObserver(lineEl, () => renderLine());
 onMounted(() => {
   renderLine();
   void loadSw();
+  void loadLookThrough();
 });
 watch(series, renderLine, { flush: 'post' });
 watch(
   () => props.rows.map((r) => r.code).join(','),
-  () => void loadSw(),
+  () => {
+    void loadSw();
+    void loadLookThrough();
+  },
 );
 onUnmounted(() => {
   chart?.dispose();
@@ -805,6 +888,21 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: var(--td-text-color-primary);
+}
+
+/* 穿透持仓：代码列跟名字挤在一行，颜色压淡一档，免得抢了名字 */
+.leg-code {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-placeholder);
+}
+
+.look-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
 }
 
 .leg-num.muted {

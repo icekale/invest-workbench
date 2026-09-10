@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 
+import type { HoldingSlice, LookThrough } from '../src/utils/fund.ts';
 import {
   combineEqualNav,
   dailyReturnHist,
   isShareClass,
+  lookThrough,
   mergePositions,
   num,
   parseDetailBody,
@@ -191,6 +193,97 @@ assert.ok(
     rows.map((r) => r.y),
     hat,
   ).r2 > 0.9,
+);
+
+/*
+ * 穿透持仓。按**市值加权**，不是等权 —— 这正是不能拿 mergePositions 顶替的地方：
+ * 等权会把 9000 元的基金和 1000 元的基金算成同等影响，穿透出来的仓位就不是我的仓位了。
+ */
+const lot = (labels: { value: number; pos: HoldingSlice[] }[]) =>
+  lookThrough(labels.map((x) => ({ value: x.value, positions: x.pos })));
+
+/** 拿一行的权重；找不到就直接报错，免得往后满屏 `!` 又掩盖了“这一行根本没生成”。 */
+const westOf = (out: LookThrough, name: string): number => {
+  const hit = out.rows.find((r) => r.name === name);
+  assert.ok(hit, `穿透结果里应该有 ${name}：${out.rows.map((r) => r.name).join('/')}`);
+  return hit.weight;
+};
+const valOf = (out: LookThrough, name: string): number => out.rows.find((r) => r.name === name)?.value ?? NaN;
+
+// 9000 元的 A 持茅台 10%，1000 元的 B 持平安银行 10%
+{
+  const out = lot([
+    { value: 9000, pos: [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 10 }] },
+    { value: 1000, pos: [{ name: '平安银行', code: '000001', kind: '股票', weight: 10 }] },
+  ]);
+  assert.equal(out.rows.length, 2);
+  assert.ok(Math.abs(westOf(out, '贵州茅台') - 9) < 1e-9, '9000×10% / 10000 = 9%');
+  assert.ok(Math.abs(westOf(out, '平安银行') - 1) < 1e-9, '1000×10% / 10000 = 1%');
+  // 等权的话两者都是 5%，而权重大的一行会排在前面
+  assert.notEqual(westOf(out, '贵州茅台'), 5, '不能是等权');
+  assert.equal(out.rows[0].name, '贵州茅台', '按金额降序');
+  assert.equal(valOf(out, '贵州茅台'), 900);
+  assert.equal(valOf(out, '平安银行'), 100);
+  assert.ok(Math.abs(out.coverage - 10) < 1e-9, '(900+100)/10000 = 10%');
+  assert.equal(out.done, 2);
+  assert.equal(out.total, 2);
+}
+
+// 同一只股票出现在两只基金里要合并（权重是加法，不是取大）
+{
+  const out = lot([
+    { value: 1000, pos: [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 10 }] },
+    { value: 1000, pos: [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 5 }] },
+  ]);
+  assert.equal(out.rows.length, 1, '同码合并成一行');
+  assert.ok(Math.abs(westOf(out, '贵州茅台') - 7.5) < 1e-9, '(100+50)/2000 = 7.5%');
+  assert.equal(valOf(out, '贵州茅台'), 150, '金额也是相加');
+}
+
+// 可转债同一代码可能同时出现在股票与债券两个列表里，按 kind 分开记
+{
+  const out = lot([
+    {
+      value: 1000,
+      pos: [
+        { name: '兴业转债', code: '113052', kind: '债券', weight: 3 },
+        { name: '兴业转债', code: '113052', kind: '股票', weight: 1 },
+      ],
+    },
+  ]);
+  assert.equal(out.rows.length, 2, '同名同码不同 kind 不合并');
+}
+
+// 拿不到披露数据的基金：市值照样进分母，覆盖度相应变低（不然用户以为这张表就是全部）
+{
+  const out = lot([
+    { value: 9000, pos: [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 10 }] },
+    { value: 1000, pos: [] },
+  ]);
+  assert.equal(out.done, 1);
+  assert.equal(out.total, 2);
+  assert.ok(Math.abs(out.coverage - 9) < 1e-9, '900/10000 = 9%，不能拿有数据的那只当全部');
+}
+
+// 零/负市值（清仓、脏数据）不进分母，也不算进 total
+{
+  const out = lot([
+    { value: 1000, pos: [{ name: '贵州茅台', code: '600519', kind: '股票', weight: 50 }] },
+    { value: 0, pos: [{ name: '平安银行', code: '000001', kind: '股票', weight: 50 }] },
+  ]);
+  assert.equal(out.total, 1, '零市值不参与穿透');
+  assert.equal(out.rows.length, 1);
+  assert.ok(Math.abs(westOf(out, '贵州茅台') - 50) < 1e-9, '分母只有那 1000 元');
+}
+
+// 空输入不抛也不造数
+assert.deepEqual(lookThrough([]).rows, []);
+assert.equal(lookThrough([]).coverage, 0);
+assert.equal(lookThrough([{ value: 0, positions: [] }]).rows.length, 0);
+// 权重为 0/负的披露行不能凭空造出持仓
+assert.equal(
+  lookThrough([{ value: 1000, positions: [{ name: 'x', code: 'x', kind: '股票', weight: 0 }] }]).rows.length,
+  0,
 );
 
 console.log('check-fund ok');
