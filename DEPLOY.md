@@ -35,10 +35,16 @@
 
 ```sh
 npm run build
-tar -C dist -cf - . | ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 \
+# COPYFILE_DISABLE=1：否则 macOS 的 bsdtar 会把每个带 xattr 的文件多塞一个 `._xxx`
+# AppleDouble 条目，GNU tar 解包时实体化成 500+ 个垃圾文件（2026-09-10 清了 556 个）。
+# 坑：本机 `tar -tf` 重列归档会把这些条目当元数据藏起来，看着是 0 个，
+# 只有解到 Linux 上才现形 —— 验证必须真往返一次。
+COPYFILE_DISABLE=1 tar -C dist -cf - . | ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 \
   'tar -C /opt/invest-workbench/site -xf -'
 ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'docker restart invest-caddy'
 ```
+
+上传是「解包覆盖」，不删旧文件：每次构建的旧哈希产物会一直留在 `site/assets/`（现有 13 份历史 `index-*.js`）。它不影响正确性，只是占地方，累积多了再一次性清。
 
 ### 验证必须在**上传之后**
 
