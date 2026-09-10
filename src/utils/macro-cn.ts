@@ -2,6 +2,7 @@
  * 宏观数据源：东方财富 datacenter（经 /em-dc/ 反代）。
  * PMI / CPI / PPI / GDP 四大支柱；社融全表走 /sync/afre（央行 xlsx）。
  */
+import { afreToSeries, fetchAfre } from './afre.ts';
 import { fetchOk, withRetry } from './http.ts';
 import { marketGet, marketPut } from './market-cache';
 
@@ -149,6 +150,33 @@ export async function peekMacroBundle() {
     ppi: parsePpi(ppi || []),
     gdp: parseGdp(gdp || []),
   };
+}
+
+export function seriesToIndicator(s: MacroSeries): { name: string; value: string; status: string } {
+  const value = s.latestValue == null ? '—' : `${s.latestValue}${s.unit}`;
+  const ch = s.change == null ? '' : `${s.change >= 0 ? '+' : ''}${s.change}${s.unit}`;
+  const status = [ch, s.updateDate].filter(Boolean).join(' · ');
+  return { name: s.name, value, status };
+}
+
+export async function liveMacroIndicators(): Promise<Array<{ name: string; value: string; status: string }>> {
+  let bundle = await peekMacroBundle();
+  if (![bundle.pmi, bundle.cpi, bundle.gdp].some(Boolean)) {
+    try {
+      bundle = await fetchMacroBundle(false);
+    } catch {
+      /* 卡片稍后再拉 */
+    }
+  }
+  let afre: MacroSeries | null = null;
+  try {
+    afre = afreToSeries(await fetchAfre('flow'));
+  } catch {
+    /* 社融可空 */
+  }
+  return [bundle.pmi, bundle.cpi, bundle.gdp, afre]
+    .filter((s): s is MacroSeries => !!s && s.latestValue != null)
+    .map(seriesToIndicator);
 }
 
 export async function fetchMacroBundle(force = false) {

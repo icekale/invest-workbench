@@ -16,6 +16,7 @@ import {
   writeCachedBriefing,
   writeFailAt,
 } from '../src/utils/briefing.ts';
+import { seriesToIndicator } from '../src/utils/macro-cn.ts';
 
 const today = '2026-09-09';
 
@@ -279,5 +280,22 @@ assert.equal(applied.suggestedEtfPos, '75% ~ 85%');
 assert.equal(applied.updatedAt.includes('晨会写入'), true);
 assert.equal(weatherMatchesBriefing(applied, withPos), true);
 assert.equal(weatherMatchesBriefing(input.weather, withPos), false);
+
+assert.deepEqual(
+  seriesToIndicator({
+    code: 'EM_PMI',
+    name: '官方制造业PMI',
+    unit: '%',
+    source: '国家统计局',
+    freq: '月',
+    updateDate: '2026-08',
+    dates: [],
+    values: [],
+    latestValue: 49.4,
+    previousValue: 49.7,
+    change: -0.3,
+  }),
+  { name: '官方制造业PMI', value: '49.4%', status: '-0.3% · 2026-08' },
+);
 
 console.log('check-briefing ok');

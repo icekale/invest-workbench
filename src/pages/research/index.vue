@@ -80,6 +80,7 @@ import {
   weatherMatchesBriefing,
 } from '@/utils/briefing';
 import { todayCN } from '@/utils/date';
+import { liveMacroIndicators } from '@/utils/macro-cn';
 import { impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
@@ -147,7 +148,7 @@ function factInput(): FactPackInput {
   return {
     date: todayCN(),
     weather: invest.macroWeather,
-    indicators: invest.macroIndicators,
+    indicators: [],
     events: invest.macroEvents,
     valuation: valuationItems.value.map((v) => ({
       name: v.name,
@@ -198,12 +199,15 @@ async function bootBriefing(force = false) {
   briefingStatus.value = 'loading';
   if (!force) await waitQuotes();
   await loadSw();
-  const extra: Promise<unknown>[] = [];
+  const liveP = liveMacroIndicators().catch(() => [] as Awaited<ReturnType<typeof liveMacroIndicators>>);
+  const extra: Promise<unknown>[] = [liveP];
   if (!invest.macroEventsLastUpdated) extra.push(invest.refreshMacroEvents().catch(() => {}));
   if (!invest.industryFocusLastUpdated) extra.push(invest.refreshIndustryFocus().catch(() => {}));
-  if (extra.length) await Promise.all(extra);
+  await Promise.all(extra);
+  const input = factInput();
+  input.indicators = await liveP;
   const result = await ensureTodayBriefing({
-    pack: buildFactPack(factInput()),
+    pack: buildFactPack(input),
     storage: localStorage,
     today: todayCN(),
     force,

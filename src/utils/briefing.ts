@@ -34,6 +34,7 @@ export const SYSTEM_PROMPT = [
   'code 必须是事实包中出现过的代码，或空字符串。',
   '持仓含 last（现价）、cost（成本）、baseTarget（基准目标价）、baseUpside（相对现价空间，小数）、industry（申万一级）。',
   'events 是未来7天会议，重大优先。industries 是产业催化。',
+  'indicators 是 PMI/CPI/GDP/社融最新值，有则引用数字，没有则写数据不足。',
   'yesterdayStance 是昨日立场（偏多最松，防守最紧）；headline 或 notes 写清比昨天更紧/更松/持平，没有则写数据不足。',
   'stockNote/etfNote 必须点名空间最极端或行业最集中的持仓，禁止只写宏观套话。',
   '点名会议、估值、持仓时必须用事实包里的 title、name、code 原文。',
