@@ -2,10 +2,10 @@
   <t-dialog v-model:visible="visible" header="编辑持仓" width="min(960px, 94vw)" :footer="false">
     <t-form :data="form" layout="inline" class="editor-form">
       <t-form-item name="account" label="账户">
-        <t-select v-model="form.account" :options="accountOpts" style="width: 130px" />
+        <t-select v-model="form.account" :options="accountOpts" />
       </t-form-item>
       <t-form-item name="code" label="代码">
-        <t-input v-model="form.code" placeholder="510300 / 600519" style="width: 170px" clearable @blur="lookupCode" />
+        <t-input v-model="form.code" placeholder="510300 / 600519" clearable @blur="lookupCode" />
         <div v-if="previewInfo.name" class="code-preview-tip">
           <t-tag size="small" theme="primary" variant="light">
             {{ previewInfo.name }} · ¥{{ previewInfo.price.toFixed(3) }}
@@ -16,21 +16,18 @@
         </div>
       </t-form-item>
       <t-form-item name="quantity" label="数量">
-        <t-input-number v-model="form.quantity" :min="0" :decimal-places="isOtc ? 2 : 0" style="width: 150px" />
+        <t-input-number v-model="form.quantity" :min="0" :decimal-places="isOtc ? 2 : 0" />
       </t-form-item>
       <t-form-item name="cost" label="成本">
-        <t-input-number v-model="form.cost" :min="0" :decimal-places="4" style="width: 150px" />
+        <t-input-number v-model="form.cost" :min="0" :decimal-places="4" />
       </t-form-item>
-      <t-form-item
-        v-for="acc in invest.activeAccounts"
-        :key="acc.id"
-        :label="`${acc.name}现金 ¥${cashOf(acc.id).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`"
-      >
+      <!-- 标签只放静态文字。金额本来就绑在输入框上（:value="cashOf"),
+           写进标签会让标签宽度跟着钱数变长，行与行的控件必然对不齐。 -->
+      <t-form-item v-for="acc in invest.activeAccounts" :key="acc.id" :label="`${acc.name}现金`">
         <t-input-number
           :value="cashOf(acc.id)"
           :min="0"
           :decimal-places="0"
-          style="width: 200px"
           @change="(v) => invest.setCash(acc.id, Number(v) || 0)"
         />
       </t-form-item>
@@ -206,9 +203,50 @@ async function onSubmit() {
 }
 
 .editor-form {
+  /* 表单项的内容是「活的」（账户名、钱数都在变），而 TDesign 的 inline 布局是按内容撑宽的：
+     每行第一项多宽，后面的控件就右移多少 —— 行与行永远对不齐。
+     改成定宽网格：列宽由网格决定，与内容无关，列才对得上。 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.editor-form :deep(.t-form__item) {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+/* TDesign 把标签宽写成行内 style="width:100px"，而「公募基金账户现金」实测要 120px，
+   多出来的字直接压到输入框上 —— 必须 !important 才盖得住行内样式。
+   128px = 默认账户名里最长那个（7 字）+ 8px 余量；更长的自定义名截断，不撑破布局。 */
+.editor-form :deep(.t-form__label) {
+  flex: 0 0 128px !important;
+  width: 128px !important;
+  padding-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 控件左移量也是行内 style="margin-left:100px"，同样得 !important 压掉，控件才贴住标签列 */
+.editor-form :deep(.t-form__controls) {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0 !important;
+}
+
+.editor-form :deep(.t-form__controls-content) {
+  width: 100%;
+}
+
+/* 控件原本行内各定各的宽（130/150/170/200），列宽参差；统一吃满控件列 */
+.editor-form :deep(.t-input-number),
+.editor-form :deep(.t-input),
+.editor-form :deep(.t-select) {
+  width: 100% !important;
 }
 
 .code-preview-tip {
