@@ -320,7 +320,11 @@ watchEffect(() => {
 
 .setting-drawer-container {
   .setting-container {
-    /* 页脚是绝对定位，这里要留出它的高度：提示语 + 复制按钮 + 版本行 */
+    /*
+     * 页脚是绝对定位，这里要留出它的高度（不能光看现状数个数）：
+     * padding 24 + 提示语 20 + 复制按钮 32 + 版本行 4+20 + padding 24 = 124px。
+     * 注意提示语只有一行（p 的 margin 已被 reset.less 清掉），换成会折行的文案就得重算。
+     */
     padding-bottom: 124px;
   }
 

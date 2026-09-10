@@ -61,6 +61,14 @@ header @immutable Cache-Control "public, max-age=31536000, immutable"   # 该头
 
 - 验证放在上传 + 重启之后；
 - 用字节比对而不是看状态码：`curl -s URL -o /tmp/live.bin && cmp dist/<file> /tmp/live.bin`（`curl -o /dev/null -w %{http_code}` 对 SPA 回退也会回 200，毫无信息量）；
+- **`index.html` 永远比不过**，只能比 md5。CF 会往 HTML 里注入 bot 挑战脚本（`/cdn-cgi/challenge-platform/...`，~940 字节），curl 没有浏览器指纹时必然命中。比 origin 才准：
+
+```sh
+openssl md5 -r dist/index.html          # 本机（macOS 无 md5sum）
+ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/site/index.html'
+```
+
+  哈希产物（`/assets/*`）不受影响，仍然逐字节比。另外要确认线上 HTML 指向的是新产物名（`rg -o 'index-[A-Za-z0-9_]+-b[A-Za-z0-9]+\.js' /tmp/live.html`）—— 字节比对查不出引用是不是更新了。
 - 产物名带构建时间戳（`vite.config.ts` 的 `BUILD_STAMP`），每次构建换一批 URL，这类污染就碰不到真文件；
 - 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
 
