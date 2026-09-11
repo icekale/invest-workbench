@@ -48,13 +48,13 @@
           <div ref="pieEl" class="donut-chart" role="img" :aria-label="`${accountLabel}行业占比`" />
           <div class="weight-rows">
             <div
-              v-for="a in allocItems"
+              v-for="(a, i) in allocItems"
               :key="a.name"
               class="weight-row"
               :class="{ clickable: canDrill(a.name) }"
               @click="onAllocClick(a.name)"
             >
-              <span class="dot" :style="{ background: colorOf(a.name) }" />
+              <span class="dot" :style="{ background: pieColor(i, a.name) }" />
               <span class="w-name">{{ a.name }}</span>
               <span class="w-pct">{{ (a.pct * 100).toFixed(1) }}%</span>
             </div>
@@ -212,7 +212,7 @@ import { useRoute } from 'vue-router';
 import TransactionLedger from '@/pages/plan/components/TransactionLedger.vue';
 import { useInvestStore } from '@/store';
 import type { AccountId, PriceScenario, TodoStatus } from '@/types/invest';
-import { allocation, summarize } from '@/utils/book';
+import { allocation, pieColor, summarize } from '@/utils/book';
 import { fmtSignedPct, impliedRef, mergeScenario, scenarioTarget, scenarioUpside } from '@/utils/scenario';
 import type { SwClass } from '@/utils/sw-industry';
 import { fetchSwClass, swGroupOf } from '@/utils/sw-industry';
@@ -339,13 +339,6 @@ const mixStats = computed(() => {
 const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`;
 const accountLabel = computed(() => invest.accountName(accountView.value));
 
-const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
-function colorOf(name: string) {
-  if (name === '现金') return '#93a3ad';
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
 function renderPie() {
   if (!pieEl.value) return;
   if (!pie) {
@@ -363,10 +356,10 @@ function renderPie() {
           avoidLabelOverlap: true,
           label: { formatter: '{b}\n{d}%', fontSize: 11, color: '#1f2d3a' },
           labelLine: { length: 8, length2: 6 },
-          data: allocItems.value.map((a) => ({
+          data: allocItems.value.map((a, i) => ({
             name: a.name,
             value: Number((a.pct * 100).toFixed(1)),
-            itemStyle: { color: colorOf(a.name) },
+            itemStyle: { color: pieColor(i, a.name) },
           })),
         },
       ],

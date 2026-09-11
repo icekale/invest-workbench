@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { allocation, healthScore, risks, shortCode, sparkSeries, summarize } from '../src/utils/book.ts';
+import { allocation, healthScore, pieColor, risks, shortCode, sparkSeries, summarize } from '../src/utils/book.ts';
 import {
   calculateLedger,
   parseTransactionsCsv,
@@ -126,5 +126,43 @@ assert.equal(l1Alloc[0].name, '银行');
 const l2Alloc = allocation([row], 0, [], (p) => swGroupOf(p, sw, 'l2'));
 assert.equal(l2Alloc[0].name, '银行Ⅱ');
 assert.equal(l2Alloc.length, 1);
+
+// 饼图/图例取色必须按排名，不能按名字哈希：哈希在分组数 > 色板长度时鸽巢原理下必然撞色，
+// 表现就是图例里两块颜色一模一样（review 页饼图的实际 bug）。
+const pieColors = Array.from({ length: 20 }, (_, i) => pieColor(i, `行业${i}`));
+assert.equal(new Set(pieColors).size, 20, `20 个分组应有 20 种不同颜色，实得 ${new Set(pieColors).size} 种（撞色了）`);
+assert.equal(pieColor(5, '现金'), '#93a3ad', '现金恒为灰，不与资产色混用');
+assert.equal(pieColor(0, '银行'), pieColor(0, '银行'), '同一排名取色应稳定');
+
+import { CATEGORICAL_COLOR_OPTIONS } from '../src/config/color.ts';
+
+// 分类色序的**知觉**可辨性：光看 hex 不同没用，墨绿 #0d706d 与浅海青 #2a8f89 是肉眼难分的两个绿
+// （ΔE=12，低于 15 就属于分不开）。饼图前几个名额是大权重切片，必须分得开，所以这里真的算一遍 Lab ΔE。
+// 取前 8 名作门槛是有依据的：品牌色原序（DEFAULT_COLOR_OPTIONS）在第 8 名就掉到 ΔE=12.0
+// （墨绿 vs 浅海青），重排后的分类色序到第 8 名仍是 20.4 —— 阈值 20 刚好能把两者区分开。
+// 前 9 名两序都是 12.0，因为集合里本身就含那对相近绿青，任何排列都避不开（那是“切片太多”的问题）。
+const toLab = (hex: string) => {
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [r, g, b] = [1, 3, 5].map((i) => lin(Number.parseInt(hex.slice(i, i + 2), 16) / 255));
+  const [x, y, z] = [
+    (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047,
+    r * 0.2126 + g * 0.7152 + b * 0.0722,
+    (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883,
+  ];
+  const f = (t: number) => (t > 0.008856 ? t ** (1 / 3) : 7.787 * t + 16 / 116);
+  const [fx, fy, fz] = [f(x), f(y), f(z)];
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+};
+const deltaE = (a: string, b: string) => {
+  const [l1, a1, b1] = toLab(a);
+  const [l2, a2, b2] = toLab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+};
+const top8 = CATEGORICAL_COLOR_OPTIONS.slice(0, 8);
+let worst = Infinity;
+for (let i = 0; i < top8.length; i++) {
+  for (let j = i + 1; j < top8.length; j++) worst = Math.min(worst, deltaE(top8[i], top8[j]));
+}
+assert.ok(worst >= 20, `前 8 个分类色的两两最小 ΔE 应 ≥ 20（可辨），实得 ${worst.toFixed(1)}`);
 
 console.log('check-book ok');

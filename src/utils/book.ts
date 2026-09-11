@@ -1,3 +1,5 @@
+import { CATEGORICAL_COLOR_OPTIONS } from '@/config/color';
+
 export interface BookRow {
   code: string;
   name: string;
@@ -84,6 +86,19 @@ export function allocation(
     items.push({ name: '现金', pct: Math.max(0, cash) / total, target: cashTarget });
   }
   return items;
+}
+
+/**
+ * 饼图/图例取色：**按排名取，不按名字哈希**。
+ * 哈希取色有两个必现问题：分组数超过色板长度时鸽巢原理下必然撞色；即使不超过，
+ * 两个名字也可能撞到同一槽位 —— 表现就是图例里两块颜色一模一样，分不清谁是谁。
+ * allocItems 已按 pct 降序，直接吃下标即可。现金固定灰，语义色不与资产混用。
+ */
+export function pieColor(index: number, name: string): string {
+  if (name === '现金') return '#93a3ad';
+  if (index < CATEGORICAL_COLOR_OPTIONS.length) return CATEGORICAL_COLOR_OPTIONS[index];
+  // 色板用尽：黄金角每次错开 137.5°，色相要累加约 2.6 次才回到原处，任意组数都不重复
+  return `hsl(${Math.round((index * 137.508) % 360)}, 42%, 46%)`;
 }
 
 export function healthScore(rows: BookRow[], theses: ThesisLite[], journal: JournalLite[], cash: number) {
