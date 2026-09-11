@@ -87,7 +87,17 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/s
 哈希产物（`/assets/*`）不受影响，仍然逐字节比。另外要确认线上 HTML 指向的是新产物名（`rg -o 'index-[A-Za-z0-9_]+-b[A-Za-z0-9]+\.js' /tmp/live.html`）—— 字节比对查不出引用是不是更新了。
 
 - 产物名带构建时间戳（`vite.config.ts` 的 `BUILD_STAMP`），每次构建换一批 URL，这类污染就碰不到真文件；
-- **上传本身要先验成**：远端解包必须以 0 退出（`ssh … 'tar … -xf -; echo $?'`）。**别把远端 tar 的 stderr 接给 `head`/`grep`** —— 提前关管会给 tar 发 SIGPIPE，解包写到一半就死，症状是 `index.html` 已更新而它引用的 `assets/*` 还不存在；这就是上面那个坑的入口，而且看起来像「上传打了 UPLOADED」（2026-09-11 踩过）。两次部署重叠也会产生同样的窗口——上传完先 `md5sum` 全量对一遍再算完；
+- **上传本身要先验成**：远端解包必须以 0 退出（`ssh … 'tar … -xf -; echo $?'`）。**别把远端 tar 的 stderr 接给 `head`/`grep`** —— 提前关管会给 tar 发 SIGPIPE，解包写到一半就死，症状是 `index.html` 已更新而它引用的 `assets/*` 还不存在；这就是上面那个坑的入口，而且看起来像「上传打了 UPLOADED」（2026-09-11 踩过）。两次部署重叠也会产生同样的窗口——上传完先全量比对一遍再算完；
+- **全量比对别用 `md5sum`**：macOS 没有 `md5sum`（也没 `md5`），`find dist -exec md5sum {} \;` 会安静地输出空列表，于是「本地 ∅ vs 远端」对下来得到假的「一致」——验证看起来通过了，其实什么都没比（2026-09-11 踩过）。用两边都有的 sha256：
+
+  ```bash
+  find dist -type f -exec shasum -a 256 {} \; | sed 's|dist/||' | sort -k2 > /tmp/local.sha
+  ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 \
+    'cd /opt/invest-workbench/site && find . -type f ! -name "._*" -exec sha256sum {} \;' | sed 's|\./||' | sort -k2 > /tmp/remote.sha
+  # 子集方向：每个本地文件都必须在远端存在且哈希相同（远端会积压历史产物，多出来是正常的）
+  ```
+
+  别忘了 `! -name "._*"`：macOS 的 AppleDouble 残件会被 tar 带上源站。幂等性用 `diff` 自己比会把 1200+ 历史文件当成「差异」；看 `missing`/`mismatch` 两个数归零才算过。
 - 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
 
 改 Caddyfile 后 `docker restart invest-caddy` 即可；改配置无需重新上传站点。
