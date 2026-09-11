@@ -98,6 +98,7 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/s
   ```
 
   别忘了 `! -name "._*"`：macOS 的 AppleDouble 残件会被 tar 带上源站。幂等性用 `diff` 自己比会把 1200+ 历史文件当成「差异」；看 `missing`/`mismatch` 两个数归零才算过。
+
 - 万一已中毒：该 URL 无人引用就无需处理；若被引用，只能在 CF 后台 Purge（本机无 CF API token）。
 
 改 Caddyfile 后 `docker restart invest-caddy` 即可；改配置无需重新上传站点。
