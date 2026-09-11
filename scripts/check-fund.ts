@@ -27,6 +27,7 @@ import {
   portfolioStats,
   predictForest,
   riskProfile,
+  suggestFunds,
 } from '../src/utils/fund-model.ts';
 
 const rank = parseRankBody({
@@ -132,6 +133,32 @@ const st = portfolioStats(sample);
 assert.equal(st.yield, 20);
 assert.equal(st.loss, -10);
 assert.equal(portfolioStats([]).yield, 0);
+
+// suggestFunds：机会池排行只有东财前 80 名，名称搜索必须能落到全样本。
+// 这组断言守的就是 C4 那个死胡同：搜一个排 80 名以外的基金，不该只得到空表。
+assert.deepEqual(
+  suggestFunds(pool, '深回撤').map((f) => f.code),
+  ['000003'],
+  '按名称片段要命中全样本，不受排行 80 名限制',
+);
+assert.deepEqual(
+  suggestFunds(pool, '000002').map((f) => f.code),
+  [],
+  '6 位纯数字当代码，由调用方直接跳详情，不出建议',
+);
+assert.deepEqual(
+  suggestFunds(pool, '限额').map((f) => f.code),
+  ['000004'],
+  '限购基金也必须搜得到——搜不到就是死胡同换个地方长出来',
+);
+assert.deepEqual(suggestFunds(pool, ''), [], '空串不出建议');
+assert.deepEqual(suggestFunds(pool, '   '), [], '全空白也不出建议');
+assert.equal(suggestFunds(pool, '混合', 2).length, 2, 'limit 要生效');
+assert.deepEqual(
+  suggestFunds(pool, ' 深回撤 ').map((f) => f.code),
+  ['000003'],
+  '两端空白要能容忍（输入框里很常见）',
+);
 
 const g = combineEqualNav([
   [

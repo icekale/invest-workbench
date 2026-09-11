@@ -457,6 +457,29 @@ export function buyable(f: SampleFund): boolean {
   return f.quota < 0 || f.quota >= 1000;
 }
 
+/**
+ * 搜索建议：跨**全样本**按名称/代码模糊匹配。
+ *
+ * 为什么需要它：机会池的排行走东财 `/em/FundMNRank` 且 `pageSize=80`（近 1 年收益降序），
+ * 所以搜「国泰中证军工」这类排在 80 名之外的基金只会得到一张空表 —— 没有任何下一步。
+ * 界面里的表格筛选只能治那个 80 名以内的情况，补全必须查全样本。
+ *
+ * 两条刻意的宽松：
+ * - 6 位纯数字当代码，返回空 —— 调用方直接跳详情，不必弹建议；
+ * - **不**筛 `buyable`。这里是「找一只基金看」，不是「选一只可买的」：把限购/暂停申购的
+ *   挡在外面，就等于「用户搜了全名却搜不到」，那是刚修掉的那个死胡同又换个地方长出来。
+ */
+export function suggestFunds(sample: SampleFund[], query: string, limit = 8): SampleFund[] {
+  const k = query.trim().toLowerCase();
+  if (!k || /^\d{6}$/.test(k)) return [];
+  const out: SampleFund[] = [];
+  for (const f of sample) {
+    if (out.length >= limit) break;
+    if (f.name.toLowerCase().includes(k) || f.code.includes(k)) out.push(f);
+  }
+  return out;
+}
+
 /** 官网优质精选条件 */
 export function isRecommend(f: SampleFund): boolean {
   const t = f.type === '指数型' || (f.inst ?? 0) >= 50;

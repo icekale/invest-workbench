@@ -93,7 +93,15 @@
     <t-card title="全市场基金排行" subtitle="基于东方财富接口实时排行 · 按近1年收益排序">
       <template #actions>
         <t-space class="card-action rank-tools" break-line :size="8">
-          <t-input v-model="q" placeholder="代码回车看详情" style="width: 170px" clearable @enter="goDetail(q)" />
+          <t-auto-complete
+            v-model="q"
+            :options="fundSuggestions"
+            placeholder="名称/代码回车看详情"
+            clearable
+            style="width: 220px"
+            @enter="goDetail(q)"
+            @select="goDetail"
+          />
           <t-button size="small" variant="outline" :loading="screenLoading" @click="screenTriple">三轴精选</t-button>
           <t-button size="small" theme="primary" :disabled="picked.length < 2" @click="goCompare">
             对比 ({{ picked.length }})
@@ -290,7 +298,7 @@
 </template>
 <script setup lang="ts">
 import { MessagePlugin } from 'tdesign-vue-next';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { smartPortfolios } from '@/mock/invest';
@@ -299,6 +307,8 @@ import type { AccountId, Opportunity } from '@/types/invest';
 import { kindOf } from '@/utils/accounts';
 import type { FundDetail, FundRank } from '@/utils/fund';
 import { fetchFundDetails, fetchFundRank, fmtPct, researchScore, riskNote, typeBucket } from '@/utils/fund';
+import type { SampleFund } from '@/utils/fund-model';
+import { loadSample, suggestFunds } from '@/utils/fund-model';
 
 import FundsNav from './FundsNav.vue';
 
@@ -341,6 +351,33 @@ const filteredRank = computed(() => {
   if (!k || /^\d{6}$/.test(k)) return typeRows;
   return typeRows.filter((f) => `${f.code}${f.name}`.includes(k));
 });
+
+// 全样本（615KB gzip）。只搜名称时才拉，loadSample 自带缓存，一个会话最多一次。
+const universe = ref<SampleFund[]>([]);
+const universeReady = ref(false);
+async function ensureUniverse() {
+  if (universeReady.value) return;
+  universeReady.value = true; // 先置位，连打时不会并发拉多次
+  try {
+    universe.value = await loadSample();
+  } catch {
+    universe.value = []; // 拉不到就退化成原来「只在 80 名里筛」，不打断输入
+  }
+}
+
+watch(q, (v) => {
+  const k = v.trim();
+  if (k && !/^\d{6}$/.test(k)) void ensureUniverse();
+});
+
+// text 是发给 @select 的值（代码）；label 是给人看的。AutoComplete 渲染 label、回传 text，
+// 所以不必再从展示串里反解代码。
+const fundSuggestions = computed(() =>
+  suggestFunds(universe.value, q.value).map((f) => ({
+    text: f.code,
+    label: `${f.name} · ${f.code} · ${f.type}`,
+  })),
+);
 
 const picks = computed(() => screened.value.slice(0, 4));
 
