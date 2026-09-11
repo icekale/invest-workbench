@@ -6,6 +6,7 @@ import {
   deriveValuationSignal,
   isoDate,
   parseIndexQuotes,
+  parseLgPeBundle,
   parseLgPeSamples,
   percentileFromQuantiles,
   realPctDelta,
@@ -170,5 +171,13 @@ assert.deepEqual(
   lg.map((s) => s.pe),
   [63.69, 33.5],
 );
+const bundle = parseLgPeBundle({
+  '399006.SZ': lg,
+  '000510.SH': [],
+  junk: null,
+});
+assert.deepEqual(Object.keys(bundle), ['399006.SZ']);
+assert.equal(bundle['399006.SZ']?.length, 2);
+assert.deepEqual(parseLgPeBundle([]), {});
 
 console.log('check-valuation ok');

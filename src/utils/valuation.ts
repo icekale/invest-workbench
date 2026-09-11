@@ -1,6 +1,6 @@
 /**
  * PE 分位与买卖信号。分档线当前取 20/40/60/80（可在设置里改，见 research-settings.ts），
- * 宽基分位优先用中证官网真实历史分布；创业板指走乐咕乐股加权 TTM。无数据源时退回手填参数。
+ * 宽基分位优先用乐咕乐股加权 TTM 历史分布；中证 A500 无序列时退回中证。无数据源时退回手填参数。
  */
 import { fetchOk, withRetry } from './http.ts';
 import { marketGet, marketPut } from './market-cache.ts';
@@ -231,9 +231,19 @@ export interface PeDistribution {
 
 export const PE_DIST_YEARS = 10;
 const PE_DIST_TTL_MS = 6 * 3600 * 1000;
-const PE_DIST_CACHE = 'csidx-pe-dist-v3';
-/** 中证 index-perf 没有的指数 → 乐咕乐股 index-basic-pe 代码 */
-const LG_INDEX: Record<string, string> = { sz399006: '399006.SZ' };
+const PE_DIST_CACHE = 'csidx-pe-dist-v4';
+const LG_BUNDLE_CACHE = 'lg-pe:all-v1';
+/** 乐咕乐股 index-basic-pe。中证 A500 无序列，不在此列，仍走中证。 */
+const LG_INDEX: Record<string, string> = {
+  sh000300: '000300.SH',
+  sh000016: '000016.SH',
+  sh000905: '000905.SH',
+  sh000852: '000852.SH',
+  sz399006: '399006.SZ',
+  sh000688: '000688.SH',
+  h30269: 'H30269.CSI',
+  sh000922: '000922.CSI',
+};
 
 /** 由升序分位数组线性插值求某 PE 所处的百分位（0~100）。 */
 export function percentileFromQuantiles(pe: number, quantiles: number[]): number {
@@ -312,16 +322,36 @@ export function parseLgPeSamples(raw: unknown): LgPeSample[] {
   return out;
 }
 
-async function fetchLgPeSamples(indexCode: string, force = false): Promise<LgPeSample[]> {
-  const key = `lg-pe:${indexCode}`;
-  if (!force) {
-    const hit = await marketGet<LgPeSample[]>(key, PE_DIST_TTL_MS);
-    if (hit?.length) return parseLgPeSamples(hit);
+export function parseLgPeBundle(raw: unknown): Record<string, LgPeSample[]> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, LgPeSample[]> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const rows = parseLgPeSamples(v);
+    if (rows.length) out[k] = rows;
   }
-  const res = await withRetry(() => fetchOk(`/sync/lg-pe?code=${encodeURIComponent(indexCode)}`));
-  const samples = parseLgPeSamples(await res.json());
-  if (samples.length) marketPut(key, samples, PE_DIST_TTL_MS);
-  return samples;
+  return out;
+}
+
+let lgBundleInflight: Promise<Record<string, LgPeSample[]>> | null = null;
+
+async function fetchLgPeAll(force = false): Promise<Record<string, LgPeSample[]>> {
+  if (!force) {
+    const hit = await marketGet<Record<string, LgPeSample[]>>(LG_BUNDLE_CACHE, PE_DIST_TTL_MS);
+    if (hit && Object.keys(hit).length) return parseLgPeBundle(hit);
+  }
+  if (!lgBundleInflight) {
+    lgBundleInflight = (async () => {
+      try {
+        const res = await withRetry(() => fetchOk('/sync/lg-pe'));
+        const parsed = parseLgPeBundle(await res.json());
+        if (Object.keys(parsed).length) marketPut(LG_BUNDLE_CACHE, parsed, PE_DIST_TTL_MS);
+        return parsed;
+      } finally {
+        lgBundleInflight = null;
+      }
+    })();
+  }
+  return lgBundleInflight;
 }
 
 /** 中证 index-perf 行 → 按日期升序的 PE 序列。peg 即当日市盈率。 */
@@ -343,8 +373,7 @@ function csiPeSamples(rows: Array<Record<string, unknown>>) {
 }
 
 /**
- * 取近 N 年 PE，压成 101 个经验分位点。中证 index-perf 优先；创业板指走 /sync/lg-pe。
- * 结果只有约 700 字节，缓存 6h。
+ * 取 PE 序列压成 101 个经验分位点。乐咕乐股优先（月频加权 TTM）；中证 A500 等无序列的退回中证日频。
  */
 export async function fetchIndexPeDistribution(
   prefixedCode: string,
@@ -358,9 +387,12 @@ export async function fetchIndexPeDistribution(
   }
   const lgCode = LG_INDEX[prefixedCode.toLowerCase()];
   if (lgCode) {
-    const dist = distFromSamples(await fetchLgPeSamples(lgCode, force), years, 60);
-    if (dist) marketPut(key, dist, PE_DIST_TTL_MS);
-    return dist;
+    const bundle = await fetchLgPeAll(force).catch(() => ({}) as Record<string, LgPeSample[]>);
+    const dist = distFromSamples(bundle[lgCode] ?? [], years, 36);
+    if (dist) {
+      marketPut(key, dist, PE_DIST_TTL_MS);
+      return dist;
+    }
   }
   const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
   const fmt = (d: Date) =>
@@ -506,8 +538,8 @@ export function buildItem(
   nowStr: string,
 ): IndexValuationItem {
   const peStats = dist ? statsFromQuantiles(dist.quantiles) : cfg.peStats;
-  // PE 必须与被用来算分位的那份分布同源。分位查的是中证的 dist.quantiles，
-  // 所以被查的 PE 也得是中证的 dist.currentPe。拿腾讯 PE 去查中证分布会静默算错：
+  // PE 必须与被用来算分位的那份分布同源。分位查的是 dist.quantiles，
+  // 所以被查的 PE 也得是 dist.currentPe。拿腾讯 PE 去查乐咕乐股/中证分布会静默算错：
   // 实测科创50 腾讯 129.73 vs 中证 69.82（+85.8%），会被顶到接近 100% 分位，报出假的「偏高/减配」。
   const rawPe = dist?.currentPe && dist.currentPe > 0 ? dist.currentPe : q?.pe && q.pe > 0 ? q.pe : cfg.peStats.p50;
   const livePrice = !!(q?.price && q.price > 0);
@@ -546,6 +578,7 @@ export function buildItem(
 }
 
 async function fetchDistributions(force: boolean): Promise<Map<string, PeDistribution | null>> {
+  await fetchLgPeAll(force).catch(() => null);
   const out = new Map<string, PeDistribution | null>();
   await Promise.all(
     INDEX_VALUATION_CONFIGS.map(async (cfg) =>
@@ -638,15 +671,17 @@ function cutPeHistory(samples: Array<{ d: string; pe: number }>, years: number):
 }
 
 /**
- * 真实 PE 历史。中证官网优先；创业板指走 /sync/lg-pe（月频）。失败返回 null，不画假线。
+ * 真实 PE 历史。乐咕乐股月频优先；无序列才走中证日频。失败返回 null，不画假线。
  */
 export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Promise<IndexPeHistory | null> {
   const lgCode = LG_INDEX[prefixedCode.toLowerCase()];
   if (lgCode) {
     try {
-      return cutPeHistory(await fetchLgPeSamples(lgCode), years);
+      const bundle = await fetchLgPeAll();
+      const hist = cutPeHistory(bundle[lgCode] ?? [], years);
+      if (hist) return hist;
     } catch {
-      return null;
+      /* fall through to CSI */
     }
   }
   const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
