@@ -45,7 +45,7 @@
 | # | 事项 | 说明 |
 |---|------|------|
 | D1 |Wind Key 管理 | Bearer Key 写在 VPS Caddyfile 里（未入仓）。建议改环境变量引用或独立 secrets 文件，避免备份泄露 |
-| D2 | 测试补齐 | check 脚本已覆盖 book/ledger/valuation/日期。补 rebalance 的用例（注入资金、阈值触发、卖出上限）与 quote 解析的指数字段用例 |
+| D2 | 测试补齐 | check 脚本已覆盖 book/ledger/valuation/日期。已补 quote 解析的指数字段用例（`parseIndexQuotes`，见第 2 批）；rebalance 用例失去对象——该模块已删（零消费者，见下） |
 | D3 | 依赖升级 | npm audit 有中危告警（构建链）；跑 `npm audit fix` 无破坏项 |
 
 ## 三、实施计划
@@ -54,7 +54,7 @@
 - [x] 时区统一：`todayCN()/formatCN()` 落地 store/ledger（已完成）
 - [x] 估值历史确定性 + 弹窗「示意」标注（已完成）
 - [x] ~~万得失败诚实展示 + 状态灯~~ —— 已作废：`src/utils/wind.ts` 在 8be8e39 删除，全库已无「万得」，此项失去对象
-- [x] 再平衡佣金最低 5 元 —— 已做。下限加在 `src/utils/accounts.ts` 的 `feeOf`（所有费用计算的唯一出口），不是加在 `rateOf`：`rateOf` 要留给"每手费率"用，把元塞进去会算出 `rate = 5`。`MIN_COMMISSION = 5` 只对有佣金的账户成立，`feeRate: 0` 的免佣账户下限是 0。`src/utils/rebalance.ts` 的 `estimatedFee` 仍不含下限（它把全部调仓委托合成一个金额，按笔收的下限摊不到单笔上），注释已说明
+- [x] 再平衡佣金最低 5 元 —— 已做。下限加在 `src/utils/accounts.ts` 的 `feeOf`（所有费用计算的唯一出口），不是加在 `rateOf`：`rateOf` 要留给"每手费率"用，把元塞进去会算出 `rate = 5`。`MIN_COMMISSION = 5` 只对有佣金的账户成立，`feeRate: 0` 的免佣账户下限是 0。原 `src/utils/rebalance.ts` 的 `estimatedFee` 不含下限（它把全部调仓委托合成一个金额，按笔收的下限摊不到单笔上）——该文件已整删，这些注释一并移到这里
 - [x] A2 每日市值快照落库（`recordDailySnapshot()` 每次行情刷新同日覆盖；AccountPanel 有 ≥2 日快照自动切真实净值，否则回退示意）
 - [x] C2 图片懒加载（已在迭代中落地）
 
@@ -63,7 +63,7 @@
 - [x] B2 localStorage 清理 —— 只清真正无界增长的那一处：新增 `pruneBriefingCache()`，在 `writeCachedBriefing` 写入时清掉当日与昨日以外的晨会缓存。**保留昨日是必须的**：`src/pages/research/index.vue:158` 会读昨日那份取 `yesterdayStance` 喂给模型。**明确不做「流水 5000 条上限」**——流水是持仓与成本结转的唯一来源，截断等于改账，比配额溢出更糟。另两处无需处理：`val-history` 已有 `MAX_POINTS=60` 上限，市场缓存已搬服务端 `/sync/cache`
 - [x] B3 快照周提醒（7 天未导出在驾驶舱提示一次；导出自动记录 lastBackupAt）
 - [x] A4 交易手续费输入 —— 试算面板渲染出手续费，可手改并「恢复自动」；`effectiveFee` 同时驱动现金校验、加权成本与落库（`submitTrade` 显式传 `fee`，否则 store 会按费率重算）。**最低佣金 5 元已生效**（见 B 段）。影响面已核实：存量持仓成本不受影响，因为加权成本读的是**存储的** `tx.fee`（`src/utils/ledger.ts:204,259-265,273`），只有新成交和缺费率列的 CSV 导入走新规则
-- [ ] D2 rebalance 测试用例进 check-book —— 未做。所有 `scripts/check-*.ts` 中没有一处 rebalance
+- [x] D2 测试补齐 —— 两半分别处置：**指数字段用例**已补进 `scripts/check-valuation.ts`（`parseIndexQuotes` 断言守 `vals[32]`=涨跌幅、`vals[39]`=PE；改错下标会拿到时间戳/成交额而**不报错**，所以这组断言是静默错误唯一的哨兵，已用变异测试验证会真的失败）；**rebalance 用例改删模块**——`src/utils/rebalance.ts`（337 行）已零消费者：knip 报死代码，全库 grep 只剩 `rebalanceThresholdPct`（阈值偏好，不是本模块），唯一消费者 `RebalanceCalculator.vue` 已于 d8e5933 随计划页简化删掉。补测一个不存在的模块没有意义，所以 `git rm`
 
 ### 第 3 批（需用户决策后执行）
 - [ ] A1 万得充值 vs 免费源替换（需要你定：充值可保留现 UI；换源则约一次会话工作量）

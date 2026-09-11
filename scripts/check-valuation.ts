@@ -1,6 +1,46 @@
 import assert from 'node:assert/strict';
 
-import { deriveValuationSignal, isoDate, realPctDelta } from '../src/utils/valuation.ts';
+import { deriveValuationSignal, isoDate, parseIndexQuotes, realPctDelta } from '../src/utils/valuation.ts';
+
+// 腾讯指数字段下标：错一格不会报错，只会让整张估值表的点位与分位静默错掉。
+// vals[30] 是时间戳、vals[37] 是成交额（万元），都不是涨跌幅/市盈率。
+const indexFixture = (price: number, changePct: number, pe: string, pb: string) => {
+  const vals = Array.from({ length: 51 }).fill('0');
+  vals[3] = String(price);
+  vals[30] = '20260908161415'; // 时间戳
+  vals[32] = String(changePct);
+  vals[37] = '49208662'; // 成交额（万元）
+  vals[39] = pe;
+  vals[46] = pb;
+  return `v_sh000300="${vals.join('~')}"`;
+};
+
+const parsed = parseIndexQuotes(indexFixture(4523.1, -0.36, '14.02', '1.52'));
+const hs300 = parsed.get('sh000300');
+assert.ok(hs300, '应解析出 sh000300');
+assert.equal(hs300.price, 4523.1);
+assert.equal(hs300.changePct, -0.36, '涨跌幅必须取 vals[32]，取到时间戳会得到天文数字');
+assert.equal(hs300.pe, 14.02, 'PE 必须取 vals[39]，取到成交额会得到几千万倍');
+assert.equal(hs300.pb, 1.52);
+assert.ok(Math.abs(hs300.changePct) < 100, `涨跌幅应是百分比，实得 ${hs300.changePct}`);
+
+// PE/PB 非正（亏损或缺失）时归 0，不能把负数带进分位
+const loss = parseIndexQuotes(indexFixture(1000, 0, '-5', '0')).get('sh000300');
+assert.ok(loss);
+assert.equal(loss.pe, 0);
+assert.equal(loss.pb, 0);
+
+// 一次多只指数：分号分隔、大小写归一
+const second = indexFixture(2, 2, '20', '2');
+const multi = parseIndexQuotes(`${indexFixture(1, 1, '10', '1')};v_SZ399006=${second.slice(11)}`);
+assert.deepEqual(
+  [...multi.keys()].sort((a, b) => a.localeCompare(b)),
+  ['sh000300', 'sz399006'],
+);
+assert.equal(multi.get('sz399006')?.pe, 20);
+
+assert.equal(parseIndexQuotes('').size, 0);
+assert.equal(parseIndexQuotes('garbage').size, 0);
 
 assert.equal(deriveValuationSignal(10).label, '偏低');
 assert.equal(deriveValuationSignal(30).label, '偏低');

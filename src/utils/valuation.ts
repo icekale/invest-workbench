@@ -493,6 +493,35 @@ async function fetchDistributions(force: boolean): Promise<Map<string, PeDistrib
   return out;
 }
 
+/**
+ * 腾讯指数行情解析（`/qt/q=sh000300,sz399006`）。
+ *
+ * 字段位置是这个接口最容易踩的地方，所以单独拎出来可测：
+ * `vals[30]` 是时间戳（如 `20260908161415`），`vals[32]` 才是涨跌幅；
+ * `vals[37]` 是成交额（万元，如 `49208662`），`vals[39]` 才是 PE(TTM)。
+ * 拿错一格不会报错 —— 时间戳当涨跌幅是 2e13%，成交额当 PE 是几千万倍，
+ * 整张估值表的点位与分位会静默错掉。断言在 `scripts/check-valuation.ts`。
+ */
+export function parseIndexQuotes(
+  text: string,
+): Map<string, { price: number; changePct: number; pe: number; pb: number }> {
+  const out = new Map<string, { price: number; changePct: number; pe: number; pb: number }>();
+  for (const chunk of text.split(';')) {
+    const m = chunk.match(/v_([a-z]{2}\d+)=["']([^"']*)["']/i);
+    if (!m) continue;
+    const vals = m[2].split('~');
+    const pe = Number(vals[39]);
+    const pb = Number(vals[46]);
+    out.set(m[1].toLowerCase(), {
+      price: Number(vals[3]) || 0,
+      changePct: Number(vals[32]) || 0,
+      pe: pe > 0 ? pe : 0,
+      pb: pb > 0 ? pb : 0,
+    });
+  }
+  return out;
+}
+
 export async function fetchIndexValuations(force = false): Promise<IndexValuationItem[]> {
   const codes = INDEX_VALUATION_CONFIGS.map((c) => c.code);
   const nowStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -509,20 +538,7 @@ export async function fetchIndexValuations(force = false): Promise<IndexValuatio
     const text = new TextDecoder('gbk').decode(await res.arrayBuffer());
 
     // 解析腾讯指数数据
-    const quoteMap = new Map<string, { price: number; changePct: number; pe: number; pb: number }>();
-    for (const chunk of text.split(';')) {
-      const m = chunk.match(/v_([a-z]{2}\d+)=["']([^"']*)["']/i);
-      if (!m) continue;
-      const key = m[1].toLowerCase();
-      const vals = m[2].split('~');
-      const price = Number(vals[3]) || 0;
-      // vals[32] 为涨跌幅百分比（如 -0.36），vals[30] 为时间戳（如 20260908161415）不可作为涨跌幅
-      const changePct = Number(vals[32]) || 0;
-      // vals[39] 为动态市盈率 PE(TTM)，vals[37] 为成交额（万元，如 49208662）不可作为市盈率
-      const pe = Number(vals[39]) > 0 ? Number(vals[39]) : 0;
-      const pb = Number(vals[46]) > 0 ? Number(vals[46]) : 0;
-      quoteMap.set(key, { price, changePct, pe, pb });
-    }
+    const quoteMap = parseIndexQuotes(text);
 
     const core = INDEX_VALUATION_CONFIGS.map((cfg) =>
       buildItem(cfg, quoteMap.get(cfg.code.toLowerCase()), dists.get(cfg.code) ?? null, nowStr),
