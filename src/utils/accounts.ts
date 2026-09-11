@@ -8,6 +8,10 @@
  * 三种 kind 是三种**交易模型**，不是一个名字的三种写法，别用一个 `isFund` 一把抓：
  * 场内（`stock`/`etf`）看行情、整手 100、券商佣金有 5 元下限；
  * 场外（`fund`）看净值、份数可小数、申购费无下限。见 `src/types/invest.ts` 的 `AccountKind`。
+ *
+ * 但**默认注册表只给场内的两个桶**。场外那套规则完整保留（见 `isOtcFund`/`tradesInLots`/`rateOf`），
+ * 谁要记公募基金，在「管理账户」里自己建一个 `kind: 'fund'` 的桶就有了 ——
+ * 一个没人用的空桶不该默认占着面板和手工校准的版面。
  */
 
 import type { Account, AccountId, AccountKind } from '@/types/invest';
@@ -16,7 +20,6 @@ export function defaultAccounts(): Account[] {
   return [
     { id: 'stock', name: '股票账户', kind: 'stock' },
     { id: 'etf', name: 'ETF 账户', kind: 'etf' },
-    { id: 'fund', name: '公募基金账户', kind: 'fund' },
   ];
 }
 
@@ -204,7 +207,7 @@ export function normalizeAccounts(raw: unknown, hints: string[] = []): Account[]
   }
   /*
    * 默认账户要给**已有注册表**补上。只靠上面那条 `!out.length` 不够：老用户的注册表非空，
-   * 永远走不到那里，新加的默认账户就只对全新安装生效，界面上永远看不到「公募基金账户」。
+   * 永远走不到那里，新加的默认账户就只对全新安装生效，界面上永远看不到它。
    * 按 id 补不会把用户收起来的账户翻出来 —— 归档只是打标记，行还在表里。
    */
   for (const d of defaultAccounts()) {

@@ -31,8 +31,8 @@ import { maxBuyQuantity, tradeFee } from '../src/utils/ledger.ts';
 const def = defaultAccounts();
 assert.deepEqual(
   def.map((a) => a.id),
-  ['stock', 'etf', 'fund'],
-  '三个默认账户：股票 / ETF / 公募基金',
+  ['stock', 'etf'],
+  '两个默认账户：股票 / ETF（场外基金要自己建）',
 );
 assert.ok(def.every((a) => !a.archived));
 assert.equal(nameOf(def, 'stock'), '股票账户');
@@ -166,46 +166,60 @@ assert.equal(maxBuyQuantity('stock', 1.262, 4, otc), 0, '股票侧同样现金�
 const migrated = normalizeAccounts(undefined, ['stock', 'etf', 'grid']);
 assert.deepEqual(
   migrated.map((a) => a.id),
-  ['stock', 'etf', 'fund', 'grid'],
+  ['stock', 'etf', 'grid'],
   '默认表补齐后才是没登记的 hint',
 );
 assert.equal(migrated.find((a) => a.id === 'grid')!.archived, true, '补出来的账户收起来');
 assert.deepEqual(
   activeOf(migrated).map((a) => a.id),
-  ['stock', 'etf', 'fund'],
+  ['stock', 'etf'],
   '归档的不出现在在用列表里',
 );
 /*
  * 老用户的注册表非空，加新默认账户时走的是「按 id 补」那条路 ——
- * 只看 `!out.length` 的话「公募基金账户」就只对全新安装生效，老用户永远看不到它。
+ * 只看 `!out.length` 的话新增的默认账户就只对全新安装生效，老用户永远看不到它。
  */
-const legacy = normalizeAccounts([
-  { id: 'stock', name: '股票账户', kind: 'stock' },
-  { id: 'etf', name: 'ETF 账户', kind: 'etf' },
-]);
+const legacy = normalizeAccounts([{ id: 'stock', name: '我自己改的名字', kind: 'stock' }]);
 assert.deepEqual(
   legacy.map((a) => a.id),
-  ['stock', 'etf', 'fund'],
-  '老注册表也要补上公募基金账户',
+  ['stock', 'etf'],
+  '老注册表缺的默认账户要按 id 补上',
 );
-assert.equal(legacy.find((a) => a.id === 'fund')!.archived, undefined, '补出来的默认账户是活的，不是归档');
+// ids 已经在上一条 deepEqual 里断言过了，这里 ?. 不会漏掉「账户不存在」的情况
+assert.equal(legacy.find((a) => a.id === 'stock')?.name, '我自己改的名字', '已在表里的账户不被默认名覆盖');
+assert.equal(legacy.find((a) => a.id === 'etf')?.archived, undefined, '补出来的默认账户是活的，不是归档');
+/*
+ * 公募基金账户不再进默认表，但**已经存在注册表里的那个不能丢**：
+ * 丢了持仓和账本就全查不到账户了。这条是删默认桶时的护身符。
+ */
+const withFund = normalizeAccounts([
+  { id: 'stock', name: '股票账户', kind: 'stock' },
+  { id: 'etf', name: 'ETF 账户', kind: 'etf' },
+  { id: 'fund', name: '公募基金账户', kind: 'fund' },
+]);
+assert.deepEqual(
+  withFund.map((a) => a.id),
+  ['stock', 'etf', 'fund'],
+  '老注册表里已存的场外基金账户不能丢',
+);
+assert.equal(isOtcFund(withFund, 'fund'), true, '老数据仍按场外规则算（净值/小数份额/申购费）');
 // 已经在注册表里的 hint 不该被重复补一条
-assert.equal(normalizeAccounts(def, ['stock']).length, 3);
+assert.equal(normalizeAccounts(def, ['stock']).length, 2);
 // 脏数据不能把整张表读崩
 assert.deepEqual(
   normalizeAccounts('nope').map((a) => a.id),
-  ['stock', 'etf', 'fund'],
+  ['stock', 'etf'],
   '读不出来就回默认表',
 );
 assert.deepEqual(
   normalizeAccounts([null, 42, { name: '   ' }]).map((a) => a.id),
-  ['stock', 'etf', 'fund'],
+  ['stock', 'etf'],
 );
 const dedup = normalizeAccounts([
   { id: 'x', name: 'x' },
   { id: 'x', name: 'dup' },
 ]);
-// 同 id 只留先出现的（总数里有被补上的三个默认账户，所以看的是 x 自己的条数）
+// 同 id 只留先出现的（总数里有被补上的默认账户，所以看的是 x 自己的条数）
 assert.deepEqual(
   dedup.filter((a) => a.id === 'x').map((a) => a.name),
   ['x'],
@@ -219,7 +233,8 @@ assert.equal(matchAccount(custom, '打新'), 'acct_2', '按名字命中');
 assert.equal(matchAccount(def, 'all'), 'stock', '全市场落到第一个股票桶');
 assert.equal(matchAccount(def, ''), 'stock');
 assert.equal(matchAccount(def, 'ETF'), 'etf');
-assert.equal(matchAccount(def, '公募基金账户'), 'fund', '按名字能点到公募基金账户');
+// 没有场外桶时，认不出的名字要落到活账户，不能回一个死 id
+assert.equal(matchAccount(def, '公募基金账户'), 'stock', '公募基金账户已不是默认桶，认不出就落到活账户');
 assert.equal(matchAccount(def, '查无此账户'), 'stock', '认不出来也要给个活的账户');
 assert.equal(matchAccount(custom, 'acct_1'), 'acct_1', '归档账户仍可被点名（迁移老数据要用）');
 
