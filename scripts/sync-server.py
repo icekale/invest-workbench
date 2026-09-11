@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-user SQLite book. GET/PUT /sync, GET /sync/holdings|transactions|afre|cache.
+"""Per-user SQLite book. GET/PUT /sync, GET /sync/holdings|transactions|afre|cache|lg-pe.
 
 # ponytail: global db lock, per-user locks if concurrent writers matter.
 """
@@ -17,10 +17,12 @@ import sys
 import threading
 import time
 import zipfile
+from datetime import datetime, timedelta, timezone
+from http.cookiejar import CookieJar
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from urllib.parse import parse_qs, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 from xml.etree import ElementTree as ET
 
 DB_PATH = os.environ.get("SYNC_DB", "/data/invest.db")
@@ -753,6 +755,72 @@ def fetch_pbc_afre_pair() -> tuple[list[dict], list[dict]]:
     return flow, stock
 
 
+# 创业板指不在中证 index-perf。乐咕乐股 index-basic-pe 要 cookie+csrf+当日 MD5 token。
+LG_ORIGIN = "https://www.legulegu.com"
+LG_PE_PAGE = f"{LG_ORIGIN}/stockdata/sz50-ttm-lyr"
+LG_PE_API = f"{LG_ORIGIN}/api/stockdata/index-basic-pe"
+LG_ALLOWED = {"399006.SZ"}
+LG_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def shanghai_date() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+
+
+def lg_md5_token(day: str | None = None) -> str:
+    return hashlib.md5((day or shanghai_date()).encode()).hexdigest()
+
+
+def lg_pe_samples(rows: list) -> list[dict]:
+    """市值加权滚动 PE（addTtmPe），与中证官网口径一致；缺则退回等权 ttmPe。"""
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pe = row.get("addTtmPe")
+        if pe is None:
+            pe = row.get("ttmPe")
+        try:
+            pe_f = float(pe)
+        except (TypeError, ValueError):
+            continue
+        d = str(row.get("date") or "")[:10]
+        if pe_f <= 0 or not LG_DATE_RE.match(d):
+            continue
+        try:
+            close = float(row.get("close") or 0)
+        except (TypeError, ValueError):
+            close = 0.0
+        out.append({"d": d, "pe": round(pe_f, 2), "close": close})
+    out.sort(key=lambda x: x["d"])
+    return out
+
+
+def fetch_lg_index_pe(index_code: str) -> list[dict]:
+    cj = CookieJar()
+    opener = build_opener(HTTPCookieProcessor(cj))
+    page = opener.open(Request(LG_PE_PAGE, headers={"User-Agent": "Mozilla/5.0"}), timeout=20)
+    html = page.read().decode("utf-8", "replace")
+    m = re.search(r'name="_csrf"[^>]+content="([^"]+)"', html)
+    if not m:
+        raise RuntimeError("lg csrf missing")
+    url = f"{LG_PE_API}?token={lg_md5_token()}&indexCode={index_code}"
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "X-CSRF-TOKEN": m.group(1),
+            "Referer": LG_PE_PAGE,
+            "Accept": "application/json",
+        },
+    )
+    raw = json.loads(opener.open(req, timeout=20).read())
+    samples = lg_pe_samples(raw.get("data") or [])
+    if len(samples) < 60:
+        raise RuntimeError("lg: too few samples")
+    return samples
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -815,6 +883,30 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self._path()
+        if path == "/sync/lg-pe":
+            code = (parse_qs(urlparse(self.path).query).get("code") or [""])[0]
+            if code not in LG_ALLOWED:
+                return self._send(400, b'{"error":"bad code"}')
+            key = f"lg-pe:{code}"
+            with LOCK:
+                conn = connect()
+                try:
+                    cached = get_market_cache(conn, key)
+                finally:
+                    conn.close()
+            if cached is None:
+                try:
+                    samples = fetch_lg_index_pe(code)
+                except Exception as e:
+                    return self._send(502, json.dumps({"error": str(e)[:200]}, ensure_ascii=False).encode())
+                cached = json.dumps(samples, ensure_ascii=False, separators=(",", ":"))
+                with LOCK:
+                    conn = connect()
+                    try:
+                        put_market_cache(conn, key, cached)
+                    finally:
+                        conn.close()
+            return self._send(200, cached.encode())
         if path not in ("/sync", "/sync/holdings", "/sync/transactions", "/sync/cache", "/sync/afre"):
             return self._send(404, b'{"error":"not found"}')
         user = self._auth_guard()
@@ -1086,6 +1178,19 @@ def selftest() -> None:
     assert multi["holdings"][0]["account"] == "acct_3"
     conn.close()
     os.unlink(DB_PATH)
+    rows = [
+        {"date": "2010-06-30", "addTtmPe": 63.69, "ttmPe": 63.15, "close": 919.31},
+        {"date": "2026-09-10", "addTtmPe": 33.5, "close": 3338.42},
+        {"date": "bad", "addTtmPe": 1, "close": 1},
+        {"date": "2020-01-01", "addTtmPe": 0, "close": 1},
+        {"date": "2021-01-01", "ttmPe": 40.1, "close": 2000},
+    ]
+    s = lg_pe_samples(rows)
+    assert [x["d"] for x in s] == ["2010-06-30", "2021-01-01", "2026-09-10"]
+    assert s[0]["pe"] == 63.69
+    assert s[1]["pe"] == 40.1
+    assert s[2]["pe"] == 33.5
+    assert lg_md5_token("2026-09-11") == hashlib.md5(b"2026-09-11").hexdigest()
     print("sync-server selftest ok")
 
 

@@ -6,6 +6,7 @@ import {
   deriveValuationSignal,
   isoDate,
   parseIndexQuotes,
+  parseLgPeSamples,
   percentileFromQuantiles,
   realPctDelta,
 } from '../src/utils/valuation.ts';
@@ -158,5 +159,16 @@ assert.ok(csiPct >= 50 && csiPct <= 80, `中证 PE 69.82 应落在 p50–p80，�
 const manual = buildItem(kc50, { price: 1000, changePct: 0, pe: 12, pb: 1.5 }, null, '2026-09-08 16:00');
 assert.equal(manual.pe, 12, '无分布时应退回腾讯 PE');
 assert.equal(manual.peStatsBasis, 'manual');
+
+const lg = parseLgPeSamples([
+  { d: '2010-06-30', pe: 63.69, close: 919.31 },
+  { d: 'bad', pe: 1, close: 1 },
+  { d: '2026-09-10', pe: 33.5, close: 3338.42 },
+  { d: '2026-09-10', pe: 0, close: 1 },
+]);
+assert.deepEqual(
+  lg.map((s) => s.pe),
+  [63.69, 33.5],
+);
 
 console.log('check-valuation ok');

@@ -1,6 +1,6 @@
 /**
  * PE 分位与买卖信号。分档线当前取 20/40/60/80（可在设置里改，见 research-settings.ts），
- * 宽基分位优先用中证官网真实历史分布，无数据源时退回手填参数。
+ * 宽基分位优先用中证官网真实历史分布；创业板指走乐咕乐股加权 TTM。无数据源时退回手填参数。
  */
 import { fetchOk, withRetry } from './http.ts';
 import { marketGet, marketPut } from './market-cache.ts';
@@ -66,7 +66,7 @@ export interface IndexValuationItem {
   allocationTilt: string; // 仓位偏离建议，如 "+10%" 或 "-5%"
   updatedAt: string;
   count?: number; // 申万一级成分家数
-  /** peStats 的来源：real = 中证官网近十年真实分布，manual = 手填基准参数（该指数无公开历史序列） */
+  /** peStats 的来源：real = 中证/乐咕乐股真实分布，manual = 手填基准参数 */
   peStatsBasis?: 'real' | 'manual';
   /** 近约一月分位变化。宽基来自中证真历史（当天即有）；申万来自自积累快照（要攒两周）。 */
   pctDelta?: PctDelta | null;
@@ -232,6 +232,8 @@ export interface PeDistribution {
 export const PE_DIST_YEARS = 10;
 const PE_DIST_TTL_MS = 6 * 3600 * 1000;
 const PE_DIST_CACHE = 'csidx-pe-dist-v3';
+/** 中证 index-perf 没有的指数 → 乐咕乐股 index-basic-pe 代码 */
+const LG_INDEX: Record<string, string> = { sz399006: '399006.SZ' };
 
 /** 由升序分位数组线性插值求某 PE 所处的百分位（0~100）。 */
 export function percentileFromQuantiles(pe: number, quantiles: number[]): number {
@@ -267,6 +269,61 @@ function quantilesOf(values: number[]): number[] {
   return out;
 }
 
+function distFromSamples(
+  samples: Array<{ d: string; pe: number; close: number; changePct?: number }>,
+  years: number,
+  minN = 120,
+): PeDistribution | null {
+  if (samples.length < minN) return null;
+  const last = samples[samples.length - 1]!;
+  const quantiles = quantilesOf(samples.map((s) => s.pe));
+  return {
+    quantiles,
+    currentPe: last.pe,
+    lastClose: last.close,
+    lastChangePct: last.changePct ?? 0,
+    lastDate: last.d,
+    years,
+    pctDelta: realPctDelta(
+      samples.map((s) => ({ d: s.d, pe: s.pe })),
+      quantiles,
+    ),
+  };
+}
+
+interface LgPeSample {
+  d: string;
+  pe: number;
+  close: number;
+}
+
+export function parseLgPeSamples(raw: unknown): LgPeSample[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LgPeSample[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const d = String((row as LgPeSample).d ?? '').slice(0, 10);
+    const pe = Number((row as LgPeSample).pe);
+    const close = Number((row as LgPeSample).close) || 0;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(pe) || pe <= 0) continue;
+    out.push({ d, pe, close });
+  }
+  out.sort((a, b) => a.d.localeCompare(b.d));
+  return out;
+}
+
+async function fetchLgPeSamples(indexCode: string, force = false): Promise<LgPeSample[]> {
+  const key = `lg-pe:${indexCode}`;
+  if (!force) {
+    const hit = await marketGet<LgPeSample[]>(key, PE_DIST_TTL_MS);
+    if (hit?.length) return parseLgPeSamples(hit);
+  }
+  const res = await withRetry(() => fetchOk(`/sync/lg-pe?code=${encodeURIComponent(indexCode)}`));
+  const samples = parseLgPeSamples(await res.json());
+  if (samples.length) marketPut(key, samples, PE_DIST_TTL_MS);
+  return samples;
+}
+
 /** 中证 index-perf 行 → 按日期升序的 PE 序列。peg 即当日市盈率。 */
 function csiPeSamples(rows: Array<Record<string, unknown>>) {
   const out: Array<{ d: string; pe: number; close: number; changePct: number }> = [];
@@ -286,9 +343,8 @@ function csiPeSamples(rows: Array<Record<string, unknown>>) {
 }
 
 /**
- * 取中证官网近 N 年逐日 PE，压成 101 个经验分位点。
- * 结果只有约 700 字节，缓存 6h；源数据 115KB（已 gzip），所以缓存分发而非原始序列。
- * 不在中证指数序列内的标的（如创业板指 399006）返回 null。
+ * 取近 N 年 PE，压成 101 个经验分位点。中证 index-perf 优先；创业板指走 /sync/lg-pe。
+ * 结果只有约 700 字节，缓存 6h。
  */
 export async function fetchIndexPeDistribution(
   prefixedCode: string,
@@ -299,6 +355,12 @@ export async function fetchIndexPeDistribution(
   if (!force) {
     const hit = await marketGet<PeDistribution>(key, PE_DIST_TTL_MS);
     if (hit?.quantiles?.length) return hit;
+  }
+  const lgCode = LG_INDEX[prefixedCode.toLowerCase()];
+  if (lgCode) {
+    const dist = distFromSamples(await fetchLgPeSamples(lgCode, force), years, 60);
+    if (dist) marketPut(key, dist, PE_DIST_TTL_MS);
+    return dist;
   }
   const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
   const fmt = (d: Date) =>
@@ -316,23 +378,8 @@ export async function fetchIndexPeDistribution(
   );
   const json = (await res.json()) as { data?: Array<Record<string, unknown>> };
   const samples = csiPeSamples(Array.isArray(json.data) ? json.data : []);
-  // 样本过少说明该指数不在中证序列，宁可不给分布也不用垃圾数据算分位
-  if (samples.length < 120) return null;
-  const last = samples[samples.length - 1]!;
-  const quantiles = quantilesOf(samples.map((s) => s.pe));
-  const dist: PeDistribution = {
-    quantiles,
-    currentPe: last.pe,
-    lastClose: last.close,
-    lastChangePct: last.changePct,
-    lastDate: last.d,
-    years,
-    pctDelta: realPctDelta(
-      samples.map((s) => ({ d: s.d, pe: s.pe })),
-      quantiles,
-    ),
-  };
-  marketPut(key, dist, PE_DIST_TTL_MS);
+  const dist = distFromSamples(samples, years, 120);
+  if (dist) marketPut(key, dist, PE_DIST_TTL_MS);
   return dist;
 }
 
@@ -581,11 +628,27 @@ export interface IndexPeHistory {
   isSimulated: boolean;
 }
 
+function cutPeHistory(samples: Array<{ d: string; pe: number }>, years: number): IndexPeHistory | null {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - years);
+  const from = start.toISOString().slice(0, 10);
+  const cut = samples.filter((s) => s.d >= from);
+  if (cut.length < 10) return null;
+  return { dates: cut.map((s) => s.d), peValues: cut.map((s) => s.pe), isSimulated: false };
+}
+
 /**
- * 从中证官网（经 /csindex/ 反代）拉取指数真实 PE 历史。
- * 数据源字段 peg 即每日收盘对应的市盈率。失败或样本过少返回 null（调用方显示无数据提示，不再回退假序列）。
+ * 真实 PE 历史。中证官网优先；创业板指走 /sync/lg-pe（月频）。失败返回 null，不画假线。
  */
 export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Promise<IndexPeHistory | null> {
+  const lgCode = LG_INDEX[prefixedCode.toLowerCase()];
+  if (lgCode) {
+    try {
+      return cutPeHistory(await fetchLgPeSamples(lgCode), years);
+    } catch {
+      return null;
+    }
+  }
   const code6 = prefixedCode.replace(/^(sh|sz|bj)/i, '');
   const fmt = (d: Date) =>
     `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;

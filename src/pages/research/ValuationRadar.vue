@@ -234,7 +234,7 @@
         <div v-if="chartNoData" class="val-chart-empty">
           <strong>这个指数拿不到真实 PE 历史，所以不画图。</strong>
           <p>
-            中证指数公司公开序列里没有 {{ selectedValuation.code.toUpperCase() }}（创业板指归深证/国证，不在中证系）。
+            中证、乐咕乐股都没有 {{ selectedValuation.code.toUpperCase() }} 的 PE 序列。
             与其画一条编造的曲线，不如直接不画。
           </p>
           <p v-if="selectedValuation.peStatsBasis === 'manual'" class="warn">
