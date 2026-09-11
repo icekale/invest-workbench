@@ -189,20 +189,36 @@ assert.deepEqual(
 assert.equal(legacy.find((a) => a.id === 'stock')?.name, '我自己改的名字', '已在表里的账户不被默认名覆盖');
 assert.equal(legacy.find((a) => a.id === 'etf')?.archived, undefined, '补出来的默认账户是活的，不是归档');
 /*
- * 公募基金账户不再进默认表，但**已经存在注册表里的那个不能丢**：
- * 丢了持仓和账本就全查不到账户了。这条是删默认桶时的护身符。
+ * 公募基金账户不再进默认表，而且**已经存下来的那一条要退役掉**：
+ * 不退役的话，老状态被回写一次（/sync 是整包回写）它就又冒出来了。
+ * 退役只针对「没被动过」的那一条 —— 改过名的、数据还挂在上面的都得留着。
  */
-const withFund = normalizeAccounts([
-  { id: 'stock', name: '股票账户', kind: 'stock' },
-  { id: 'etf', name: 'ETF 账户', kind: 'etf' },
-  { id: 'fund', name: '公募基金账户', kind: 'fund' },
-]);
 assert.deepEqual(
-  withFund.map((a) => a.id),
-  ['stock', 'etf', 'fund'],
-  '老注册表里已存的场外基金账户不能丢',
+  normalizeAccounts([
+    { id: 'stock', name: '股票账户', kind: 'stock' },
+    { id: 'etf', name: 'ETF 账户', kind: 'etf' },
+    { id: 'fund', name: '公募基金账户', kind: 'fund' },
+  ]).map((a) => a.id),
+  ['stock', 'etf'],
+  '没被动过的公募基金默认桶要退役',
 );
-assert.equal(isOtcFund(withFund, 'fund'), true, '老数据仍按场外规则算（净值/小数份额/申购费）');
+// 改过名的：动过的东西是用户的账户，不是「默认桶」
+const renamed = normalizeAccounts([{ id: 'fund', name: '我的债基', kind: 'fund' }]);
+assert.deepEqual(
+  renamed.map((a) => a.id).sort(),
+  ['etf', 'fund', 'stock'],
+  '改过名的场外桶不能被退役（顺序跟随存量，默认桶在后面补）',
+);
+assert.equal(isOtcFund(renamed, 'fund'), true, '自建场外桶仍按场外规则算（净值/小数份额/申购费）');
+// 还有钱挂在上面时：退役会把那笔钱变成孤儿，所以退回「归档」而不是丢掉
+const funded = normalizeAccounts([{ id: 'fund', name: '公募基金账户', kind: 'fund' }], ['stock', 'etf', 'fund']);
+assert.deepEqual(
+  funded.map((a) => a.id),
+  ['stock', 'etf', 'fund'],
+  '数据还挂着的账户不能被退役掉',
+);
+assert.equal(funded.find((a) => a.id === 'fund')?.archived, true, '退役不了就收起来，不能静默丢持仓');
+assert.equal(isOtcFund(funded, 'fund'), true, '归档了也还是场外口径');
 // 已经在注册表里的 hint 不该被重复补一条
 assert.equal(normalizeAccounts(def, ['stock']).length, 2);
 // 脏数据不能把整张表读崩

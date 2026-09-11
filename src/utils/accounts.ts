@@ -23,6 +23,16 @@ export function defaultAccounts(): Account[] {
   ];
 }
 
+/*
+ * 退役的默认桶名：`公募基金账户` 曾经在默认表里（id 固定为 `fund`），现在不给默认了。
+ * 已经存进注册表的那一条不会因为默认表变了就自己消失（`normalizeAccounts` 会原样保留存量），
+ * 所以这里明写一条退役规则，否则老状态被回写一次它就又回来了。
+ *
+ * 只退役**没被动过**的那一个 —— id 和名字都对得上。用户改过名、或另起了 id 的自建基金桶一律保留，
+ * 不然会连它的持仓一起失联。真有持仓/流水的（hints 里还带着 `fund`）会在下面被补成归档，不会凭空消失。
+ */
+const RETIRED_FUND_NAME = '公募基金账户';
+
 export function activeOf(accounts: Account[]): Account[] {
   return accounts.filter((a) => !a.archived);
 }
@@ -189,10 +199,12 @@ export function normalizeAccounts(raw: unknown, hints: string[] = []): Account[]
       const id = /^[\w.-]{1,32}$/.test(rawId) ? rawId : str(row.name).trim();
       // 同一 id 出现两次时保留先出现的：archiveAccount 打在副本上也比撞车好
       if (!id || ids.has(id)) continue;
+      const name = str(row.name).trim() || id;
+      if (id === 'fund' && name === RETIRED_FUND_NAME) continue;
       ids.add(id);
       const kind: AccountKind =
         row.kind === 'fund' ? 'fund' : row.kind === 'etf' ? 'etf' : row.kind === 'stock' ? 'stock' : guessKind(id);
-      const acc: Account = { id, name: str(row.name).trim() || id, kind };
+      const acc: Account = { id, name, kind };
       const rate = row.feeRate;
       if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) acc.feeRate = rate;
       if (row.archived === true) acc.archived = true;
