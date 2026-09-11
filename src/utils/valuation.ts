@@ -440,14 +440,17 @@ function swToItem(row: SwL1Row, nowStr: string): IndexValuationItem {
  * 价格/涨跌优先用 /qt/ 实时行情，缺失则退回中证官网收盘值（EOD）；两者都无则置 0
  * （UI 显示 —），**不编造点位**。分位优先用真实历史分布，无数据源时退回手填参数并标 manual。
  */
-function buildItem(
+export function buildItem(
   cfg: IndexValuationConfig,
   q: { price: number; changePct: number; pe: number; pb: number } | undefined,
   dist: PeDistribution | null,
   nowStr: string,
 ): IndexValuationItem {
   const peStats = dist ? statsFromQuantiles(dist.quantiles) : cfg.peStats;
-  const rawPe = q?.pe && q.pe > 0 ? q.pe : dist?.currentPe || cfg.peStats.p50;
+  // PE 必须与被用来算分位的那份分布同源。分位查的是中证的 dist.quantiles，
+  // 所以被查的 PE 也得是中证的 dist.currentPe。拿腾讯 PE 去查中证分布会静默算错：
+  // 实测科创50 腾讯 129.73 vs 中证 69.82（+85.8%），会被顶到接近 100% 分位，报出假的「偏高/减配」。
+  const rawPe = dist?.currentPe && dist.currentPe > 0 ? dist.currentPe : q?.pe && q.pe > 0 ? q.pe : cfg.peStats.p50;
   const livePrice = !!(q?.price && q.price > 0);
   const price = livePrice ? q!.price : dist?.lastClose || 0;
   const changePct = livePrice ? q!.changePct : (dist?.lastChangePct ?? 0);
@@ -486,9 +489,9 @@ function buildItem(
 async function fetchDistributions(force: boolean): Promise<Map<string, PeDistribution | null>> {
   const out = new Map<string, PeDistribution | null>();
   await Promise.all(
-    INDEX_VALUATION_CONFIGS.map(async (cfg) => {
-      out.set(cfg.code, await fetchIndexPeDistribution(cfg.code, PE_DIST_YEARS, force).catch(() => null));
-    }),
+    INDEX_VALUATION_CONFIGS.map(async (cfg) =>
+      out.set(cfg.code, await fetchIndexPeDistribution(cfg.code, PE_DIST_YEARS, force).catch(() => null)),
+    ),
   );
   return out;
 }

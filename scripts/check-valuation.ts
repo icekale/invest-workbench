@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { deriveValuationSignal, isoDate, parseIndexQuotes, realPctDelta } from '../src/utils/valuation.ts';
+import type { IndexValuationConfig, PeDistribution } from '../src/utils/valuation.ts';
+import { buildItem, deriveValuationSignal, isoDate, parseIndexQuotes, realPctDelta } from '../src/utils/valuation.ts';
 
 // 腾讯指数字段下标：错一格不会报错，只会让整张估值表的点位与分位静默错掉。
 // vals[30] 是时间戳、vals[37] 是成交额（万元），都不是涨跌幅/市盈率。
@@ -111,5 +112,38 @@ assert.equal(
 // 样本不足
 assert.equal(realPctDelta([{ d: '2026-09-09', pe: 14 }], q), null);
 assert.equal(realPctDelta([], q), null);
+
+// PE 与分位必须同源：分位查的是中证 dist.quantiles，被查的 PE 也必须是中证的 dist.currentPe。
+// 拿腾讯 PE 去查中证分布不会报错，只会静默把指数顶到极端分位（实测科创50 腾讯 129.73 vs 中证 69.82）。
+const kc50: IndexValuationConfig = {
+  code: 'sh000688',
+  name: '科创50',
+  category: 'broad',
+  categoryLabel: '宽基',
+  etfCode: '588000',
+  etfName: '科创50ETF',
+  description: '',
+  peStats: { min: 20, p20: 30, p50: 45, p80: 70, max: 120, avg: 50 },
+};
+const dist: PeDistribution = {
+  quantiles: Array.from({ length: 101 }, (_, i) => 20 + i),
+  currentPe: 69.82,
+  lastClose: 1000,
+  lastChangePct: 0,
+  lastDate: '2026-09-08',
+  years: 10,
+};
+const mixed = buildItem(kc50, { price: 1000, changePct: 0, pe: 129.73, pb: 1.5 }, dist, '2026-09-08 16:00');
+assert.equal(mixed.pe, 69.82, `有真实分布时 PE 应取中证的 69.82（同源），实得 ${mixed.pe}`);
+assert.ok(
+  mixed.pePercentile >= 45 && mixed.pePercentile <= 55,
+  `中证 PE 69.82 在 20..120 的均匀分布里应约 50 分位，实得 ${mixed.pePercentile}`,
+);
+assert.notEqual(mixed.signal, 'high', '同源后科创50 不该被判成「偏高」');
+
+// 拿不到真实分布时才退回腾讯 PE —— 此时分位也是手填基准，UI 会标 manual。
+const manual = buildItem(kc50, { price: 1000, changePct: 0, pe: 12, pb: 1.5 }, null, '2026-09-08 16:00');
+assert.equal(manual.pe, 12, '无分布时应退回腾讯 PE');
+assert.equal(manual.peStatsBasis, 'manual');
 
 console.log('check-valuation ok');
