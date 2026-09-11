@@ -231,6 +231,7 @@ export interface PeDistribution {
 
 export const PE_DIST_YEARS = 10;
 const PE_DIST_TTL_MS = 6 * 3600 * 1000;
+const PE_DIST_CACHE = 'csidx-pe-dist-v3';
 
 /** 由升序分位数组线性插值求某 PE 所处的百分位（0~100）。 */
 export function percentileFromQuantiles(pe: number, quantiles: number[]): number {
@@ -266,6 +267,24 @@ function quantilesOf(values: number[]): number[] {
   return out;
 }
 
+/** 中证 index-perf 行 → 按日期升序的 PE 序列。peg 即当日市盈率。 */
+function csiPeSamples(rows: Array<Record<string, unknown>>) {
+  const out: Array<{ d: string; pe: number; close: number; changePct: number }> = [];
+  for (const row of rows) {
+    const pe = Number(row.peg);
+    const d = isoDate(String(row.tradeDate ?? ''));
+    if (!Number.isFinite(pe) || pe <= 0 || !d) continue;
+    out.push({
+      d,
+      pe: Number(pe.toFixed(2)),
+      close: Number(row.close) || 0,
+      changePct: Number(row.changePct) || 0,
+    });
+  }
+  out.sort((a, b) => a.d.localeCompare(b.d));
+  return out;
+}
+
 /**
  * 取中证官网近 N 年逐日 PE，压成 101 个经验分位点。
  * 结果只有约 700 字节，缓存 6h；源数据 115KB（已 gzip），所以缓存分发而非原始序列。
@@ -276,7 +295,7 @@ export async function fetchIndexPeDistribution(
   years = PE_DIST_YEARS,
   force = false,
 ): Promise<PeDistribution | null> {
-  const key = `csidx-pe-dist-v2-${prefixedCode}-${years}`;
+  const key = `${PE_DIST_CACHE}-${prefixedCode}-${years}`;
   if (!force) {
     const hit = await marketGet<PeDistribution>(key, PE_DIST_TTL_MS);
     if (hit?.quantiles?.length) return hit;
@@ -296,29 +315,22 @@ export async function fetchIndexPeDistribution(
     },
   );
   const json = (await res.json()) as { data?: Array<Record<string, unknown>> };
-  const rows = Array.isArray(json.data) ? json.data : [];
-  const pes: number[] = [];
-  const samples: Array<{ d: string; pe: number }> = [];
-  let last: Record<string, unknown> | null = null;
-  for (const row of rows) {
-    const pe = Number(row.peg);
-    if (!Number.isFinite(pe) || pe <= 0) continue;
-    pes.push(pe);
-    const d = isoDate(String(row.tradeDate ?? ''));
-    if (d) samples.push({ d, pe });
-    last = row;
-  }
+  const samples = csiPeSamples(Array.isArray(json.data) ? json.data : []);
   // 样本过少说明该指数不在中证序列，宁可不给分布也不用垃圾数据算分位
-  if (pes.length < 120 || !last) return null;
-  const quantiles = quantilesOf(pes);
+  if (samples.length < 120) return null;
+  const last = samples[samples.length - 1]!;
+  const quantiles = quantilesOf(samples.map((s) => s.pe));
   const dist: PeDistribution = {
     quantiles,
-    currentPe: Number(Number(last.peg).toFixed(2)),
-    lastClose: Number(last.close) || 0,
-    lastChangePct: Number(last.changePct) || 0,
-    lastDate: isoDate(String(last.tradeDate ?? '')),
+    currentPe: last.pe,
+    lastClose: last.close,
+    lastChangePct: last.changePct,
+    lastDate: last.d,
     years,
-    pctDelta: realPctDelta(samples, quantiles),
+    pctDelta: realPctDelta(
+      samples.map((s) => ({ d: s.d, pe: s.pe })),
+      quantiles,
+    ),
   };
   marketPut(key, dist, PE_DIST_TTL_MS);
   return dist;
@@ -588,18 +600,13 @@ export async function fetchIndexPeHistory(prefixedCode: string, years = 3): Prom
       }),
     );
     const json = (await res.json()) as { data?: Array<Record<string, unknown>> };
-    const rows = Array.isArray(json.data) ? json.data : [];
-    const dates: string[] = [];
-    const peValues: number[] = [];
-    for (const row of rows) {
-      const peg = Number(row.peg);
-      const d = isoDate(String(row.tradeDate ?? ''));
-      if (!Number.isFinite(peg) || peg <= 0 || !d) continue;
-      dates.push(d);
-      peValues.push(Number(peg.toFixed(2)));
-    }
-    if (dates.length < 10) return null;
-    return { dates, peValues, isSimulated: false };
+    const samples = csiPeSamples(Array.isArray(json.data) ? json.data : []);
+    if (samples.length < 10) return null;
+    return {
+      dates: samples.map((s) => s.d),
+      peValues: samples.map((s) => s.pe),
+      isSimulated: false,
+    };
   } catch {
     return null;
   }

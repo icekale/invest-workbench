@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 
 import type { IndexValuationConfig, PeDistribution } from '../src/utils/valuation.ts';
-import { buildItem, deriveValuationSignal, isoDate, parseIndexQuotes, realPctDelta } from '../src/utils/valuation.ts';
+import {
+  buildItem,
+  deriveValuationSignal,
+  isoDate,
+  parseIndexQuotes,
+  percentileFromQuantiles,
+  realPctDelta,
+} from '../src/utils/valuation.ts';
 
 // 腾讯指数字段下标：错一格不会报错，只会让整张估值表的点位与分位静默错掉。
 // vals[30] 是时间戳、vals[37] 是成交额（万元），都不是涨跌幅/市盈率。
@@ -140,6 +147,12 @@ assert.ok(
   `中证 PE 69.82 在 20..120 的均匀分布里应约 50 分位，实得 ${mixed.pePercentile}`,
 );
 assert.notEqual(mixed.signal, 'high', '同源后科创50 不该被判成「偏高」');
+
+// 实测科创50 十年分布 max=105.42。腾讯 PE 129.73 超出上沿必须是 100%，不能跟中证 69.82 的 ~67% 混在一起。
+const starQ = [23.38, 33.23, 49.47, 75.98, 105.42];
+assert.equal(percentileFromQuantiles(129.73, starQ), 100);
+const csiPct = percentileFromQuantiles(69.82, starQ);
+assert.ok(csiPct >= 50 && csiPct <= 80, `中证 PE 69.82 应落在 p50–p80，实得 ${csiPct}`);
 
 // 拿不到真实分布时才退回腾讯 PE —— 此时分位也是手填基准，UI 会标 manual。
 const manual = buildItem(kc50, { price: 1000, changePct: 0, pe: 12, pb: 1.5 }, null, '2026-09-08 16:00');
