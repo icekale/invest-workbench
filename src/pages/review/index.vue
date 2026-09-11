@@ -59,6 +59,20 @@
               <span class="w-pct">{{ (a.pct * 100).toFixed(1) }}%</span>
             </div>
           </div>
+          <div class="mix-stats">
+            <div class="mix-stat">
+              <span class="mix-k">前三大行业</span>
+              <span class="mix-v">{{ pct1(mixStats.top3) }}</span>
+            </div>
+            <div class="mix-stat">
+              <span class="mix-k">现金占比</span>
+              <span class="mix-v">{{ pct1(mixStats.cash) }}</span>
+            </div>
+            <div class="mix-stat">
+              <span class="mix-k">行业个数</span>
+              <span class="mix-v">{{ mixStats.count }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </t-card>
@@ -314,6 +328,15 @@ function canDrill(name: string) {
 function onAllocClick(name: string) {
   if (canDrill(name)) drillL1.value = name;
 }
+const mixStats = computed(() => {
+  const industries = allocItems.value.filter((a) => a.name !== '现金');
+  return {
+    top3: industries.slice(0, 3).reduce((s, a) => s + a.pct, 0),
+    cash: allocItems.value.find((a) => a.name === '现金')?.pct ?? 0,
+    count: industries.length,
+  };
+});
+const pct1 = (n: number) => `${(n * 100).toFixed(1)}%`;
 const accountLabel = computed(() => invest.accountName(accountView.value));
 
 const PALETTE = ['#0d706d', '#3569bb', '#b8782d', '#d05b55', '#16815f', '#7abbb6', '#dfb56d', '#5b7c99'];
@@ -538,6 +561,33 @@ function toggleTodo(id: string, status: TodoStatus) {
   flex-direction: column;
   gap: 8px;
   width: max-content;
+}
+
+.mix-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-left: 8px;
+  min-width: 120px;
+}
+
+.mix-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mix-k {
+  font-size: 12px;
+  color: var(--guanlan-muted);
+}
+
+.mix-v {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--guanlan-ink);
+  line-height: 1.2;
 }
 
 .weight-row {
