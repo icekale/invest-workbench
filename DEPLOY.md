@@ -105,7 +105,27 @@ ssh -i ~/.ssh/zsxq_capture_key root@38.64.56.230 'md5sum /opt/invest-workbench/s
 
 ## 持仓 SQLite 同步
 
-容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。账本只信 SQLite。慢数据走 `/sync/cache`（宏观 6h，催化 15min）。社融全表 `GET /sync/afre`（增量）与 `?kind=stock`（存量，万亿元+同比），央行 xlsx，6h。
+容器 `invest-sync`（`python:3-alpine` + `scripts/sync-server.py`），库文件 `/opt/invest-workbench/data/invest.db`。Caddy `handle /sync*` 反代到 `invest-sync:3003`。登录走 `/sync` Basic；注册走 `POST /sync/register`。每个用户独立 `holdings`/`cash`/`transactions`/`kv`。账本只信 SQLite。慢数据走 `/sync/cache`（宏观 6h，催化 15min）。社融全表 `GET /sync/afre`（增量）与 `?kind=stock`（存量，万亿元+同比），央行 xlsx，6h。宽基/创业板 PE 月频序列 `GET /sync/lg-pe`（乐咕乐股，缓存 ≤24h，**无鉴权**——所以前端 `fetchOk('/sync/lg-pe')` 不带 authHeader 才通）。
+
+### 改 `scripts/sync-server.py` 必须单独部署（别只传站点）
+
+站点部署 **不会**带上它：`/opt/invest-workbench/sync-server.py` 是**独立 bind-mount**进容器的只读文件（`docker inspect invest-sync` 可见 `Source:/opt/invest-workbench/sync-server.py` → `Destination:/app/sync-server.py, ro`），跟 `site/` 无关。只传 `dist/` 会让前端指向一个**不存在的路由**——典型症状是 `curl -o /dev/null -w '%{http_code}' /sync/<新接口>` 得 **404**，而老接口得 **401**（401 = 路由在但要求鉴权，404 = 根本没这个路由），前端静默掉兜底分支、看起来“功能没生效”而控制台无红字。2026-09-11 就这样漏了 `/sync/lg-pe`：前端已上线，后端还停在旧版。
+
+```sh
+# 1) 先在**容器自己的解释器**里过语法（python:3-alpine 是 3.14，宿主可能不同）
+docker run --rm -v /opt/invest-workbench:/w python:3-alpine python -m py_compile /w/sync-server.py.new
+# 2) 原子替换前先比对哈希，别用“传上去了”当验证
+sha256sum /opt/invest-workbench/sync-server.py.new   # 必须等于本地 shasum -a 256 scripts/sync-server.py
+cp -p sync-server.py sync-server.py.bak-$(date +%Y%m%d-%H%M%S) && mv sync-server.py.new sync-server.py
+docker restart invest-sync
+```
+
+冒烟：新接口要真回 **200** 且**载荷里有数据**（别只看状态码——`{}` 也是 200）：
+
+```sh
+curl -s -o /tmp/x.json -w '%{http_code}\n' https://stock.053727.xyz/sync/lg-pe
+python3 -c "import json;d=json.load(open('/tmp/x.json'));print(len(d),{k:len(v) for k,v in d.items()})"
+```
 
 加用户（VPS）：
 
