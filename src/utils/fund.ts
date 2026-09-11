@@ -397,8 +397,8 @@ export async function fetchFundPosition(code: string): Promise<HoldingSlice[]> {
   // 传 `of000001` 不报错，而是回一个空 Datas（实测 fundStocks=0），
   // 静默呈现成「这只基金没披露」—— 凡进 API 的码一律在边界处剥前缀，
   // 免得又变成「每个调用方都得记得剥」的约定。
-  // 这里不 import utils/quote.ts 的 bareFundCode：quote.ts 反过来 import 本文件的
-  // fetchFundDetail，会成环。前缀规则以 quote.ts 为准（两边同一个正则）。
+  // 剥的是**已退役的场外写法**：账户层不再有 `of` 码，但选基这边用户手敲的、
+  // 旧备份里带过来的都可能是这个写法，而基金接口要的始终是裸码。
   const bare = String(code ?? '')
     .trim()
     .toLowerCase()
@@ -417,92 +417,6 @@ export async function fetchFundPosition(code: string): Promise<HoldingSlice[]> {
     }
   }
   throw new Error(last);
-}
-
-export interface LookThroughRow {
-  name: string;
-  code: string;
-  kind: '股票' | '债券';
-  /** 穿透后占该基金账户总市值的百分比 */
-  weight: number;
-  /** 穿透后的金额（元） */
-  value: number;
-}
-
-export interface LookThrough {
-  rows: LookThroughRow[];
-  /** 披露持仓覆盖到的基金市值比例（%）。季报只公布前十大重仓，覆盖不到 100% 是常态。 */
-  coverage: number;
-  /** 拿到披露数据的基金数 / 参与穿透的基金数 */
-  done: number;
-  total: number;
-}
-
-/**
- * 把多只基金的披露持仓按**市值加权**合成一张穿透表。
- *
- * 不能用 `mergePositions` 的等权合成：那是给 FOF 选品看「一篮子基金平均持了什么」的，
- * 而我实际投在每只基金上的钱不一样多 —— 等权会把 1000 元和 10 万元的持仓算成同等影响。
- *
- * 金额口径是 `该基金市值 × 该股占基金净值比`；分母是**参与穿透的基金市值合计**，
- * 所以 `weight` 说的是「这只股票占我基金仓位的百分之几」，不是它占某只基金的比例。
- *
- * `coverage` 必须如实算：拿不到披露数据的基金（停牌、新基金、接口挂了）市值照样进分母，
- * 于是覆盖度会相应变低 —— 不然用户会以为眼前这张表就是全部。
- */
-export function lookThrough(bags: { value: number; positions: HoldingSlice[] }[]): LookThrough {
-  const usable = bags.filter((b) => b.value > 0);
-  const total = usable.reduce((s, b) => s + b.value, 0);
-  const done = usable.filter((b) => b.positions.length > 0).length;
-  if (!(total > 0)) return { rows: [], coverage: 0, done, total: usable.length };
-
-  const map = new Map<string, LookThroughRow>();
-  let covered = 0;
-  for (const bag of usable) {
-    for (const p of bag.positions) {
-      if (!(p.weight > 0)) continue;
-      const value = (bag.value * p.weight) / 100;
-      covered += value;
-      // 同一只标的可能既在 fundStocks 又在 fundboods（可转债），按 kind 分开记
-      const key = `${p.kind}:${p.code || p.name}`;
-      const prev = map.get(key);
-      if (prev) {
-        prev.value += value;
-        prev.weight += (value / total) * 100;
-      } else {
-        map.set(key, { name: p.name, code: p.code, kind: p.kind, weight: (value / total) * 100, value });
-      }
-    }
-  }
-  return {
-    rows: [...map.values()].sort((a, b) => b.value - a.value),
-    coverage: (covered / total) * 100,
-    done,
-    total: usable.length,
-  };
-}
-
-/*
- * 披露持仓几乎不变（季报一年四期），所以按基金代码在内存里记住：切账户来回看、
- * 面板重新挂载时不重复打接口。与 `src/utils/sw-industry.ts` 的 memo 同一个做法。
- * 只缓存真拿到的结果 —— 接口偶发失败不能被记成「这只基金没有持仓」。
- */
-const positionMemo = new Map<string, HoldingSlice[]>();
-
-export async function cachedFundPosition(code: string): Promise<HoldingSlice[]> {
-  const hit = positionMemo.get(code);
-  if (hit) return hit;
-  const rows = await fetchFundPosition(code).catch(() => [] as HoldingSlice[]);
-  if (rows.length) positionMemo.set(code, rows);
-  return rows;
-}
-
-/** 一次拿到多只基金的穿透表。传 `of` 前缀的码也行 —— 剥前缀在 fetchFundPosition 的边界处做（上游只认裸 6 位，传前缀会静默返回空表）。 */
-export async function fetchFundLookThrough(funds: { code: string; value: number }[]): Promise<LookThrough> {
-  const bags = await Promise.all(
-    funds.map(async (f) => ({ value: f.value, positions: await cachedFundPosition(f.code) })),
-  );
-  return lookThrough(bags);
 }
 
 export function fmtPct(n: number | null): string {

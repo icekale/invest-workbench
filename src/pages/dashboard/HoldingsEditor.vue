@@ -16,7 +16,7 @@
         </div>
       </t-form-item>
       <t-form-item name="quantity" label="数量">
-        <t-input-number v-model="form.quantity" :min="0" :decimal-places="isOtc ? 2 : 0" />
+        <t-input-number v-model="form.quantity" :min="0" :decimal-places="0" />
       </t-form-item>
       <t-form-item name="cost" label="成本">
         <t-input-number v-model="form.cost" :min="0" :decimal-places="4" />
@@ -56,8 +56,7 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, Holding } from '@/types/invest';
-import { isOtcFund } from '@/utils/accounts';
-import { fetchAnyQuotes, normalizeForAccount } from '@/utils/quote';
+import { fetchAnyQuotes, normalizeCode } from '@/utils/quote';
 
 const visible = defineModel<boolean>({ default: false });
 const invest = useInvestStore();
@@ -86,9 +85,6 @@ const previewInfo = reactive({
   loading: false,
 });
 
-/* 场外基金：份额可小数，报价来自每日净值而不是行情。 */
-const isOtc = computed(() => isOtcFund(invest.accounts, form.account));
-
 let lookupTimer: number | null = null;
 watch(
   () => form.code,
@@ -105,7 +101,7 @@ watch(
 );
 
 async function lookupCode() {
-  const code = normalizeForAccount(invest.accounts, form.account, form.code);
+  const code = normalizeCode(form.code);
   if (!code) return;
   previewInfo.loading = true;
   try {
@@ -157,7 +153,7 @@ function remove(row: Holding) {
 }
 
 async function onSubmit() {
-  const code = normalizeForAccount(invest.accounts, form.account, form.code);
+  const code = normalizeCode(form.code);
   if (!code || form.quantity <= 0 || form.cost <= 0) {
     MessagePlugin.warning('代码、数量、成本都要填');
     return;
@@ -167,7 +163,7 @@ async function onSubmit() {
     const map = await fetchAnyQuotes([code]);
     const q = map.get(code);
     if (!q) {
-      MessagePlugin.error(isOtc.value ? '东财净值查不到这个基金代码' : '腾讯行情查不到这个代码');
+      MessagePlugin.error('腾讯行情查不到这个代码');
       return;
     }
     const prev = invest.holdings.find((h) => h.account === form.account && h.code === code);

@@ -295,7 +295,7 @@ const cashOf = (id: AccountId) => invest.cash[id] ?? 0;
 const activeRows = computed(() => invest.rowsOf(accountView.value));
 const activeCash = computed(() => cashOf(accountView.value));
 const allocItems = computed(() => {
-  // 申万行业只对股票类账户成立；ETF 与场外基金都没有行业分类，直接按标的切
+  // 申万行业只对股票类账户成立；ETF 没有行业分类，直接按标的切
   if (invest.accountKind(accountView.value) !== 'stock') return allocation(activeRows.value, activeCash.value);
   if (drillL1.value) {
     const sub = activeRows.value.filter((p) => swGroupOf(p, swMap.value, 'l1') === drillL1.value);

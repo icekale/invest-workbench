@@ -5,13 +5,11 @@
  * 它每手还是 100 份、费率还是万 0.5。所以判断一律走 `kind`，`id` 只做标识。
  * 于是新建一个 `kind: 'stock'` 的「打新账户」自动拿到股数单位和万 0.8 的费率。
  *
- * 三种 kind 是三种**交易模型**，不是一个名字的三种写法，别用一个 `isFund` 一把抓：
- * 场内（`stock`/`etf`）看行情、整手 100、券商佣金有 5 元下限；
- * 场外（`fund`）看净值、份数可小数、申购费无下限。见 `src/types/invest.ts` 的 `AccountKind`。
+ * 两种 kind 都是**场内**交易模型：看行情、整手 100、券商佣金有 5 元下限，
+ * 区别只在默认费率（万 0.8 / 万 0.5）。见 `src/types/invest.ts` 的 `AccountKind`。
  *
- * 但**默认注册表只给场内的两个桶**。场外那套规则完整保留（见 `isOtcFund`/`tradesInLots`/`rateOf`），
- * 谁要记公募基金，在「管理账户」里自己建一个 `kind: 'fund'` 的桶就有了 ——
- * 一个没人用的空桶不该默认占着面板和手工校准的版面。
+ * 场外基金（`kind: 'fund'`）**已整体退役** —— 按净值计价、份额可小数、收申购费
+ * 是另一套交易模型，条目连规则一并删了。存量那条注册表由 `normalizeAccounts` 退役。
  */
 
 import type { Account, AccountId, AccountKind } from '@/types/invest';
@@ -24,12 +22,14 @@ export function defaultAccounts(): Account[] {
 }
 
 /*
- * 退役的默认桶名：`公募基金账户` 曾经在默认表里（id 固定为 `fund`），现在不给默认了。
- * 已经存进注册表的那一条不会因为默认表变了就自己消失（`normalizeAccounts` 会原样保留存量），
- * 所以这里明写一条退役规则，否则老状态被回写一次它就又回来了。
+ * 场外基金桶（`kind: 'fund'`）已整体退役：这个 kind 不再存在，规则也一并删了。
+ * 但存量注册表里那一条不会因为默认表变了就自己消失（`normalizeAccounts` 会原样保留存量），
+ * 所以这里明写退役规则，否则老状态被回写一次它就又回来了。
  *
- * 只退役**没被动过**的那一个 —— id 和名字都对得上。用户改过名、或另起了 id 的自建基金桶一律保留，
- * 不然会连它的持仓一起失联。真有持仓/流水的（hints 里还带着 `fund`）会在下面被补成归档，不会凭空消失。
+ * 退役**所有** `kind: 'fund'` 的行 —— 含用户改过名、或另起了 id 的自建场外桶：
+ * kind 已经不在类型里，留着也解析不出名堂。真有持仓/流水的（hints 里还带着那个 id）
+ * 会在下面被补成归档账户，钱和账本历史都不会丢。
+ * 另加一道按名字的兜底：手改过 JSON、把 kind 抹了的老行也得能认出来是同一个桶。
  */
 const RETIRED_FUND_NAME = '公募基金账户';
 
@@ -60,29 +60,9 @@ export function labelOf(accounts: Account[], raw?: string): string {
   return nameOf(accounts, want);
 }
 
-/** 场外基金（`kind: 'fund'`）：按净值计价、不整手、收申购费、没有最低佣金。 */
-export function isOtcFund(accounts: Account[], id: AccountId): boolean {
-  return kindOf(accounts, id) === 'fund';
-}
-
-/** 场内基金/ETF（`kind: 'etf'`）。和场外基金是两套规则，不要混着用。 */
-export function isListedFund(accounts: Account[], id: AccountId): boolean {
-  return kindOf(accounts, id) === 'etf';
-}
-
-/** 计价单位。股票是「股」，场内/场外基金都是「份」。 */
+/** 计价单位。股票是「股」，基金（ETF）是「份」。 */
 export function unitOf(accounts: Account[], id: AccountId): string {
   return kindOf(accounts, id) === 'stock' ? '股' : '份';
-}
-
-/**
- * 是否按整手（100 股/份）交易。
- *
- * 只有场内品种是整手；场外基金按金额申购、按份额赎回，份额本身就是小数
- * （`MINSG: 10` 是最低申购金额 10 元，不是最低份额）。
- */
-export function tradesInLots(accounts: Account[], id: AccountId): boolean {
-  return kindOf(accounts, id) !== 'fund';
 }
 
 /**
@@ -93,31 +73,19 @@ export function tradesInLots(accounts: Account[], id: AccountId): boolean {
  */
 export const MIN_COMMISSION = 5;
 
-/**
- * 该账户的最低佣金。免佣账户是 0，其余按 MIN_COMMISSION。
- *
- * 场外基金恒为 0：它收的是**申购费**，不是券商佣金，「不足 5 元按 5 元」那条规定不适用于它。
- */
+/** 该账户的最低佣金。免佣账户是 0（免佣就没有「最低 5 元」这回事），其余按 MIN_COMMISSION。 */
 export function minCommissionOf(accounts: Account[], id: AccountId): number {
-  if (kindOf(accounts, id) === 'fund') return 0;
   return rateOf(accounts, id) > 0 ? MIN_COMMISSION : 0;
 }
 
 /**
- * 单笔费率。账户自带 `feeRate` 优先，否则按性质取默认值。
- *
- * 三者的默认值不是同一个东西：股票/ETF 是券商**佣金**（万 0.8 / 万 0.5），
- * 场外基金是**申购费**（0.15%，多数平台的一折费率）。
- * 申购费本来该按 `金额 - 金额/(1+费率)` 算，这里和佣金统一成 `金额 × 费率` ——
- * 整体差相对值 0.0002%，而全库的成本结转都建在 `金额 × 费率` 上，单独破一处会更乱。
+ * 单笔费率（券商**佣金**）。账户自带 `feeRate` 优先，否则按性质取默认值。
+ * 默认值是施工时就有的数：股票 0.00008（万 0.8）、ETF 0.00005（万 0.5）。最低佣金见 MIN_COMMISSION。
  */
 export function rateOf(accounts: Account[], id: AccountId): number {
   const own = findAccount(accounts, id)?.feeRate;
   if (Number.isFinite(own)) return own as number;
-  // 默认值是施工时就有的数：股票 0.00008（万 0.8）、ETF 0.00005（万 0.5）。最低佣金见 MIN_COMMISSION。
-  const kind = kindOf(accounts, id);
-  if (kind === 'fund') return 0.0015;
-  return kind === 'etf' ? 0.00005 : 0.00008;
+  return kindOf(accounts, id) === 'etf' ? 0.00005 : 0.00008;
 }
 
 /**
@@ -151,12 +119,11 @@ export function makeAccountId(accounts: Account[]): AccountId {
 
 /**
  * 老数据里 id 就是性质（`'etf'`），新数据里 id 随机，所以只能靠前缀猜。
- * `etf` 必须排在 `fund` 前面判：「ETF 联接基金」这类名字两边都沾，场内那套才是对的。
+ * 猜不出来的落到 `stock` —— 规则最普通的那档。已退役的场外桶也会落在这里，
+ * 它们只剩归档的持仓和流水，认成股票桶不影响账本读数。
  */
 export function guessKind(id: AccountId): AccountKind {
-  if (/etf/i.test(id)) return 'etf';
-  if (/fund|公募|场外|基金/i.test(id)) return 'fund';
-  return 'stock';
+  return /etf/i.test(id) ? 'etf' : 'stock';
 }
 
 /**
@@ -200,10 +167,9 @@ export function normalizeAccounts(raw: unknown, hints: string[] = []): Account[]
       // 同一 id 出现两次时保留先出现的：archiveAccount 打在副本上也比撞车好
       if (!id || ids.has(id)) continue;
       const name = str(row.name).trim() || id;
-      if (id === 'fund' && name === RETIRED_FUND_NAME) continue;
+      if (row.kind === 'fund' || (id === 'fund' && name === RETIRED_FUND_NAME)) continue;
       ids.add(id);
-      const kind: AccountKind =
-        row.kind === 'fund' ? 'fund' : row.kind === 'etf' ? 'etf' : row.kind === 'stock' ? 'stock' : guessKind(id);
+      const kind: AccountKind = row.kind === 'etf' ? 'etf' : row.kind === 'stock' ? 'stock' : guessKind(id);
       const acc: Account = { id, name, kind };
       const rate = row.feeRate;
       if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) acc.feeRate = rate;

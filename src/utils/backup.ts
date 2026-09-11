@@ -1,5 +1,4 @@
 import { fetchOk, withRetry } from './http.ts';
-import { isOtcCode } from './quote.ts';
 
 /** 中证官方 xls，浏览器不解。需要成分/权重时另接解析。 */
 export function csiFile(code: string, kind: 'cons' | 'closeweight' | 'indicator') {
@@ -31,8 +30,7 @@ export function parseSinaBody(text: string) {
 }
 
 export async function fetchSinaQuotes(codes: string[]) {
-  // 和 fetchQuotes 同理：场外基金码不能送进行情接口，剔掉前缀就变成另一只股票了
-  const uniq = [...new Set(codes.filter((c) => c && !isOtcCode(c)))];
+  const uniq = [...new Set(codes.filter(Boolean))];
   if (!uniq.length) return new Map();
   const text = await withRetry(async () => {
     const res = await fetchOk(`/sina/list=${uniq.join(',')}`);

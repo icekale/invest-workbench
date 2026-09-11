@@ -18,7 +18,7 @@
  * 就能还原出列序，再把数据行的数字尾巴按同一个列序对齐。
  */
 import type { Account, AccountId, Holding } from '@/types/invest';
-import { normalizeForAccount } from '@/utils/quote';
+import { normalizeCode } from '@/utils/quote';
 
 /** OCR 读到的原始行。数字为 null 表示这一格没读出可信的数。 */
 export interface OcrRawRow {
@@ -263,7 +263,7 @@ export type OcrLevel = 'ok' | 'warn' | 'error';
 
 export interface OcrCheckedRow {
   raw: OcrRawRow;
-  /** 按账户归一化后的代码（场内补 sh/sz/bj，场外补 of） */
+  /** 归一化后的场内代码（补 sh/sz/bj）。场外 `of` 写法已随账户层退役 */
   code: string;
   name: string;
   quantity: number;
@@ -334,7 +334,7 @@ export function checkRows(rows: OcrRawRow[], ctx: CheckContext): OcrCheckedRow[]
       level = 'error';
     };
 
-    const code = normalizeForAccount(ctx.accounts, ctx.account, raw.code);
+    const code = normalizeCode(raw.code);
     const quantity = raw.quantity ?? 0;
     const cost = raw.cost ?? 0;
 

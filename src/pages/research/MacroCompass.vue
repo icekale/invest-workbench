@@ -375,8 +375,7 @@ function gapLabel(actual: number | null, target: string | undefined) {
 }
 
 /*
- * 仓位立场只有股票/ETF 两档，因为天气里只有这两个建议值。
- * 公募基金账户（`kind: 'fund'`）自然不进这两档 —— 它是另一条线，不该被算成股票或 ETF 仓位。
+ * 仓位立场只有股票/ETF 两档，因为天气里只有这两个建议值 —— 而账户也只有这两种性质。
  */
 const stockActual = computed(() => accountPos(mvOfKind('stock'), cashOfKind('stock')));
 const etfActual = computed(() => accountPos(mvOfKind('etf'), cashOfKind('etf')));

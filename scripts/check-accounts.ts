@@ -5,7 +5,7 @@
  *  1. 性质与 id 分家 —— 新建的股票桶必须拿到股票费率，名字里带 ETF 也不算基金；
  *  2. 老数据迁移 —— 老备份没有注册表，但持仓的 account 字段一直在，一个都不能丢光；
  *  3. 费率 —— `feeRate: 0`（免佣）不能被 `||` 顺手吃掉，退回默认值；
- *  4. 场外基金（`kind: 'fund'`）—— 它和场内是两套规则：不整手、份额可小数、没有 5 元最低佣金。
+ *  4. 退役的场外基金桶（`kind: 'fund'`）—— 行要整体丢掉，但有钱挂在上面的得退成归档，不能静默丢持仓。
  */
 import assert from 'node:assert/strict';
 
@@ -13,8 +13,6 @@ import {
   activeOf,
   defaultAccounts,
   feeOf,
-  isListedFund,
-  isOtcFund,
   kindOf,
   makeAccountId,
   matchAccount,
@@ -22,7 +20,6 @@ import {
   nameOf,
   normalizeAccounts,
   rateOf,
-  tradesInLots,
   unitOf,
 } from '../src/utils/accounts.ts';
 import { maxBuyQuantity, tradeFee } from '../src/utils/ledger.ts';
@@ -44,26 +41,22 @@ const custom = normalizeAccounts([
   { id: 'acct_2', name: '打新', kind: 'etf' },
   { id: 'acct_3', name: '场外债基', kind: 'fund' },
 ]);
-assert.equal(isListedFund(custom, 'acct_1'), false, '名字里有 ETF，但 kind 是 stock');
-assert.equal(isListedFund(custom, 'acct_2'), true, '名字里没有基金字样，但 kind 是 etf');
-assert.equal(isOtcFund(custom, 'acct_2'), false, '场内基金不是场外');
-assert.equal(isOtcFund(custom, 'acct_3'), true, 'kind 是 fund 才算场外');
-assert.equal(kindOf(custom, 'acct_1'), 'stock');
+assert.equal(kindOf(custom, 'acct_1'), 'stock', '名字里有 ETF，但 kind 是 stock');
+assert.equal(kindOf(custom, 'acct_2'), 'etf', '名字里没有基金字样，kind 是 etf 就是 etf');
+// 退役的场外桶不在类型里了：kind 是 fund 的行整体丢掉，不留半个账户在后面
+assert.equal(
+  custom.some((a) => a.id === 'acct_3'),
+  false,
+  'kind: fund 的行要整体退役',
+);
 
-/*
- * 单位与整手。场外基金按金额申购，份额本身就是小数（`MINSG: 10` 是最低申购金额 10 元），
- * 沿用场内的整手会把 1000 元的申购卡成 0 份。
- */
+/* 单位：股票是「股」，ETF 是「份」。 */
 assert.equal(unitOf(custom, 'acct_1'), '股');
 assert.equal(unitOf(custom, 'acct_2'), '份');
-assert.equal(unitOf(custom, 'acct_3'), '份');
-assert.equal(tradesInLots(custom, 'acct_1'), true);
-assert.equal(tradesInLots(custom, 'acct_2'), true);
-assert.equal(tradesInLots(custom, 'acct_3'), false, '场外基金不整手');
 
 // 老数据的 id 就是性质，只能靠前缀猜
 assert.equal(kindOf([], 'etf'), 'etf');
-assert.equal(kindOf([], 'fund_2'), 'fund', 'fund_ 前缀是场外基金，不是 ETF');
+assert.equal(kindOf([], 'fund_2'), 'stock', '退役的场外前缀不再有专门口径，落回最普通那档');
 assert.equal(kindOf([], 'acct_9'), 'stock');
 // `etf` 必须先判：「ETF 联接基金」两边都沾，场内那套才是对的
 assert.equal(kindOf([], 'etf_lianjie_fund'), 'etf', 'ETF 联接基金归场内');
@@ -94,15 +87,6 @@ const freeAcct = normalizeAccounts([{ id: 'free', name: '免佣', kind: 'stock',
 assert.equal(minCommissionOf(freeAcct, 'free'), 0, '免佣账户没有最低佣金');
 assert.equal(tradeFee('free', 10_000, freeAcct), 0, '免佣账户小额也是 0');
 assert.equal(minCommissionOf(custom, 'acct_1'), 5, '有佣金的账户才有下限');
-
-/*
- * 场外基金收的是**申购费**，不是券商佣金，「不足 5 元按 5 元」那条规定不适用于它。
- * 下限一旦套上去，1000 元的申购会被算成 5 元费用（真实是 1.5 元）。
- */
-assert.equal(rateOf(custom, 'acct_3'), 0.0015, '场外基金默认申购费 0.15%');
-assert.equal(minCommissionOf(custom, 'acct_3'), 0, '场外基金没有最低佣金');
-assert.equal(feeOf(custom, 'acct_3', 1000), 1.5, '1000 元申购费 1.5 元，不能被抬到 5 元');
-assert.equal(feeOf(custom, 'acct_3', 100), 0.15, '小额申购同样按比例');
 
 // 零/负金额不能凭空算出 5 元
 assert.equal(tradeFee('acct_1', -5, custom), 0, '负数金额不该算出负佣金');
@@ -142,26 +126,6 @@ assert.equal(maxBuyQuantity('stock', 0, 10_000, custom), 0);
 assert.equal(maxBuyQuantity('stock', 10, 0, custom), 0);
 assert.equal(maxBuyQuantity('stock', -10, 10_000, custom), 0);
 
-/* ---------- 老断言：费率来源换了，大额数字不能变 ---------- */
-
-/*
- * 场外基金不能整手。这是钱的路上的坑：净值 1.262、现金 1000 元含申购费能买 791.20 份，
- * 沿用场内的 100 份整手会向下取到 700 份，把可买的钱平白锁住。
- *
- * 注意份数不是 `1000 / 1.262 = 792.39` —— 申购费是按金额另收的，
- * 真上界要按 `cash / (1 + 费率)` 先扣费用（与场内佣金同一个式子）。
- */
-const otc = normalizeAccounts([{ id: 'of_acct', name: '公募', kind: 'fund' }]);
-assert.equal(maxBuyQuantity('of_acct', 1.262, 1000, otc), 791.2, '净值 1.262、现金 1000 → 791.20 份（不是 700）');
-assert.equal(maxBuyQuantity('of_acct', 1.262, 100, otc), 79.12, '小额同样按份算');
-// 报出来的份数必须真的付得起（含申购费），否则成交校验会把它打回
-const otcQty = maxBuyQuantity('of_acct', 1.262, 1000, otc);
-const otcAmount = Number((1.262 * otcQty).toFixed(2));
-assert.ok(otcAmount + tradeFee('of_acct', otcAmount, otc) <= 1000, '不含费用的份数会被现金校验拒掉');
-// 场外没有 5 元门槛：现金 4 元也能买 3.16 份，而股票账户会归零
-assert.equal(maxBuyQuantity('of_acct', 1.262, 4, otc), 3.16, '申购费无下限，小额也能买');
-assert.equal(maxBuyQuantity('stock', 1.262, 4, otc), 0, '股票侧同样现金仍归零（买不起一手）');
-
 /* ---------- 老备份迁移：没登记的账户补成归档，持仓才不会凭空消失 ---------- */
 const migrated = normalizeAccounts(undefined, ['stock', 'etf', 'grid']);
 assert.deepEqual(
@@ -189,9 +153,9 @@ assert.deepEqual(
 assert.equal(legacy.find((a) => a.id === 'stock')?.name, '我自己改的名字', '已在表里的账户不被默认名覆盖');
 assert.equal(legacy.find((a) => a.id === 'etf')?.archived, undefined, '补出来的默认账户是活的，不是归档');
 /*
- * 公募基金账户不再进默认表，而且**已经存下来的那一条要退役掉**：
- * 不退役的话，老状态被回写一次（/sync 是整包回写）它就又冒出来了。
- * 退役只针对「没被动过」的那一条 —— 改过名的、数据还挂在上面的都得留着。
+ * 公募基金桶（`kind: 'fund'`）已整体退役：注册表里再解析出这个 kind 就直接丢掉。
+ * 但「丢掉行」和「丢掉钱」是两件事 —— 真有持仓/流水挂在上面的（hints 里带着那个 id）
+ * 必须在下面被补成归档账户，账本和持仓才找得到它的名字。
  */
 assert.deepEqual(
   normalizeAccounts([
@@ -200,25 +164,22 @@ assert.deepEqual(
     { id: 'fund', name: '公募基金账户', kind: 'fund' },
   ]).map((a) => a.id),
   ['stock', 'etf'],
-  '没被动过的公募基金默认桶要退役',
+  '注册表里的公募基金桶要退役',
 );
-// 改过名的：动过的东西是用户的账户，不是「默认桶」
-const renamed = normalizeAccounts([{ id: 'fund', name: '我的债基', kind: 'fund' }]);
+// 改过名的、自建 id 的也是 kind: fund —— kind 都不在类型里了，一条都不留
 assert.deepEqual(
-  renamed.map((a) => a.id).sort(),
-  ['etf', 'fund', 'stock'],
-  '改过名的场外桶不能被退役（顺序跟随存量，默认桶在后面补）',
+  normalizeAccounts([{ id: 'fund', name: '我的债基', kind: 'fund' }]).map((a) => a.id),
+  ['stock', 'etf'],
+  '改过名的场外桶也一起退役',
 );
-assert.equal(isOtcFund(renamed, 'fund'), true, '自建场外桶仍按场外规则算（净值/小数份额/申购费）');
-// 还有钱挂在上面时：退役会把那笔钱变成孤儿，所以退回「归档」而不是丢掉
+// 还有钱挂在上面时：行退役掉，但 hints 会把 id 补成归档账户，不能变成孤儿持仓
 const funded = normalizeAccounts([{ id: 'fund', name: '公募基金账户', kind: 'fund' }], ['stock', 'etf', 'fund']);
 assert.deepEqual(
   funded.map((a) => a.id),
   ['stock', 'etf', 'fund'],
-  '数据还挂着的账户不能被退役掉',
+  '数据还挂着的账户要补成归档，不能整个丢掉',
 );
-assert.equal(funded.find((a) => a.id === 'fund')?.archived, true, '退役不了就收起来，不能静默丢持仓');
-assert.equal(isOtcFund(funded, 'fund'), true, '归档了也还是场外口径');
+assert.equal(funded.find((a) => a.id === 'fund')?.archived, true, '退役的桶收起来，不能静默丢持仓');
 // 已经在注册表里的 hint 不该被重复补一条
 assert.equal(normalizeAccounts(def, ['stock']).length, 2);
 // 脏数据不能把整张表读崩

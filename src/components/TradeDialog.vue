@@ -116,13 +116,7 @@
           </t-col>
           <t-col :span="6">
             <t-form-item :label="`委托数量 (${unit})`">
-              <t-input-number
-                v-model="form.quantity"
-                :min="isOtc ? 0.01 : 1"
-                :step="isOtc ? 100 : 100"
-                :decimal-places="isOtc ? 2 : 0"
-                style="width: 100%"
-              />
+              <t-input-number v-model="form.quantity" :min="1" :step="100" :decimal-places="0" style="width: 100%" />
             </t-form-item>
           </t-col>
         </t-row>
@@ -224,9 +218,9 @@ import { computed, reactive, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId, TradeSide } from '@/types/invest';
-import { isOtcFund, MIN_COMMISSION, rateOf, tradesInLots, unitOf } from '@/utils/accounts';
+import { MIN_COMMISSION, rateOf, unitOf } from '@/utils/accounts';
 import { maxBuyQuantity as maxBuyable, tradeFee } from '@/utils/ledger';
-import { fetchAnyQuotes, normalizeForAccount } from '@/utils/quote';
+import { fetchAnyQuotes, normalizeCode } from '@/utils/quote';
 
 defineOptions({ name: 'TradeDialog' });
 
@@ -301,10 +295,7 @@ function onAccountChange() {
 
 const availableCash = computed(() => invest.cash[form.account] || 0);
 
-/* 场外基金：按份额申购、收申购费。这几个值决定了界面上是「整手 100 股」还是「份额可小数」。 */
-const isOtc = computed(() => isOtcFund(invest.accounts, form.account));
 const unit = computed(() => unitOf(invest.accounts, form.account));
-const inLots = computed(() => tradesInLots(invest.accounts, form.account));
 
 // 当前账户持仓选项
 const currentAccountHoldingOptions = computed(() =>
@@ -319,12 +310,10 @@ const currentAccountHoldingOptions = computed(() =>
 // 查找当前账户中是否持有选中的标的
 const existingHolding = computed(() => {
   if (!form.code) return null;
-  const target = normalizeForAccount(invest.accounts, form.account, form.code);
+  const target = normalizeCode(form.code);
   return (
     invest.holdings.find(
-      (h) =>
-        h.account === form.account &&
-        (h.code === target || normalizeForAccount(invest.accounts, form.account, h.code) === target),
+      (h) => h.account === form.account && (h.code === target || normalizeCode(h.code) === target),
     ) || null
   );
 });
@@ -355,7 +344,7 @@ watch(
 );
 
 async function fetchQuoteForCode() {
-  const norm = normalizeForAccount(invest.accounts, form.account, form.code);
+  const norm = normalizeCode(form.code);
   if (!norm || norm.length < 6) return;
   quoteLoading.value = true;
   try {
@@ -410,9 +399,8 @@ const feeRate = computed(() => rateOf(invest.accounts, form.account));
 const maxBuyQuantity = computed(() => maxBuyable(form.account, form.price, availableCash.value, invest.accounts));
 
 // 费率算出来不足最低佣金时实际按下限收 —— 标出来，不然看着像试算面板算错了
-// 场外基金没有最低佣金（它收的是申购费），所以这条提示对它恒为假
 const feeAtFloor = computed(
-  () => !feeOverridden.value && !isOtc.value && feeRate.value > 0 && tradeAmount.value * feeRate.value < MIN_COMMISSION,
+  () => !feeOverridden.value && feeRate.value > 0 && tradeAmount.value * feeRate.value < MIN_COMMISSION,
 );
 
 // 最大可卖股数
@@ -449,9 +437,7 @@ function applyRatio(ratio: number) {
     const qty = maxBuyable(form.account, form.price, targetAmount, invest.accounts);
     if (qty <= 0) {
       // 旧代码在这里强行报 100 股，结果交给现金校验去打回；说清楚买不起更好
-      MessagePlugin.warning(
-        isOtc.value ? '按这个比例买不起一份（已含申购费）' : '按这个比例买不起一手（已含最低佣金）',
-      );
+      MessagePlugin.warning('按这个比例买不起一手（已含最低佣金）');
       return;
     }
     form.quantity = qty;
@@ -465,13 +451,8 @@ function applyRatio(ratio: number) {
       form.quantity = total;
     } else {
       const raw = Math.round(total * ratio);
-      /*
-       * 整手只对场内成立。场外的份额是小数，套上 `Math.max(100, …)` 会一下卖出 100 份 ——
-       * 比用户按的 1/4 仓多得多。场外直接取比例值，两位小数。
-       */
-      form.quantity = inLots.value
-        ? Math.min(total, Math.max(100, Math.floor(raw / 100) * 100 || raw))
-        : Math.min(total, Math.max(0.01, Math.floor(raw * 100) / 100));
+      // 整手 100：`|| raw` 是给小仓位留的活口（不足一手时按 raw 卖，别让用户卡在 0）
+      form.quantity = Math.min(total, Math.max(100, Math.floor(raw / 100) * 100 || raw));
     }
   }
 }

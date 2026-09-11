@@ -15,7 +15,7 @@ import type {
 import { matchAccount } from '@/utils/accounts';
 import type { Quote } from '@/utils/quote';
 
-import { feeOf, minCommissionOf, rateOf, tradesInLots } from './accounts.ts';
+import { feeOf, minCommissionOf, rateOf } from './accounts.ts';
 import { formatCN, todayCN } from './date.ts';
 
 /**
@@ -55,17 +55,14 @@ export function tradeFee(account: AccountId, amount: number, accounts: Account[]
  *
  * 复核用严格 `<=`，不放过浮点误差：宁可少报一手，不能报出成交时会被拒的数量。
  *
- * 整手只对场内成立（`tradesInLots`）：场外基金按金额申购，份额本身就是小数，
- * 套上 100 份整手会把 1000 元的申购卡成 0 份（净值 1.26 才 793 份，不到一手）。
+ * 整手 100：券商委托按手走，报出零股数量会在成交时被拒。
  */
 export function maxBuyQuantity(account: AccountId, price: number, cash: number, accounts: Account[] = []): number {
   if (!Number.isFinite(price) || !Number.isFinite(cash) || price <= 0 || cash <= 0) return 0;
   const rate = rateOf(accounts, account);
-  const lots = tradesInLots(accounts, account);
   let best = 0;
   for (const budget of [cash / (1 + rate), cash - minCommissionOf(accounts, account)]) {
-    // 场外留两位小数就够（与界面上份额的显示精度一致），不取整手
-    const qty = lots ? Math.floor(Math.floor(budget / price) / 100) * 100 : Math.floor((budget / price) * 100) / 100;
+    const qty = Math.floor(Math.floor(budget / price) / 100) * 100;
     if (qty > best && price * qty + tradeFee(account, price * qty, accounts) <= cash) best = qty;
   }
   return best;

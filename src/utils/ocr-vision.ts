@@ -74,7 +74,7 @@ export function extractJson(content: string): unknown {
 /**
  * 模型返回 → 宽松的行对象数组。
  *
- * 这里**不**做 normalizeForAccount 之外的加工：模型给什么代码就是什么，
+ * 这里**不**做 normalizeCode 之外的加工：模型给什么代码就是什么，
  * 校验和归一化由 `holdings-ocr.ts` 统一做，避免两条通道各有一套规则。
  */
 export function rowsFromModel(content: string): Array<Record<string, unknown>> {

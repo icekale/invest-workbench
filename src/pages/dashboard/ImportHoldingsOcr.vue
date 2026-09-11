@@ -101,13 +101,7 @@
             </div>
           </template>
           <template #qtyCell="{ row }">
-            <t-input-number
-              v-model="row.quantity"
-              size="small"
-              :min="0"
-              :decimal-places="isOtc ? 2 : 0"
-              style="width: 116px"
-            />
+            <t-input-number v-model="row.quantity" size="small" :min="0" :decimal-places="0" style="width: 116px" />
           </template>
           <template #costCell="{ row }">
             <t-input-number v-model="row.cost" size="small" :min="0" :decimal-places="4" style="width: 116px" />
@@ -151,12 +145,11 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 
 import { useInvestStore } from '@/store';
 import type { AccountId } from '@/types/invest';
-import { kindOf } from '@/utils/accounts';
 import type { OcrCheckedRow, OcrLevel, OcrRawRow } from '@/utils/holdings-ocr';
 import { checkRows, effectiveLevel, parseOcrText, rowReady } from '@/utils/holdings-ocr';
 import { recognizeLocal } from '@/utils/ocr-local';
 import { recognizeVision, rowsFromModel, visionModels } from '@/utils/ocr-vision';
-import { fetchAnyQuotes, normalizeForAccount } from '@/utils/quote';
+import { fetchAnyQuotes, normalizeCode } from '@/utils/quote';
 
 /** 超过这个大小就别送了：本地识别会吃满内存，视觉模型也会超时 */
 const MAX_BYTES = 12 * 1024 * 1024;
@@ -188,8 +181,6 @@ const busy = ref(false);
 const dragOver = ref(false);
 const progressText = ref('');
 const fileRef = ref<HTMLInputElement | null>(null);
-
-const isOtc = computed(() => kindOf(invest.accounts, account.value) === 'fund');
 
 /** 表格里可编辑，所以带的是一份可变的行副本 */
 interface Row extends OcrCheckedRow {
@@ -335,9 +326,7 @@ async function run() {
     // 拿行情对账：名称对不上就说明代码大概率读错了 —— 这是唯一能自动抓住「编造」的办法。
     // 代码必须先按账户归一化再查：腾讯只认 sh/sz/bj 前缀，拿 OCR 出来的裸 6 位码去查
     // 会一条都查不回来，然后整批静默退化成「行情里查不到」（踩过）。
-    const codes = [
-      ...new Set(parsed.map((r) => normalizeForAccount(invest.accounts, account.value, r.code)).filter(Boolean)),
-    ];
+    const codes = [...new Set(parsed.map((r) => normalizeCode(r.code)).filter(Boolean))];
     const quotes = new Map<string, { name: string; price: number }>();
     let quotesUnavailable = false;
     try {
